@@ -36,6 +36,12 @@ public:
     void setHorizonY(double imageY);
     void setHorizonLocked(bool locked);
     void setHorizonVisible(bool visible);
+    void setVerticalColor(QColor color);
+    void setVerticalOpacity(int opacity);
+    void setVerticalWidth(double width);
+    void setVerticalX(double imageX);
+    void setVerticalLocked(bool locked);
+    void setVerticalVisible(bool visible);
     void setAxesVisible(bool visible);
     void setMarkersVisible(bool visible);
     void setSymmetricPoints(bool enabled);
@@ -49,6 +55,7 @@ public:
     void setSelectedPointVisible(bool visible);
     void setSelectedPointPosition(QPointF position);
     void setSelectedPointAttachedToHorizon(bool attached);
+    void setSelectedPointAttachment(const QString &targetId);
     void setSelectedPointLocked(bool locked);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
@@ -79,7 +86,7 @@ private:
     int width_ = 3;
     double zoom_ = 1.0;
     QPointF pan_, last_, paintAnchor_, hoverPoint_;
-    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, space_ = false;
+    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, movingVertical_ = false, space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
     bool horizonCarriesPoint_ = false;
