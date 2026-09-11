@@ -1,5 +1,5 @@
 <RCC>
     <qresource prefix="/app">
-        <file>drawing.png</file>
+        <file>techdraw.png</file>
     </qresource>
 </RCC>

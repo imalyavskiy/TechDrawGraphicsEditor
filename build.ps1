@@ -7,14 +7,14 @@ try {
     New-Item -ItemType Directory -Force -Path $buildPath | Out-Null
     Push-Location $buildPath
     try {
-        & "$QtRoot\bin\qmake.exe" (Join-Path $PSScriptRoot 'Drawing.pro') 'CONFIG+=release'
+        & "$QtRoot\bin\qmake.exe" (Join-Path $PSScriptRoot 'TechDraw.pro') 'CONFIG+=release'
         if ($LASTEXITCODE -ne 0) { throw 'qmake failed' }
         & "$CompilerRoot\bin\mingw32-make.exe" '-j4'
         if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
     } finally { Pop-Location }
-    $deployPath=Join-Path $PSScriptRoot 'dist\Drawing'
+    $deployPath=Join-Path $PSScriptRoot 'dist\TechDraw'
     New-Item -ItemType Directory -Force -Path $deployPath | Out-Null
-    Copy-Item -LiteralPath (Join-Path $buildPath 'release\Drawing.exe') -Destination $deployPath
+    Copy-Item -LiteralPath (Join-Path $buildPath 'release\TechDraw.exe') -Destination $deployPath
     foreach ($library in @('Qt5Core.dll','Qt5Gui.dll','Qt5Widgets.dll')) {
         Copy-Item -LiteralPath (Join-Path "$QtRoot\bin" $library) -Destination $deployPath
     }
@@ -27,5 +27,5 @@ try {
         Copy-Item -LiteralPath (Join-Path "$QtRoot\plugins" $plugin) -Destination $destination
     }
     Set-Content -LiteralPath (Join-Path $deployPath 'qt.conf') -Value "[Paths]`nPrefix=.`nPlugins=." -Encoding ascii
-    Write-Output "Ready: $deployPath\Drawing.exe"
+    Write-Output "Ready: $deployPath\TechDraw.exe"
 } finally { $env:PATH=$previousPath }

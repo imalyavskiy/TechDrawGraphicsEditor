@@ -1,6 +1,6 @@
 param([ValidateSet('windows','offscreen')][string]$Platform='windows')
 $ErrorActionPreference='Stop'
-$exe=Join-Path $PSScriptRoot 'dist\Drawing\Drawing.exe'
+$exe=Join-Path $PSScriptRoot 'dist\TechDraw\TechDraw.exe'
 $outputPath=Join-Path $PSScriptRoot "build\$Platform-results"
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 $started=[DateTime]::UtcNow
