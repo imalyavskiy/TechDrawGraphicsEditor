@@ -35,7 +35,7 @@ QJsonObject perspectiveJson(const DrawingState &state) {
     for(const auto &point:state.vanishingPoints){
         QJsonValue attachment=QJsonValue::Null;
         if(!point.attachmentType.isEmpty())attachment=QJsonObject{{"type",point.attachmentType},{"targetId",point.attachmentTargetId}};
-        points.append(QJsonObject{{"id",point.id},{"x",point.position.x()},{"y",point.position.y()},{"locked",point.locked},{"attachment",attachment}});
+        points.append(QJsonObject{{"id",point.id},{"name",point.name},{"x",point.position.x()},{"y",point.position.y()},{"locked",point.locked},{"attachment",attachment}});
     }
     return QJsonObject{{"horizon",QJsonObject{{"y",state.horizonY},{"locked",state.horizonLocked}}},{"vertical",QJsonObject{{"x",state.verticalX},{"locked",state.verticalLocked}}},{"points",points}};
 }
@@ -57,11 +57,14 @@ bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error
         }
         const auto points=perspective.value("points").toArray();if(points.size()>32)return fail(error,QStringLiteral("Слишком много точек схода."));
         QSet<QString> ids;QVector<VanishingPoint> parsed;
-        for(const auto &entry:points){
+        for(int pointIndex=0;pointIndex<points.size();++pointIndex){
+            const auto entry=points[pointIndex];
             if(!entry.isObject())return fail(error,QStringLiteral("Некорректная точка схода."));
             const auto object=entry.toObject();
             VanishingPoint point;point.id=object.value("id").toString();point.position=QPointF(object.value("x").toDouble(qQNaN()),object.value("y").toDouble(qQNaN()));
             if(point.id.isEmpty()||point.id.size()>80||ids.contains(point.id)||!std::isfinite(point.position.x())||!std::isfinite(point.position.y())||std::abs(point.position.x())>1000000||std::abs(point.position.y())>1000000)return fail(error,QStringLiteral("Некорректная точка схода."));
+            if(formatVersion>=7&&!object.value("name").isString())return fail(error,QStringLiteral("Некорректное название точки схода."));
+            point.name=formatVersion>=7?object.value("name").toString():QStringLiteral("Точка схода %1").arg(pointIndex+1);if(point.name.size()>120)return fail(error,QStringLiteral("Название точки схода слишком длинное."));
             if(formatVersion>=5&&!object.value("locked").isBool())return fail(error,QStringLiteral("Некорректное состояние фиксации точки схода."));
             point.locked=formatVersion>=5&&object.value("locked").toBool();
             ids.insert(point.id);const auto attachment=object.value("attachment");
@@ -82,14 +85,14 @@ bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error
     const double horizonY=perspective.value("horizonY").toDouble(y);
     if (!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(horizonY)||std::abs(x)>1000000||std::abs(y)>1000000||std::abs(horizonY)>1000000)
         return fail(error,QStringLiteral("Параметры перспективы вне допустимого диапазона."));
-    VanishingPoint point;point.id=QStringLiteral("vp-1");point.position=QPointF(x,y);
+    VanishingPoint point;point.id=QStringLiteral("vp-1");point.position=QPointF(x,y);point.name=QStringLiteral("Точка схода 1");
     if(qFuzzyCompare(y+1,horizonY+1)){point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=QStringLiteral("horizon");}
     state->horizonY=horizonY;state->verticalX=state->image.width()/2.0;state->vanishingPoints={point};
     return true;
 }
 bool validState(const DrawingState &state) {
     if(!Project::validSize(state.image.size())||state.image.isNull()||!std::isfinite(state.horizonY)||std::abs(state.horizonY)>1000000||!std::isfinite(state.verticalX)||std::abs(state.verticalX)>1000000||state.vanishingPoints.size()>32)return false;
-    QSet<QString> ids;for(const auto &point:state.vanishingPoints){if(point.id.isEmpty()||point.id.size()>80||ids.contains(point.id)||!std::isfinite(point.position.x())||!std::isfinite(point.position.y())||std::abs(point.position.x())>1000000||std::abs(point.position.y())>1000000||!point.color.isValid())return false;ids.insert(point.id);if(!point.attachmentType.isEmpty()&&(point.attachmentType!=QStringLiteral("construction")||(point.attachmentTargetId!=QStringLiteral("horizon")&&point.attachmentTargetId!=QStringLiteral("vertical"))))return false;}
+    QSet<QString> ids;for(const auto &point:state.vanishingPoints){if(point.id.isEmpty()||point.id.size()>80||point.name.size()>120||ids.contains(point.id)||!std::isfinite(point.position.x())||!std::isfinite(point.position.y())||std::abs(point.position.x())>1000000||std::abs(point.position.y())>1000000||!point.color.isValid())return false;ids.insert(point.id);if(!point.attachmentType.isEmpty()&&(point.attachmentType!=QStringLiteral("construction")||(point.attachmentTargetId!=QStringLiteral("horizon")&&point.attachmentTargetId!=QStringLiteral("vertical"))))return false;}
     return
         std::isfinite(state.rayStepDegrees)&&state.rayStepDegrees>=1&&state.rayStepDegrees<=30&&std::isfinite(state.rayAngleOffset)&&state.rayAngleOffset>=-180&&state.rayAngleOffset<=180&&state.rayPattern>=0&&state.rayPattern<=3&&std::isfinite(state.rayWidth)&&state.rayWidth>=0.1&&state.rayWidth<=20&&state.rayGap>=0&&state.rayGap<=200&&
         state.rayStartOpacity>=0&&state.rayStartOpacity<=100&&state.rayEndOpacity>=0&&state.rayEndOpacity<=100&&
@@ -98,7 +101,7 @@ bool validState(const DrawingState &state) {
 }
 bool samePersistentState(const DrawingState &a,const DrawingState &b) {
     if(a.image!=b.image||!qFuzzyCompare(a.horizonY+1,b.horizonY+1)||a.horizonLocked!=b.horizonLocked||!qFuzzyCompare(a.verticalX+1,b.verticalX+1)||a.verticalLocked!=b.verticalLocked||a.vanishingPoints.size()!=b.vanishingPoints.size())return false;
-    for(int i=0;i<a.vanishingPoints.size();++i){const auto &x=a.vanishingPoints[i],&y=b.vanishingPoints[i];if(x.id!=y.id||x.position!=y.position||x.attachmentType!=y.attachmentType||x.attachmentTargetId!=y.attachmentTargetId||x.locked!=y.locked)return false;}return true;
+    for(int i=0;i<a.vanishingPoints.size();++i){const auto &x=a.vanishingPoints[i],&y=b.vanishingPoints[i];if(x.id!=y.id||x.name!=y.name||x.position!=y.position||x.attachmentType!=y.attachmentType||x.attachmentTargetId!=y.attachmentTargetId||x.locked!=y.locked)return false;}return true;
 }
 }
 
@@ -138,7 +141,7 @@ bool Project::save(const QString &path,const DrawingHistory &history,QString *er
     QJsonArray labels;for (const auto &label:history.labels) labels.append(label);
     QJsonObject historyJson{{"index",history.index},{"states",states},{"labels",labels}};
     const DrawingState &current=history.states[history.index];
-    QJsonObject metadata{{"format","Drawing"},{"version",6},{"width",size.width()},{"height",size.height()},
+    QJsonObject metadata{{"format","Drawing"},{"version",7},{"width",size.width()},{"height",size.height()},
         {"image","drawing.png"},{"perspective",perspectiveJson(current)},{"history",historyJson}};
 
     QByteArray archive;QBuffer archiveBuffer(&archive);archiveBuffer.open(QIODevice::WriteOnly);
@@ -175,7 +178,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
     QJsonParseError parseError;const auto document=QJsonDocument::fromJson(zip.fileData("project.json"),&parseError);
     if (parseError.error!=QJsonParseError::NoError||!document.isObject()) return fail(error,QStringLiteral("Не удалось прочитать project.json."));
     const auto object=document.object();const double versionValue=object.value("version").toDouble(-1);
-    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2&&versionValue!=3&&versionValue!=4&&versionValue!=5&&versionValue!=6)||object.value("image").toString()!="drawing.png")
+    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2&&versionValue!=3&&versionValue!=4&&versionValue!=5&&versionValue!=6&&versionValue!=7)||object.value("image").toString()!="drawing.png")
         return fail(error,QStringLiteral("Неизвестный формат или версия DRW."));
     const double width=object.value("width").toDouble(-1),height=object.value("height").toDouble(-1);
     if (width<1||height<1||width>8192||height>8192||width!=std::floor(width)||height!=std::floor(height)||!validSize(QSize(int(width),int(height))))

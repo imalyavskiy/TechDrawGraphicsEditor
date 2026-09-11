@@ -53,6 +53,7 @@ public:
     void addVanishingPoint();
     void removeSelectedVanishingPoint();
     void setSelectedPointColor(QColor color);
+    void setSelectedPointName(const QString &name);
     void setSelectedPointVisible(bool visible);
     void setSelectedPointPosition(QPointF position);
     void setSelectedPointAttachedToHorizon(bool attached);

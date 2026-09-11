@@ -47,6 +47,7 @@ private:
     void activateTool(Canvas::Tool tool,const QString &name);
     void addRecentFile(const QString &path);
     void updateRecentFilesMenu();
+    int vanishingPointIndex(const QString &id) const;
     void showError(const QString &error);
     void showSettings();
     void showAbout();
