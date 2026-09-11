@@ -22,10 +22,10 @@ private:
     Canvas *canvas_;
     QString path_;
     QLabel *toolLabel_, *sizeLabel_, *positionLabel_;
-    QDoubleSpinBox *zoom_;
-    QSpinBox *strokeWidth_, *rays_;
+    QDoubleSpinBox *zoom_, *rayStep_, *horizonWidth_;
+    QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_, *horizonOpacity_;
     QCheckBox *gridVisible_;
-    QPushButton *frontButton_, *backButton_, *gridColorButton_;
+    QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *savePerspectiveDefaultsButton_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     QDockWidget *perspectiveDock_;
     QAction *perspectiveAction_;

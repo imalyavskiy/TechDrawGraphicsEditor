@@ -8,9 +8,17 @@
 struct DrawingState {
     QImage image;
     QPointF vanishing;
+    double horizonY = 0;
     bool gridVisible = false;
-    int rays = 16;
+    double rayStepDegrees = 10.0;
     QColor gridColor = QColor("#628ed1");
+    int rayGap = 12;
+    int rayStartOpacity = 10;
+    int rayEndOpacity = 70;
+    int rayFadeLength = 50;
+    QColor horizonColor = QColor("#628ed1");
+    int horizonOpacity = 70;
+    double horizonWidth = 1.0;
 };
 
 struct DrawingHistory {

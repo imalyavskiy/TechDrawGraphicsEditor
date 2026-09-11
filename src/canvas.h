@@ -19,8 +19,16 @@ public:
     void setBack(QColor color) { back_ = color; }
     void setStrokeWidth(int width) { width_ = width; }
     void setGridVisible(bool visible);
-    void setRayCount(int count);
+    void setRayStep(double degrees);
     void setGridColor(QColor color);
+    void setRayGap(int gap);
+    void setRayStartOpacity(int opacity);
+    void setRayEndOpacity(int opacity);
+    void setRayFadeLength(int length);
+    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength);
+    void setHorizonColor(QColor color);
+    void setHorizonOpacity(int opacity);
+    void setHorizonWidth(double width);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();
@@ -48,7 +56,8 @@ private:
     int width_ = 3;
     double zoom_ = 1.0;
     QPointF pan_, last_, paintAnchor_, hoverPoint_;
-    bool dragging_ = false, panning_ = false, movingPoint_ = false, space_ = false;
+    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, space_ = false;
+    bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
     void stroke(QPointF a, QPointF b);

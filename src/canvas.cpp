@@ -5,6 +5,14 @@
 #include <QKeyEvent>
 #include <cmath>
 
+namespace {
+void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
+    target->gridVisible=source.gridVisible;target->rayStepDegrees=source.rayStepDegrees;target->gridColor=source.gridColor;
+    target->rayGap=source.rayGap;target->rayStartOpacity=source.rayStartOpacity;target->rayEndOpacity=source.rayEndOpacity;target->rayFadeLength=source.rayFadeLength;
+    target->horizonColor=source.horizonColor;target->horizonOpacity=source.horizonOpacity;target->horizonWidth=source.horizonWidth;
+}
+}
+
 class StateCommand : public QUndoCommand {
 public:
     StateCommand(Canvas *canvas, DrawingState before, DrawingState after, const QString &label)
@@ -27,6 +35,7 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
     initial.image.fill(Qt::white);
     initial.vanishing = QPointF(650, 240);
+    initial.horizonY = initial.vanishing.y();
     setDocument(initial);
 }
 
@@ -37,7 +46,7 @@ void Canvas::setDocument(const DrawingState &state, bool clean) {
 }
 
 void Canvas::setDocument(const DrawingHistory &history, bool clean) {
-    dragging_ = panning_ = movingPoint_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = false;
     straightStroke_ = shiftPressed_ = controlPressed_ = false;
     hasPaintAnchor_ = hasHoverPoint_ = false;
     state_ = history.states.first();
@@ -69,12 +78,23 @@ DrawingHistory Canvas::history() const {
     return result;
 }
 
-void Canvas::apply(const DrawingState &state) { state_ = state; emit stateChanged(); update(); }
+void Canvas::apply(const DrawingState &state) { DrawingState next=state;copyPerspectiveAppearance(state_,&next);state_=std::move(next);emit stateChanged();update(); }
 void Canvas::commit(const DrawingState &before, const QString &label) { undo_.push(new StateCommand(this, before, state_, label)); }
 void Canvas::setTool(Tool tool) { finish(); if (tool_ != tool) hasPaintAnchor_ = false; tool_ = tool; setCursor(tool == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
-void Canvas::setGridVisible(bool visible) { if (state_.gridVisible == visible) return; auto before = state_; state_.gridVisible = visible; commit(before, tr("видимость перспективы")); }
-void Canvas::setRayCount(int count) { if (state_.rays == count) return; auto before = state_; state_.rays = count; commit(before, tr("число направляющих")); }
-void Canvas::setGridColor(QColor color) { if (!color.isValid() || state_.gridColor == color) return; auto before = state_; state_.gridColor = color; commit(before, tr("цвет направляющих")); }
+void Canvas::setGridVisible(bool visible) { if (state_.gridVisible == visible) return;state_.gridVisible=visible;emit stateChanged();update(); }
+void Canvas::setRayStep(double degrees) { if (qFuzzyCompare(state_.rayStepDegrees, degrees)) return;state_.rayStepDegrees=degrees;emit stateChanged();update(); }
+void Canvas::setGridColor(QColor color) { if (!color.isValid() || state_.gridColor == color) return;state_.gridColor=color;emit stateChanged();update(); }
+void Canvas::setRayGap(int gap) { if (state_.rayGap == gap) return;state_.rayGap=gap;emit stateChanged();update(); }
+void Canvas::setRayStartOpacity(int opacity) { if (state_.rayStartOpacity == opacity) return;state_.rayStartOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setRayEndOpacity(int opacity) { if (state_.rayEndOpacity == opacity) return;state_.rayEndOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setRayFadeLength(int length) { if (state_.rayFadeLength == length) return;state_.rayFadeLength=length;emit stateChanged();update(); }
+void Canvas::setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength) {
+    if (qFuzzyCompare(state_.rayStepDegrees,stepDegrees)&&state_.rayGap==gap&&state_.rayStartOpacity==startOpacity&&state_.rayEndOpacity==endOpacity&&state_.rayFadeLength==fadeLength) return;
+    state_.rayStepDegrees=stepDegrees;state_.rayGap=gap;state_.rayStartOpacity=startOpacity;state_.rayEndOpacity=endOpacity;state_.rayFadeLength=fadeLength;emit stateChanged();update();
+}
+void Canvas::setHorizonColor(QColor color) { if (!color.isValid()||state_.horizonColor==color) return;state_.horizonColor=color;emit stateChanged();update(); }
+void Canvas::setHorizonOpacity(int opacity) { if (state_.horizonOpacity==opacity) return;state_.horizonOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setHorizonWidth(double width) { if (qFuzzyCompare(state_.horizonWidth,width)) return;state_.horizonWidth=width;emit stateChanged();update(); }
 QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
 QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
 void Canvas::setZoom(double zoom, QPointF anchor) {
@@ -98,24 +118,55 @@ void Canvas::paintEvent(QPaintEvent *) {
     p.scale(zoom_, zoom_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, zoom_ < 1);
     p.drawImage(QPointF(), state_.image);
-    if (state_.gridVisible) {
-        p.setRenderHint(QPainter::Antialiasing);
-        QColor color = state_.gridColor; color.setAlpha(110);
-        QPen grid(color, 1); grid.setCosmetic(true); p.setPen(grid);
-        const double radius = std::hypot(state_.image.width(), state_.image.height()) + std::hypot(state_.vanishing.x(), state_.vanishing.y());
-        for (int i=0; i<state_.rays; ++i) {
-            double angle = i * 6.283185307179586 / state_.rays;
-            p.drawLine(state_.vanishing, state_.vanishing + QPointF(std::cos(angle), std::sin(angle))*radius*2);
-        }
-        p.drawLine(QPointF(0, state_.vanishing.y()), QPointF(state_.image.width(), state_.vanishing.y()));
-    }
     p.restore();
     if (state_.gridVisible) {
         p.setRenderHint(QPainter::Antialiasing);
+        const QPointF vanishing = toView(state_.vanishing);
+        double radius = 0;
+        const QPointF corners[] = {paper.topLeft(), paper.topRight(), paper.bottomLeft(), paper.bottomRight(),
+                                   rect().topLeft(), rect().topRight(), rect().bottomLeft(), rect().bottomRight()};
+        for (const QPointF &corner : corners)
+            radius = qMax(radius, QLineF(vanishing, corner).length());
+        const QLineF edges[] = {QLineF(paper.topLeft(),paper.topRight()),QLineF(paper.topRight(),paper.bottomRight()),
+                                QLineF(paper.bottomRight(),paper.bottomLeft()),QLineF(paper.bottomLeft(),paper.topLeft())};
+        for (double degrees=0; degrees<360.0; degrees+=state_.rayStepDegrees) {
+            const double angle = degrees * 3.14159265358979323846 / 180.0;
+            const QPointF direction(std::cos(angle), std::sin(angle));
+            const QPointF start = vanishing + direction*state_.rayGap;
+            const QPointF viewportEnd = vanishing + direction*(radius + 2);
+            if (QLineF(vanishing, start).length() >= QLineF(vanishing, viewportEnd).length()) continue;
+            const QLineF visibleRay(start,viewportEnd);
+            QPointF intersection;
+            bool crossesCanvas = paper.contains(start);
+            double exitDistance = -1;
+            for (const QLineF &edge : edges) {
+                if (visibleRay.intersects(edge,&intersection)!=QLineF::BoundedIntersection) continue;
+                crossesCanvas=true;
+                exitDistance=qMax(exitDistance,QPointF::dotProduct(intersection-vanishing,direction));
+            }
+            if (!crossesCanvas||exitDistance<state_.rayGap) continue;
+            const QPointF end = vanishing + direction*exitDistance;
+            QColor startColor = state_.gridColor; startColor.setAlphaF(state_.rayStartOpacity/100.0);
+            QColor endColor = state_.gridColor; endColor.setAlphaF(state_.rayEndOpacity/100.0);
+            QPen ray;
+            if (state_.rayFadeLength > 0) {
+                QLinearGradient fade(start, start + direction*state_.rayFadeLength);
+                fade.setColorAt(0, startColor); fade.setColorAt(1, endColor);
+                ray = QPen(QBrush(fade), 1);
+            } else ray = QPen(endColor, 1);
+            ray.setCosmetic(true); p.setPen(ray); p.drawLine(start, end);
+        }
+        const double horizonY = toView(QPointF(0, state_.horizonY)).y();
+        QColor horizonColor = state_.horizonColor; horizonColor.setAlphaF(state_.horizonOpacity/100.0);
+        QPen horizon(horizonColor, state_.horizonWidth); horizon.setCosmetic(true); p.setPen(horizon);
+        p.drawLine(QPointF(0, horizonY), QPointF(width(), horizonY));
         p.setPen(QPen(state_.gridColor, 2)); p.setBrush(Qt::white);
-        p.drawEllipse(toView(state_.vanishing), 6, 6);
+        p.drawEllipse(vanishing, 6, 6);
+        if (qFuzzyCompare(state_.vanishing.y()+1,state_.horizonY+1)) {
+            p.setPen(Qt::NoPen);p.setBrush(state_.gridColor);p.drawEllipse(vanishing,2.5,2.5);
+        }
         p.setPen(QColor("#355274"));
-        p.drawText(toView(state_.vanishing) + QPointF(11, -10), tr("Точка схода"));
+        p.drawText(vanishing + QPointF(11, -10), tr("Точка схода"));
     }
     if (isPaintTool() && hasPaintAnchor_ && hasHoverPoint_ && shiftPressed_ && !dragging_) {
         const QPointF endpoint=constrainedPoint(hoverPoint_,controlPressed_);
@@ -150,8 +201,12 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     panning_ = e->button() == Qt::MiddleButton || tool_ == Pan || space_;
     if (panning_) { dragging_ = true; last_ = e->localPos(); setCursor(Qt::ClosedHandCursor); return; }
     if (tool_ == Perspective) {
-        if (!state_.gridVisible || QLineF(e->localPos(), toView(state_.vanishing)).length() > 15) return;
-        before_ = state_; movingPoint_ = dragging_ = true; return;
+        if (!state_.gridVisible) return;
+        const QPointF vanishing=toView(state_.vanishing);
+        const double horizonY=toView(QPointF(0,state_.horizonY)).y();
+        if (QLineF(e->localPos(),vanishing).length()<=15) { before_=state_;movingPoint_=dragging_=true;return; }
+        if (std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;horizonCarriesPoint_=qFuzzyCompare(state_.vanishing.y()+1,state_.horizonY+1);movingHorizon_=dragging_=true;return; }
+        return;
     }
     QPointF point = toImage(e->localPos());
     if (!QRectF(QPointF(), state_.image.size()).contains(point)) return;
@@ -169,16 +224,17 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     emit positionChanged(hoverPoint_);
     if (!dragging_) { if (shiftPressed_ && hasPaintAnchor_) update(); return; }
     if (panning_) { pan_ += e->localPos() - last_; last_ = e->localPos(); update(); }
-    else if (movingPoint_) { state_.vanishing = toImage(e->localPos()); update(); }
+    else if (movingPoint_) { QPointF point=toImage(e->localPos());if(std::abs(e->localPos().y()-toView(QPointF(0,state_.horizonY)).y())<=10)point.setY(state_.horizonY);state_.vanishing=point;update(); }
+    else if (movingHorizon_) { state_.horizonY=toImage(e->localPos()).y();if(horizonCarriesPoint_)state_.vanishing.setY(state_.horizonY);update(); }
     else if (!straightStroke_) { stroke(last_, hoverPoint_); last_ = hoverPoint_; }
 }
 void Canvas::finish() {
     if (!dragging_) return;
-    if (!panning_ && (movingPoint_ ? state_.vanishing != before_.vanishing : state_.image != before_.image))
-        commit(before_, movingPoint_ ? tr("точку схода") : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
-    if (!panning_ && !movingPoint_ && isPaintTool()) { paintAnchor_=last_;hasPaintAnchor_=true; }
+    if (!panning_ && (movingPoint_ ? state_.vanishing != before_.vanishing : movingHorizon_ ? state_.horizonY != before_.horizonY : state_.image != before_.image))
+        commit(before_, movingPoint_ ? tr("точку схода") : movingHorizon_ ? tr("горизонт") : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
+    if (!panning_ && !movingPoint_ && !movingHorizon_ && isPaintTool()) { paintAnchor_=last_;hasPaintAnchor_=true; }
     before_ = DrawingState();
-    dragging_ = panning_ = movingPoint_ = straightStroke_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = straightStroke_ = false;
     setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *) { finish(); }
@@ -187,7 +243,7 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) { space_ = true; setCursor(Qt::OpenHandCursor); e->accept(); }
     else if (e->key() == Qt::Key_Shift) { shiftPressed_=true;update();e->accept(); }
     else if (e->key() == Qt::Key_Control) { controlPressed_=true;update();e->accept(); }
-    else if (e->key() == Qt::Key_Escape && dragging_) { if (!panning_) state_ = before_; dragging_ = panning_ = movingPoint_ = false; before_ = DrawingState(); update(); }
+    else if (e->key() == Qt::Key_Escape && dragging_) { if (!panning_) state_ = before_; dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = false; before_ = DrawingState(); update(); }
     else QWidget::keyPressEvent(e);
 }
 void Canvas::keyReleaseEvent(QKeyEvent *e) {
