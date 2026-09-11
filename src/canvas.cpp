@@ -133,7 +133,7 @@ void Canvas::selectPoint(int index) {
 void Canvas::addVanishingPoint() {
     finish();DrawingState before=state_;VanishingPoint point;
     point.id=QStringLiteral("vp-")+QUuid::createUuid().toString(QUuid::WithoutBraces);
-    if (state_.vanishingPoints.isEmpty()) point.position=QPointF(state_.image.width()/2.0,state_.horizonY);
+    if (state_.vanishingPoints.isEmpty()){point.position=QPointF(state_.image.width()/2.0,state_.horizonY);point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=QStringLiteral("horizon");}
     else {
         const auto &source=state_.vanishingPoints[qBound(0,selectedPointIndex_,state_.vanishingPoints.size()-1)];
         point.position=QPointF(state_.image.width()-source.position.x(),state_.horizonY);
