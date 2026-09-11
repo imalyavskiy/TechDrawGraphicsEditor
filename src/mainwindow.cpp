@@ -152,6 +152,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *resetDefaults = new QPushButton(tr("Сбросить")); resetDefaults->setObjectName("resetPerspectiveDefaults"); resetDefaults->setToolTip(tr("Вернуть заводские значения")); defaultButtons->addWidget(savePerspectiveDefaultsButton_);defaultButtons->addWidget(resetDefaults);commonForm->addRow(defaultButtons);
     auto *horizonGroup = new QGroupBox(tr("Линия горизонта")); horizonGroup->setObjectName("horizonSettings"); auto *horizonForm = new QFormLayout(horizonGroup);
     horizonVisible_=new QCheckBox(tr("Показывать линию горизонта"));horizonVisible_->setObjectName("horizonVisible");horizonForm->addRow(horizonVisible_);
+    horizonLocked_=new QCheckBox(tr("Фиксировать"));horizonLocked_->setObjectName("horizonLocked");horizonForm->addRow(horizonLocked_);
     horizonPosition_=new QDoubleSpinBox;horizonPosition_->setObjectName("horizonPosition");horizonPosition_->setRange(-1000000,1000000);horizonPosition_->setDecimals(2);horizonPosition_->setKeyboardTracking(false);horizonForm->addRow(tr("Положение Y"),horizonPosition_);
     horizonUnits_=new QComboBox;horizonUnits_->setObjectName("horizonUnits");horizonUnits_->addItems({tr("Проценты"),tr("Пиксели")});horizonForm->addRow(tr("Единицы"),horizonUnits_);
     horizonColorButton_ = new QPushButton(tr("Выбрать…")); horizonColorButton_->setObjectName("horizonColor"); horizonForm->addRow(tr("Цвет"),horizonColorButton_);
@@ -166,6 +167,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     pointUnits_=new QComboBox;pointUnits_->setObjectName("vanishingPointUnits");pointUnits_->addItems({tr("Проценты"),tr("Пиксели")});pointForm->addRow(tr("Единицы"),pointUnits_);
     pointAttachment_=new QComboBox;pointAttachment_->setObjectName("vanishingPointAttachment");pointAttachment_->addItems({tr("Свободна"),tr("Прикреплена к горизонту")});pointForm->addRow(tr("Состояние"),pointAttachment_);
     selectedPointVisible_=new QCheckBox(tr("Показывать семейство линий"));selectedPointVisible_->setObjectName("selectedPointVisible");pointForm->addRow(selectedPointVisible_);
+    selectedPointLocked_=new QCheckBox(tr("Фиксировать"));selectedPointLocked_->setObjectName("selectedPointLocked");pointForm->addRow(selectedPointLocked_);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_);pointsListLayout->addWidget(pointGroup);layout->addWidget(pointsListGroup);
     auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch();auto *panelScroll=new QScrollArea;panelScroll->setObjectName("perspectiveScroll");panelScroll->setWidgetResizable(true);panelScroll->setFrameShape(QFrame::NoFrame);panelScroll->setWidget(panel);perspectiveDock_->setWidget(panelScroll); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
     auto *mainToolbarToggle=bar->toggleViewAction();mainToolbarToggle->setObjectName("mainToolbarToggle");mainToolbarToggle->setText(tr("Панель команд"));view->addAction(mainToolbarToggle);
@@ -189,6 +191,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(horizonOpacity_,qOverload<int>(&QSpinBox::valueChanged),this,[this](int value){QSettings().setValue("perspective/view/horizonOpacity",value);canvas_->setHorizonOpacity(value);});
     connect(horizonWidth_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){QSettings().setValue("perspective/view/horizonWidth",value);canvas_->setHorizonWidth(value);});
     connect(horizonVisible_,&QCheckBox::toggled,this,[this](bool value){QSettings().setValue("perspective/view/horizonVisible",value);canvas_->setHorizonVisible(value);});
+    connect(horizonLocked_,&QCheckBox::toggled,canvas_,&Canvas::setHorizonLocked);
     connect(horizonPosition_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){canvas_->setHorizonY(imageY(value));});
     connect(horizonUnits_,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){setCoordinateUnits(index==0);});
     connect(vanishingPointsList_,&QListWidget::currentRowChanged,canvas_,&Canvas::selectPoint);
@@ -196,6 +199,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(addPointButton,&QPushButton::clicked,this,[this]{canvas_->addVanishingPoint();const int i=canvas_->selectedPointIndex();if(i<0)return;QSettings settings;const QColor color(settings.value(QString("perspective/points/%1/color").arg(i),defaultPointColor(i)).toString());canvas_->setSelectedPointColor(color.isValid()?color:defaultPointColor(i));canvas_->setSelectedPointVisible(settings.value(QString("perspective/points/%1/visible").arg(i),true).toBool());});
     connect(removePointButton_,&QPushButton::clicked,canvas_,&Canvas::removeSelectedVanishingPoint);
     connect(selectedPointVisible_,&QCheckBox::toggled,this,[this](bool visible){const int i=canvas_->selectedPointIndex();if(i<0)return;QSettings().setValue(QString("perspective/points/%1/visible").arg(i),visible);canvas_->setSelectedPointVisible(visible);});
+    connect(selectedPointLocked_,&QCheckBox::toggled,canvas_,&Canvas::setSelectedPointLocked);
     connect(pointX_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){const int i=canvas_->selectedPointIndex();if(i<0)return;QPointF position=canvas_->state().vanishingPoints[i].position;position.setX(imageX(value));canvas_->setSelectedPointPosition(position);});
     connect(pointY_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){const int i=canvas_->selectedPointIndex();if(i<0)return;QPointF position=canvas_->state().vanishingPoints[i].position;position.setY(imageY(value));canvas_->setSelectedPointPosition(position);});
     connect(pointUnits_,qOverload<int>(&QComboBox::currentIndexChanged),this,[this](int index){setCoordinateUnits(index==0);});
@@ -247,20 +251,20 @@ void MainWindow::updateState(){
     setWindowTitle(name+"[*] — TechDraw"); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
     QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_),i(vanishingPointsList_),j(selectedPointVisible_),k(horizonPosition_),l(horizonUnits_),m(pointX_),n(pointY_),o(pointUnits_),q(pointAttachment_);
-    QSignalBlocker r(rayAngleOffset_),s(rayPattern_),t(rayWidth_),u(horizonVisible_),v(axesVisible_),w(markersVisible_),x(symmetricPoints_);
+    QSignalBlocker r(rayAngleOffset_),s(rayPattern_),t(rayWidth_),u(horizonVisible_),v(axesVisible_),w(markersVisible_),x(symmetricPoints_),y(horizonLocked_),z(selectedPointLocked_);
     gridVisible_->setChecked(canvas_->state().gridVisible);axesVisible_->setChecked(canvas_->state().axesVisible);markersVisible_->setChecked(canvas_->state().markersVisible);rayStep_->setValue(canvas_->state().rayStepDegrees);rayAngleOffset_->setValue(canvas_->state().rayAngleOffset);rayPattern_->setCurrentIndex(canvas_->state().rayPattern);rayWidth_->setValue(canvas_->state().rayWidth);symmetricPoints_->setChecked(canvas_->state().symmetricPoints);rayGap_->setValue(canvas_->state().rayGap);
     rayStartOpacity_->setValue(canvas_->state().rayStartOpacity); rayEndOpacity_->setValue(canvas_->state().rayEndOpacity); rayFadeLength_->setValue(canvas_->state().rayFadeLength);
     savePerspectiveDefaultsButton_->setEnabled(!matchesPerspectiveDefaults(canvas_->state()));
-    horizonOpacity_->setValue(canvas_->state().horizonOpacity);horizonWidth_->setValue(canvas_->state().horizonWidth);horizonVisible_->setChecked(canvas_->state().horizonVisible);horizonPosition_->setSuffix(coordinatePercent_?" %":tr(" px"));horizonPosition_->setValue(displayedY(canvas_->state().horizonY));horizonUnits_->setCurrentIndex(coordinatePercent_?0:1);
+    horizonOpacity_->setValue(canvas_->state().horizonOpacity);horizonWidth_->setValue(canvas_->state().horizonWidth);horizonVisible_->setChecked(canvas_->state().horizonVisible);horizonLocked_->setChecked(canvas_->state().horizonLocked);horizonPosition_->setSuffix(coordinatePercent_?" %":tr(" px"));horizonPosition_->setValue(displayedY(canvas_->state().horizonY));horizonUnits_->setCurrentIndex(coordinatePercent_?0:1);
     const auto &points=canvas_->state().vanishingPoints;
     bool rebuild=vanishingPointsList_->count()!=points.size();
     if(!rebuild)for(int row=0;row<points.size();++row)if(vanishingPointsList_->item(row)->data(Qt::UserRole).toString()!=points[row].id){rebuild=true;break;}
     if(rebuild){vanishingPointsList_->clear();for(int row=0;row<points.size();++row){auto *item=new QListWidgetItem(tr("Точка схода %1").arg(row+1));item->setData(Qt::UserRole,points[row].id);vanishingPointsList_->addItem(item);}}
     const int selected=canvas_->selectedPointIndex();vanishingPointsList_->setCurrentRow(selected);const bool hasPoint=selected>=0&&selected<points.size();
-    removePointButton_->setEnabled(hasPoint);selectedPointVisible_->setEnabled(hasPoint);gridColorButton_->setEnabled(hasPoint);pointX_->setEnabled(hasPoint);pointY_->setEnabled(hasPoint);pointUnits_->setEnabled(hasPoint);pointAttachment_->setEnabled(hasPoint);
+    removePointButton_->setEnabled(hasPoint);selectedPointVisible_->setEnabled(hasPoint);selectedPointLocked_->setEnabled(hasPoint);gridColorButton_->setEnabled(hasPoint);pointX_->setEnabled(hasPoint);pointY_->setEnabled(hasPoint);pointUnits_->setEnabled(hasPoint);pointAttachment_->setEnabled(hasPoint);
     pointX_->setSuffix(coordinatePercent_?" %":tr(" px"));pointY_->setSuffix(coordinatePercent_?" %":tr(" px"));pointUnits_->setCurrentIndex(coordinatePercent_?0:1);
-    if(hasPoint){pointX_->setValue(displayedX(points[selected].position.x()));pointY_->setValue(displayedY(points[selected].position.y()));const bool attached=points[selected].attachmentType==QStringLiteral("construction")&&points[selected].attachmentTargetId==QStringLiteral("horizon");pointAttachment_->setCurrentIndex(attached?1:0);}
-    else{pointX_->setValue(0);pointY_->setValue(0);pointAttachment_->setCurrentIndex(0);}
+    if(hasPoint){pointX_->setValue(displayedX(points[selected].position.x()));pointY_->setValue(displayedY(points[selected].position.y()));const bool attached=points[selected].attachmentType==QStringLiteral("construction")&&points[selected].attachmentTargetId==QStringLiteral("horizon");pointAttachment_->setCurrentIndex(attached?1:0);selectedPointLocked_->setChecked(points[selected].locked);}
+    else{pointX_->setValue(0);pointY_->setValue(0);pointAttachment_->setCurrentIndex(0);selectedPointLocked_->setChecked(false);}
     selectedPointVisible_->setChecked(hasPoint&&points[selected].visible);colorSwatch(gridColorButton_,hasPoint?points[selected].color:QColor("#d0d0d0"));colorSwatch(horizonColorButton_,canvas_->state().horizonColor);
 }
 double MainWindow::displayedX(double imageCoordinate) const {const double pixels=imageCoordinate-canvas_->state().image.width()/2.0;return coordinatePercent_?pixels*100.0/canvas_->state().image.width():pixels;}

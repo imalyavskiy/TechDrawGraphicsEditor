@@ -34,6 +34,7 @@ public:
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
     void setHorizonY(double imageY);
+    void setHorizonLocked(bool locked);
     void setHorizonVisible(bool visible);
     void setAxesVisible(bool visible);
     void setMarkersVisible(bool visible);
@@ -48,6 +49,7 @@ public:
     void setSelectedPointVisible(bool visible);
     void setSelectedPointPosition(QPointF position);
     void setSelectedPointAttachedToHorizon(bool attached);
+    void setSelectedPointLocked(bool locked);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();

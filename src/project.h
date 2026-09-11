@@ -12,11 +12,12 @@ struct VanishingPoint {
     QString attachmentTargetId;
     QColor color = QColor("#628ed1");
     bool visible = true;
+    bool locked = false;
 
     bool operator==(const VanishingPoint &other) const {
         return id == other.id && position == other.position &&
                attachmentType == other.attachmentType && attachmentTargetId == other.attachmentTargetId &&
-               color == other.color && visible == other.visible;
+               color == other.color && visible == other.visible && locked == other.locked;
     }
     bool operator!=(const VanishingPoint &other) const { return !(*this == other); }
 };
@@ -25,6 +26,7 @@ struct DrawingState {
     QImage image;
     QVector<VanishingPoint> vanishingPoints;
     double horizonY = 0;
+    bool horizonLocked = false;
     bool gridVisible = false;
     double rayStepDegrees = 10.0;
     double rayAngleOffset = 0;

@@ -26,7 +26,7 @@ private:
     QLabel *toolLabel_, *sizeLabel_, *positionLabel_;
     QDoubleSpinBox *zoom_, *rayStep_, *rayAngleOffset_, *rayWidth_, *horizonWidth_, *horizonPosition_, *pointX_, *pointY_;
     QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_, *horizonOpacity_;
-    QCheckBox *gridVisible_, *selectedPointVisible_, *horizonVisible_, *axesVisible_, *markersVisible_, *symmetricPoints_;
+    QCheckBox *gridVisible_, *selectedPointVisible_, *selectedPointLocked_, *horizonVisible_, *horizonLocked_, *axesVisible_, *markersVisible_, *symmetricPoints_;
     QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *savePerspectiveDefaultsButton_, *removePointButton_;
     QListWidget *vanishingPointsList_;
     QComboBox *horizonUnits_, *pointUnits_, *pointAttachment_, *rayPattern_;

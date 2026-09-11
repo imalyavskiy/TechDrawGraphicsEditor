@@ -35,17 +35,18 @@ QJsonObject perspectiveJson(const DrawingState &state) {
     for(const auto &point:state.vanishingPoints){
         QJsonValue attachment=QJsonValue::Null;
         if(!point.attachmentType.isEmpty())attachment=QJsonObject{{"type",point.attachmentType},{"targetId",point.attachmentTargetId}};
-        points.append(QJsonObject{{"id",point.id},{"x",point.position.x()},{"y",point.position.y()},{"attachment",attachment}});
+        points.append(QJsonObject{{"id",point.id},{"x",point.position.x()},{"y",point.position.y()},{"locked",point.locked},{"attachment",attachment}});
     }
-    return QJsonObject{{"horizon",QJsonObject{{"y",state.horizonY}}},{"points",points}};
+    return QJsonObject{{"horizon",QJsonObject{{"y",state.horizonY},{"locked",state.horizonLocked}}},{"points",points}};
 }
-bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error,bool collectionFormat) {
+bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error,int formatVersion) {
     if (!value.isObject()) return fail(error,QStringLiteral("Отсутствуют параметры перспективы."));
     const auto perspective=value.toObject();
-    if(collectionFormat){
+    if(formatVersion>=4){
         if(!perspective.value("horizon").isObject()||!perspective.value("points").isArray())return fail(error,QStringLiteral("Некорректная структура перспективы."));
         const auto horizon=perspective.value("horizon").toObject();const double horizonY=horizon.value("y").toDouble(qQNaN());
         if(!std::isfinite(horizonY)||std::abs(horizonY)>1000000)return fail(error,QStringLiteral("Положение горизонта вне допустимого диапазона."));
+        if(formatVersion>=5&&!horizon.value("locked").isBool())return fail(error,QStringLiteral("Некорректное состояние фиксации горизонта."));
         const auto points=perspective.value("points").toArray();if(points.size()>32)return fail(error,QStringLiteral("Слишком много точек схода."));
         QSet<QString> ids;QVector<VanishingPoint> parsed;
         for(const auto &entry:points){
@@ -53,6 +54,8 @@ bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error
             const auto object=entry.toObject();
             VanishingPoint point;point.id=object.value("id").toString();point.position=QPointF(object.value("x").toDouble(qQNaN()),object.value("y").toDouble(qQNaN()));
             if(point.id.isEmpty()||point.id.size()>80||ids.contains(point.id)||!std::isfinite(point.position.x())||!std::isfinite(point.position.y())||std::abs(point.position.x())>1000000||std::abs(point.position.y())>1000000)return fail(error,QStringLiteral("Некорректная точка схода."));
+            if(formatVersion>=5&&!object.value("locked").isBool())return fail(error,QStringLiteral("Некорректное состояние фиксации точки схода."));
+            point.locked=formatVersion>=5&&object.value("locked").toBool();
             ids.insert(point.id);const auto attachment=object.value("attachment");
             if(!attachment.isNull()&&!attachment.isUndefined()){
                 if(!attachment.isObject())return fail(error,QStringLiteral("Некорректная привязка точки схода."));
@@ -62,7 +65,7 @@ bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error
             }
             parsed.append(point);
         }
-        state->horizonY=horizonY;state->vanishingPoints=parsed;return true;
+        state->horizonY=horizonY;state->horizonLocked=formatVersion>=5&&horizon.value("locked").toBool();state->vanishingPoints=parsed;return true;
     }
     if (!perspective.value("x").isDouble()||!perspective.value("y").isDouble())
         return fail(error,QStringLiteral("Некорректные параметры перспективы."));
@@ -85,8 +88,8 @@ bool validState(const DrawingState &state) {
         std::isfinite(state.horizonWidth)&&state.horizonWidth>=0.1&&state.horizonWidth<=20;
 }
 bool samePersistentState(const DrawingState &a,const DrawingState &b) {
-    if(a.image!=b.image||!qFuzzyCompare(a.horizonY+1,b.horizonY+1)||a.vanishingPoints.size()!=b.vanishingPoints.size())return false;
-    for(int i=0;i<a.vanishingPoints.size();++i){const auto &x=a.vanishingPoints[i],&y=b.vanishingPoints[i];if(x.id!=y.id||x.position!=y.position||x.attachmentType!=y.attachmentType||x.attachmentTargetId!=y.attachmentTargetId)return false;}return true;
+    if(a.image!=b.image||!qFuzzyCompare(a.horizonY+1,b.horizonY+1)||a.horizonLocked!=b.horizonLocked||a.vanishingPoints.size()!=b.vanishingPoints.size())return false;
+    for(int i=0;i<a.vanishingPoints.size();++i){const auto &x=a.vanishingPoints[i],&y=b.vanishingPoints[i];if(x.id!=y.id||x.position!=y.position||x.attachmentType!=y.attachmentType||x.attachmentTargetId!=y.attachmentTargetId||x.locked!=y.locked)return false;}return true;
 }
 }
 
@@ -126,7 +129,7 @@ bool Project::save(const QString &path,const DrawingHistory &history,QString *er
     QJsonArray labels;for (const auto &label:history.labels) labels.append(label);
     QJsonObject historyJson{{"index",history.index},{"states",states},{"labels",labels}};
     const DrawingState &current=history.states[history.index];
-    QJsonObject metadata{{"format","Drawing"},{"version",4},{"width",size.width()},{"height",size.height()},
+    QJsonObject metadata{{"format","Drawing"},{"version",5},{"width",size.width()},{"height",size.height()},
         {"image","drawing.png"},{"perspective",perspectiveJson(current)},{"history",historyJson}};
 
     QByteArray archive;QBuffer archiveBuffer(&archive);archiveBuffer.open(QIODevice::WriteOnly);
@@ -163,7 +166,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
     QJsonParseError parseError;const auto document=QJsonDocument::fromJson(zip.fileData("project.json"),&parseError);
     if (parseError.error!=QJsonParseError::NoError||!document.isObject()) return fail(error,QStringLiteral("Не удалось прочитать project.json."));
     const auto object=document.object();const double versionValue=object.value("version").toDouble(-1);
-    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2&&versionValue!=3&&versionValue!=4)||object.value("image").toString()!="drawing.png")
+    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2&&versionValue!=3&&versionValue!=4&&versionValue!=5)||object.value("image").toString()!="drawing.png")
         return fail(error,QStringLiteral("Неизвестный формат или версия DRW."));
     const double width=object.value("width").toDouble(-1),height=object.value("height").toDouble(-1);
     if (width<1||height<1||width>8192||height>8192||width!=std::floor(width)||height!=std::floor(height)||!validSize(QSize(int(width),int(height))))
@@ -183,7 +186,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
     };
 
     DrawingState current;
-    if (!loadImage("drawing.png",&current.image)||!parsePerspective(object.value("perspective"),&current,error,versionValue==4)) return false;
+    if (!loadImage("drawing.png",&current.image)||!parsePerspective(object.value("perspective"),&current,error,int(versionValue))) return false;
     DrawingHistory result;
     if (versionValue==1) { result.states.append(current);*history=result;return true; }
 
@@ -196,7 +199,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
     for (const auto &value:states) {
         if (!value.isObject()) return fail(error,QStringLiteral("Некорректное состояние истории."));
         const auto stateObject=value.toObject();DrawingState state;
-        if (!loadImage(stateObject.value("image").toString(),&state.image)||!parsePerspective(stateObject.value("perspective"),&state,error,versionValue==4)) return false;
+        if (!loadImage(stateObject.value("image").toString(),&state.image)||!parsePerspective(stateObject.value("perspective"),&state,error,int(versionValue))) return false;
         result.states.append(state);
     }
     for (const auto &value:labels) {

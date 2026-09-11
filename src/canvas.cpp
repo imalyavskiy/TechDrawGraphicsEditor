@@ -120,6 +120,7 @@ void Canvas::setHorizonY(double imageY) {
     for(auto &point:state_.vanishingPoints)if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))point.position.ry()+=delta;
     commit(before,tr("положение горизонта"));emit stateChanged();update();
 }
+void Canvas::setHorizonLocked(bool locked){if(state_.horizonLocked==locked)return;finish();DrawingState before=state_;state_.horizonLocked=locked;commit(before,tr("фиксацию горизонта"));emit stateChanged();update();}
 void Canvas::setHorizonVisible(bool visible){if(state_.horizonVisible==visible)return;state_.horizonVisible=visible;emit stateChanged();update();}
 void Canvas::setAxesVisible(bool visible){if(state_.axesVisible==visible)return;state_.axesVisible=visible;emit stateChanged();update();}
 void Canvas::setMarkersVisible(bool visible){if(state_.markersVisible==visible)return;state_.markersVisible=visible;emit stateChanged();update();}
@@ -176,6 +177,10 @@ void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
     if(attached){point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=QStringLiteral("horizon");point.position.setY(state_.horizonY);}
     else{point.attachmentType.clear();point.attachmentTargetId.clear();}
     commit(before,tr("привязку точки схода"));emit stateChanged();update();
+}
+void Canvas::setSelectedPointLocked(bool locked){
+    if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||state_.vanishingPoints[selectedPointIndex_].locked==locked)return;
+    finish();DrawingState before=state_;state_.vanishingPoints[selectedPointIndex_].locked=locked;commit(before,tr("фиксацию точки схода"));emit stateChanged();update();
 }
 QRectF Canvas::viewportRect() const{return QRectF(rect()).adjusted(rulerSize,rulerSize,-rulerSize,-rulerSize);}
 QPointF Canvas::toImage(QPointF p) const { return (p - viewportRect().center() - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
@@ -318,8 +323,8 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         const double horizonY=toView(QPointF(0,state_.horizonY)).y();
         int hit=-1;double distance=16;
         if(state_.markersVisible)for(int i=0;i<state_.vanishingPoints.size();++i){const double candidate=QLineF(e->localPos(),toView(state_.vanishingPoints[i].position)).length();if(candidate<=distance){distance=candidate;hit=i;}}
-        if(hit>=0){selectPoint(hit);before_=state_;movingPointIndex_=hit;movingPoint_=dragging_=true;return;}
-        if (state_.horizonVisible&&std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;movingHorizon_=dragging_=true;return; }
+        if(hit>=0){selectPoint(hit);if(state_.vanishingPoints[hit].locked)return;before_=state_;movingPointIndex_=hit;movingPoint_=dragging_=true;return;}
+        if (state_.horizonVisible&&!state_.horizonLocked&&std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;movingHorizon_=dragging_=true;return; }
         return;
     }
     QPointF point = toImage(e->localPos());
