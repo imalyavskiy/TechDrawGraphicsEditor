@@ -80,6 +80,11 @@ void Canvas::setRayGap(int gap) { if (state_.rayGap == gap) return; auto before 
 void Canvas::setRayStartOpacity(int opacity) { if (state_.rayStartOpacity == opacity) return; auto before = state_; state_.rayStartOpacity = opacity; commit(before, tr("начальную непрозрачность направляющих")); }
 void Canvas::setRayEndOpacity(int opacity) { if (state_.rayEndOpacity == opacity) return; auto before = state_; state_.rayEndOpacity = opacity; commit(before, tr("конечную непрозрачность направляющих")); }
 void Canvas::setRayFadeLength(int length) { if (state_.rayFadeLength == length) return; auto before = state_; state_.rayFadeLength = length; commit(before, tr("длину нарастания направляющих")); }
+void Canvas::setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength) {
+    if (qFuzzyCompare(state_.rayStepDegrees,stepDegrees)&&state_.rayGap==gap&&state_.rayStartOpacity==startOpacity&&state_.rayEndOpacity==endOpacity&&state_.rayFadeLength==fadeLength) return;
+    auto before=state_;state_.rayStepDegrees=stepDegrees;state_.rayGap=gap;state_.rayStartOpacity=startOpacity;state_.rayEndOpacity=endOpacity;state_.rayFadeLength=fadeLength;
+    commit(before,tr("общие настройки направляющих"));
+}
 QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
 QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
 void Canvas::setZoom(double zoom, QPointF anchor) {

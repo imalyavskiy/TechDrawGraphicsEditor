@@ -47,9 +47,25 @@ QString widthSetting(int tool) {
     static const QStringList keys{"tools/pencilWidth","tools/brushWidth","tools/eraserWidth"};
     return keys[tool];
 }
+void applySavedPerspectiveDefaults(DrawingState *state) {
+    QSettings settings;
+    const double step=settings.value("perspective/common/rayStepDegrees",10.0).toDouble();
+    const int gap=settings.value("perspective/common/rayGap",12).toInt();
+    const int startOpacity=settings.value("perspective/common/rayStartOpacity",10).toInt();
+    const int endOpacity=settings.value("perspective/common/rayEndOpacity",70).toInt();
+    const int fadeLength=settings.value("perspective/common/rayFadeLength",50).toInt();
+    if (step<1||step>30||gap<0||gap>200||startOpacity<0||startOpacity>100||endOpacity<0||endOpacity>100||fadeLength<0||fadeLength>500) return;
+    state->rayStepDegrees=step;state->rayGap=gap;state->rayStartOpacity=startOpacity;state->rayEndOpacity=endOpacity;state->rayFadeLength=fadeLength;
+}
+void savePerspectiveDefaults(const DrawingState &state) {
+    QSettings settings;settings.setValue("perspective/common/rayStepDegrees",state.rayStepDegrees);settings.setValue("perspective/common/rayGap",state.rayGap);
+    settings.setValue("perspective/common/rayStartOpacity",state.rayStartOpacity);settings.setValue("perspective/common/rayEndOpacity",state.rayEndOpacity);settings.setValue("perspective/common/rayFadeLength",state.rayFadeLength);
+}
+void clearPerspectiveDefaults() { QSettings settings;settings.remove("perspective/common"); }
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
+    DrawingState initialState=canvas_->state();applySavedPerspectiveDefaults(&initialState);canvas_->setDocument(initialState,true);
     setObjectName("drawingWindow");
     resize(1200,800); setMinimumSize(720,480);
     setWindowIcon(QIcon(":/app/drawing.png"));
@@ -107,7 +123,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     rayGap_ = new QSpinBox; rayGap_->setObjectName("rayGap"); rayGap_->setRange(0,200); rayGap_->setSuffix(tr(" px")); rayGap_->setKeyboardTracking(false); commonForm->addRow(tr("Отступ от точки"),rayGap_);
     rayStartOpacity_ = new QSpinBox; rayStartOpacity_->setObjectName("rayStartOpacity"); rayStartOpacity_->setRange(0,100); rayStartOpacity_->setSuffix(" %"); rayStartOpacity_->setKeyboardTracking(false); commonForm->addRow(tr("Непрозрачность у точки"),rayStartOpacity_);
     rayEndOpacity_ = new QSpinBox; rayEndOpacity_->setObjectName("rayEndOpacity"); rayEndOpacity_->setRange(0,100); rayEndOpacity_->setSuffix(" %"); rayEndOpacity_->setKeyboardTracking(false); commonForm->addRow(tr("Итоговая непрозрачность"),rayEndOpacity_);
-    rayFadeLength_ = new QSpinBox; rayFadeLength_->setObjectName("rayFadeLength"); rayFadeLength_->setRange(0,500); rayFadeLength_->setSuffix(tr(" px")); rayFadeLength_->setKeyboardTracking(false); commonForm->addRow(tr("Длина нарастания"),rayFadeLength_); layout->addWidget(commonGroup);
+    rayFadeLength_ = new QSpinBox; rayFadeLength_->setObjectName("rayFadeLength"); rayFadeLength_->setRange(0,500); rayFadeLength_->setSuffix(tr(" px")); rayFadeLength_->setKeyboardTracking(false); commonForm->addRow(tr("Длина нарастания"),rayFadeLength_);
+    auto *defaultButtons = new QHBoxLayout; auto *saveDefaults = new QPushButton(tr("Сохранить")); saveDefaults->setObjectName("savePerspectiveDefaults"); saveDefaults->setToolTip(tr("Использовать эти пять значений для новых документов"));
+    auto *resetDefaults = new QPushButton(tr("Сбросить")); resetDefaults->setObjectName("resetPerspectiveDefaults"); resetDefaults->setToolTip(tr("Вернуть заводские значения")); defaultButtons->addWidget(saveDefaults);defaultButtons->addWidget(resetDefaults);commonForm->addRow(defaultButtons);layout->addWidget(commonGroup);
     auto *pointGroup = new QGroupBox(tr("Точка схода 1")); pointGroup->setObjectName("vanishingPoint1Settings"); auto *pointForm = new QFormLayout(pointGroup);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_); layout->addWidget(pointGroup);
     auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
@@ -118,6 +136,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(rayStartOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayStartOpacity);
     connect(rayEndOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayEndOpacity);
     connect(rayFadeLength_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayFadeLength);
+    connect(saveDefaults,&QPushButton::clicked,this,[this]{savePerspectiveDefaults(canvas_->state());statusBar()->showMessage(tr("Общие настройки направляющих сохранены"),3000);});
+    connect(resetDefaults,&QPushButton::clicked,this,[this]{clearPerspectiveDefaults();canvas_->setRayAppearance(10,12,10,70,50);statusBar()->showMessage(tr("Восстановлены настройки направляющих по умолчанию"),3000);});
     connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
     auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
@@ -184,7 +204,7 @@ void MainWindow::newDocument(){
     QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     if(dialog.exec()!=QDialog::Accepted)return;
     if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
-    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);state.horizonY=state.vanishing.y();
+    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);state.horizonY=state.vanishing.y();applySavedPerspectiveDefaults(&state);
     if(!confirmDiscard())return;
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
@@ -193,7 +213,7 @@ void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,t
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}}
-    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);state.horizonY=state.vanishing.y();}
+    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);state.horizonY=state.vanishing.y();applySavedPerspectiveDefaults(&state);}
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);

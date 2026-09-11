@@ -25,6 +25,7 @@ public:
     void setRayStartOpacity(int opacity);
     void setRayEndOpacity(int opacity);
     void setRayFadeLength(int length);
+    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();
