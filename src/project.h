@@ -48,7 +48,8 @@ struct DrawingState {
     bool verticalVisible = true;
     bool axesVisible = false;
     bool markersVisible = true;
-    bool symmetricPoints = false;
+    bool horizonSymmetry = false;
+    bool verticalSymmetry = false;
 };
 
 struct DrawingHistory {
