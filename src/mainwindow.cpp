@@ -73,7 +73,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     DrawingState initialState=canvas_->state();applySavedPerspectiveDefaults(&initialState);canvas_->setDocument(initialState,true);
     setObjectName("drawingWindow");
     resize(1200,800); setMinimumSize(720,480);
-    setWindowIcon(QIcon(":/app/drawing.png"));
+    setWindowIcon(QIcon(":/app/techdraw.png"));
     setCentralWidget(canvas_);
     setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } ");
     auto *file = menuBar()->addMenu(tr("&Файл"));
@@ -155,7 +155,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
-    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точки схода и горизонта.\nЭкспорт PNG сохраняет только рисунок."));});
+    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("TechDraw — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точки схода и горизонта.\nЭкспорт PNG сохраняет только рисунок."));});
     toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
     auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
@@ -194,7 +194,7 @@ void MainWindow::updateRecentFilesMenu(){
 }
 void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
-    setWindowTitle(name+"[*] — Drawing"); setWindowModified(!canvas_->undoStack()->isClean());
+    setWindowTitle(name+"[*] — TechDraw"); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
     QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_);
     gridVisible_->setChecked(canvas_->state().gridVisible); rayStep_->setValue(canvas_->state().rayStepDegrees); rayGap_->setValue(canvas_->state().rayGap);
@@ -203,7 +203,7 @@ void MainWindow::updateState(){
     horizonOpacity_->setValue(canvas_->state().horizonOpacity);horizonWidth_->setValue(canvas_->state().horizonWidth);
     colorSwatch(gridColorButton_,canvas_->state().gridColor);colorSwatch(horizonColorButton_,canvas_->state().horizonColor);
 }
-void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("Drawing"),error); }
+void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("TechDraw"),error); }
 bool MainWindow::confirmDiscard(){
     if(canvas_->undoStack()->isClean())return true;
     QMessageBox message(QMessageBox::Question,tr("Несохранённые изменения"),tr("Сохранить изменения перед продолжением?"),QMessageBox::NoButton,this);
@@ -223,7 +223,7 @@ void MainWindow::newDocument(){
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
 }
-void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
+void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("TechDraw и PNG (*.drw *.png);;TechDraw (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}for(auto &historyState:history.states)applySavedPerspectiveDefaults(&historyState);}
@@ -237,7 +237,7 @@ bool MainWindow::saveDocument(bool saveAs){
     QString target=path_;
     if(saveAs||target.isEmpty()){
         const QString name=target.isEmpty()?tr("Без имени.drw"):QFileInfo(target).fileName();
-        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),suggestedFile("files/saveDirectory",name),tr("Drawing (*.drw)"));
+        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),suggestedFile("files/saveDirectory",name),tr("TechDraw (*.drw)"));
         if(target.isEmpty())return false;
         const QString suffixed=withSuffix(target,".drw");
         if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Файл %1 уже существует. Заменить?").arg(suffixed))!=QMessageBox::Yes)return false;

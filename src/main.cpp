@@ -1,10 +1,20 @@
 #include "mainwindow.h"
 #include "selftest.h"
 #include <QApplication>
+#include <QSettings>
 #include <QTimer>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
+
+namespace {
+void migrateLegacySettings() {
+    QSettings current;
+    if (!current.allKeys().isEmpty()) return;
+    QSettings legacy(QStringLiteral("DrawingPrototype"),QStringLiteral("Drawing"));
+    for (const QString &key:legacy.allKeys()) current.setValue(key,legacy.value(key));
+}
+}
 
 int main(int argc, char **argv) {
 #ifdef Q_OS_WIN
@@ -13,8 +23,8 @@ int main(int argc, char **argv) {
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     QApplication app(argc,argv);
-    app.setApplicationName("Drawing");app.setOrganizationName("DrawingPrototype");
-    app.setWindowIcon(QIcon(":/app/drawing.png"));
+    app.setOrganizationName("TechDraw");app.setApplicationName("TechDraw");app.setApplicationDisplayName("TechDraw");migrateLegacySettings();
+    app.setWindowIcon(QIcon(":/app/techdraw.png"));
     QFont font("Segoe UI",9);app.setFont(font);
     const auto args=app.arguments();
     const int test=args.indexOf("--self-test");

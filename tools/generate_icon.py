@@ -1,28 +1,57 @@
+import argparse
+import os
 from pathlib import Path
-from PIL import Image, ImageDraw
+import subprocess
+import tempfile
 
-root = Path(__file__).resolve().parents[1]
-scale = 4
-size = 256
-canvas = Image.new("RGBA", (size * scale, size * scale), (0, 0, 0, 0))
-draw = ImageDraw.Draw(canvas)
+from PIL import Image
 
-def box(values):
-    return tuple(int(value * scale) for value in values)
 
-draw.rounded_rectangle(box((12, 12, 244, 244)), radius=42 * scale, fill=(42, 105, 168, 255), outline=(25, 65, 105, 255), width=7 * scale)
-draw.ellipse(box((116, 116, 140, 140)), fill=(240, 247, 255, 255))
-for target in ((30, 35), (226, 35), (28, 221), (228, 221), (128, 24), (128, 232)):
-    draw.line((128 * scale, 128 * scale, target[0] * scale, target[1] * scale), fill=(184, 216, 244, 180), width=5 * scale)
+ROOT = Path(__file__).resolve().parents[1]
+SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40),
+         (48, 48), (64, 64), (96, 96), (128, 128), (256, 256)]
 
-body = [(67, 181), (166, 82), (190, 106), (91, 205)]
-draw.polygon([box(point) for point in body], fill=(249, 154, 36, 255), outline=(28, 44, 61, 255), width=5 * scale)
-draw.polygon([box(point) for point in ((166, 82), (183, 65), (207, 89), (190, 106))], fill=(233, 239, 244, 255), outline=(28, 44, 61, 255), width=5 * scale)
-draw.polygon([box(point) for point in ((183, 65), (212, 60), (207, 89))], fill=(28, 44, 61, 255))
-draw.polygon([box(point) for point in ((67, 181), (91, 205), (55, 217))], fill=(247, 220, 174, 255), outline=(28, 44, 61, 255), width=5 * scale)
-draw.polygon([box(point) for point in ((55, 217), (67, 181), (72, 200))], fill=(28, 44, 61, 255))
-draw.line((82 * scale, 190 * scale, 179 * scale, 93 * scale), fill=(255, 202, 91, 255), width=5 * scale)
 
-image = canvas.resize((size, size), Image.Resampling.LANCZOS)
-image.save(root / "resources" / "drawing.png")
-image.save(root / "resources" / "drawing.ico", format="ICO", sizes=[(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (96, 96), (128, 128), (256, 256)])
+def main():
+    parser = argparse.ArgumentParser(description="Render the TechDraw SVG into PNG and multi-size ICO files.")
+    parser.add_argument("--qt-root", default=r"F:\Qt\5.15.2\mingw81_64")
+    parser.add_argument("--compiler-root", default=r"F:\Qt\Tools\mingw810_64")
+    args = parser.parse_args()
+
+    qt_root = Path(args.qt_root)
+    compiler_root = Path(args.compiler_root)
+    source = ROOT / "resources" / "techdraw.svg"
+
+    cpp = r'''#include <QCoreApplication>
+#include <QImage>
+#include <QPainter>
+#include <QSvgRenderer>
+int main(int argc,char **argv) {
+    QCoreApplication app(argc,argv);
+    if (argc!=3) return 2;
+    QSvgRenderer renderer(QString::fromLocal8Bit(argv[1]));
+    if (!renderer.isValid()) return 3;
+    QImage image(1024,1024,QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);renderer.render(&painter,image.rect());painter.end();
+    return image.save(QString::fromLocal8Bit(argv[2]),"PNG")?0:4;
+}'''
+    project = "QT += core gui svg\nCONFIG += console c++17\nTEMPLATE = app\nTARGET = icon-render\nSOURCES += main.cpp\n"
+
+    with tempfile.TemporaryDirectory(prefix="techdraw-icon-") as temporary:
+        work = Path(temporary)
+        (work / "main.cpp").write_text(cpp, encoding="utf-8")
+        (work / "icon-render.pro").write_text(project, encoding="ascii")
+        environment = os.environ.copy()
+        environment["PATH"] = os.pathsep.join((str(qt_root / "bin"), str(compiler_root / "bin"), environment.get("PATH", "")))
+        subprocess.run([str(qt_root / "bin" / "qmake.exe"), "icon-render.pro", "CONFIG+=release"], cwd=work, env=environment, check=True)
+        subprocess.run([str(compiler_root / "bin" / "mingw32-make.exe"), "-j4"], cwd=work, env=environment, check=True)
+        raster = work / "techdraw-1024.png"
+        subprocess.run([str(work / "release" / "icon-render.exe"), str(source), str(raster)], cwd=work, env=environment, check=True)
+        image = Image.open(raster).convert("RGBA")
+        image.resize((256, 256), Image.Resampling.LANCZOS).save(ROOT / "resources" / "techdraw.png")
+        image.save(ROOT / "resources" / "techdraw.ico", format="ICO", sizes=SIZES)
+
+
+if __name__ == "__main__":
+    main()

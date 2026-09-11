@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs>
+ <linearGradient id="cone"><stop stop-color="#079dcc" stop-opacity=".88"/><stop offset=".32" stop-color="#c2faff" stop-opacity=".92"/><stop offset=".56" stop-color="#4dd9f4" stop-opacity=".85"/><stop offset="1" stop-color="#06b6dd" stop-opacity=".94"/></linearGradient>
+ <linearGradient id="base" x2="0" y2="1"><stop stop-color="#5dddf4" stop-opacity=".65"/><stop offset="1" stop-color="#a4f7ff" stop-opacity=".9"/></linearGradient>
+ <linearGradient id="paint"><stop stop-color="#ffbf12"/><stop offset=".3" stop-color="#ff9d00"/><stop offset=".7" stop-color="#f98a00"/><stop offset="1" stop-color="#ce5300"/></linearGradient>
+ <linearGradient id="metal"><stop stop-color="#546a7b"/><stop offset=".22" stop-color="#fafcff"/><stop offset=".48" stop-color="#b9c9d6"/><stop offset=".72" stop-color="#ecf5fa"/><stop offset="1" stop-color="#405264"/></linearGradient>
+ <linearGradient id="eraser"><stop stop-color="#ffb5a0"/><stop offset=".24" stop-color="#ff7864"/><stop offset=".7" stop-color="#fa4d36"/><stop offset="1" stop-color="#cf291e"/></linearGradient>
+ <linearGradient id="wood"><stop stop-color="#cf8741"/><stop offset=".3" stop-color="#ffe2aa"/><stop offset=".7" stop-color="#f9ce8d"/><stop offset="1" stop-color="#cf8439"/></linearGradient>
+ <linearGradient id="lead"><stop stop-color="#151a20"/><stop offset=".4" stop-color="#6b7985"/><stop offset=".6" stop-color="#29333d"/><stop offset="1" stop-color="#070b10"/></linearGradient>
+</defs>
+<g transform="translate(35 28)" stroke-linejoin="round" stroke-linecap="round">
+ <!-- Exact parallel projection of a rectangular prism. Hidden rear edges precede the cone. -->
+ <path d="M345 249V610L75 750M345 610L615 750" fill="none" stroke="#087ece" stroke-width="5" stroke-dasharray="12 11"/>
+ <!-- Two straight diagonals in each face; their intersection is the axis. -->
+ <path d="M75 389H615M345 249V529M75 750H615M345 610V890" fill="none" stroke="#149dde" stroke-width="3" stroke-dasharray="12 10"/>
+ <!-- Circle of radius half the rectangular prism side, projected into the bottom face. -->
+ <path d="M345 389L161.3997 722.8532A190.919 98.995 0 1 0 528.6003 722.8532Z" fill="url(#cone)" stroke="#00b7e4" stroke-width="5"/>
+ <ellipse cx="345" cy="750" rx="190.919" ry="98.995" fill="url(#base)" stroke="#d1fbff" stroke-width="3"/>
+ <path d="M161.3997 722.8532L345 389L528.6003 722.8532" fill="none" stroke="#d5fcff" stroke-width="3"/>
+ <!-- Hidden rear vertical edge, visible as a subdued dashed construction line. -->
+ <path d="M345 249V610" fill="none" stroke="#148bcb" stroke-opacity=".8" stroke-width="3" stroke-dasharray="10 10"/>
+ <path d="M345 389V750" fill="none" stroke="#edffff" stroke-width="3" stroke-dasharray="13 10"/>
+ <!-- Visible rectangular prism frame: all segments are exactly straight. -->
+ <path d="M75 750V389L345 249L615 389V750L345 890Z M75 389L345 529L615 389 M345 529V890" fill="none" stroke="#064be3" stroke-width="24"/>
+ <path d="M75 750V389L345 249L615 389V750L345 890Z M75 389L345 529L615 389 M345 529V890" fill="none" stroke="#049ff7" stroke-width="15"/>
+ <path d="M79 385L345 247L611 385M80 390L345 526L610 390" fill="none" stroke="#4de6ff" stroke-width="3"/>
+ <!-- Pencil built around one straight local axis. Rotation preserves alignment. -->
+ <g transform="translate(345 890) rotate(36)">
+  <path d="M-48-692V-760Q-48-783-25-783H25Q48-783 48-760V-692Z" fill="url(#eraser)" stroke="#d44130" stroke-width="3"/>
+  <path d="M-38-744V-760Q-38-774-23-774H20" fill="none" stroke="#ffd1bd" stroke-width="3"/>
+  <path d="M-48-610H48V-699H-48Z" fill="url(#metal)" stroke="#425c6c" stroke-width="3"/>
+  <path d="M-47-687H47M-47-674H47M-47-637H47M-47-624H47" stroke="#526978" stroke-width="3"/>
+  <path d="M-45-683H45M-45-670H45M-45-633H45" stroke="#ecf7ff" stroke-width="2"/>
+  <path d="M-48-611H48V-166L0 0L-48-166Z" fill="url(#wood)" stroke="#b86d2e" stroke-width="2"/>
+  <path d="M-48-611H48V-166L27-185L9-157L-9-181L-29-159L-48-166Z" fill="url(#paint)"/>
+  <path d="M-29-604V-171M9-604V-170" stroke="#ffd048" stroke-width="3"/>
+  <path d="M27-604V-185" stroke="#c96e00" stroke-width="3"/>
+  <path d="M-31-146L-7-47M-20-151L-4-56M21-150L5-59M32-159L11-63" stroke="#bc7838" stroke-opacity=".4" stroke-width="1.5"/>
+  <path d="M-14.46-50L0 0L14.46-50Q0-57-14.46-50Z" fill="url(#lead)" stroke="#18232c" stroke-width="2"/>
+ </g>
+</g>
+</svg>
