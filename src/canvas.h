@@ -3,6 +3,8 @@
 #include <QWidget>
 #include <QUndoStack>
 
+class QPainter;
+
 class Canvas : public QWidget {
     Q_OBJECT
 public:
@@ -36,6 +38,7 @@ public:
     void setAxesVisible(bool visible);
     void setMarkersVisible(bool visible);
     void setSymmetricPoints(bool enabled);
+    void setCoordinatePercent(bool percent);
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
@@ -64,6 +67,7 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
     void keyReleaseEvent(QKeyEvent *) override;
     void focusOutEvent(QFocusEvent *) override;
+    void leaveEvent(QEvent *) override;
 private:
     DrawingState state_, before_;
     QUndoStack undo_;
@@ -78,10 +82,14 @@ private:
     bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
+    bool coordinatePercent_ = true, cursorInViewport_ = false;
+    QPointF cursorView_;
     void stroke(QPointF a, QPointF b);
     void commit(const DrawingState &before, const QString &label);
     void finish();
     bool isPaintTool() const;
     QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
     void updateSymmetricPoint(int movedIndex);
+    QRectF viewportRect() const;
+    void drawRulers(QPainter &painter);
 };

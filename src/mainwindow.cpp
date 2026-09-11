@@ -75,6 +75,7 @@ bool matchesPerspectiveDefaults(const DrawingState &state) {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
     coordinatePercent_=QSettings().value("perspective/coordinatePercent",true).toBool();
+    canvas_->setCoordinatePercent(coordinatePercent_);
     DrawingState initialState=canvas_->state();applySavedPerspectiveDefaults(&initialState);applySavedViewSettings(&initialState);applySavedPointAppearance(&initialState);canvas_->setDocument(initialState,true);
     setObjectName("drawingWindow");
     resize(1200,800); setMinimumSize(720,480);
@@ -158,7 +159,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     pointAttachment_=new QComboBox;pointAttachment_->setObjectName("vanishingPointAttachment");pointAttachment_->addItems({tr("Свободна"),tr("Прикреплена к горизонту")});pointForm->addRow(tr("Состояние"),pointAttachment_);
     selectedPointVisible_=new QCheckBox(tr("Показывать семейство линий"));selectedPointVisible_->setObjectName("selectedPointVisible");pointForm->addRow(selectedPointVisible_);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_);pointsListLayout->addWidget(pointGroup);layout->addWidget(pointsListGroup);
-    auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
+    auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch();auto *panelScroll=new QScrollArea;panelScroll->setObjectName("perspectiveScroll");panelScroll->setWidgetResizable(true);panelScroll->setFrameShape(QFrame::NoFrame);panelScroll->setWidget(panel);perspectiveDock_->setWidget(panelScroll); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
     view->addAction(perspectiveDock_->toggleViewAction());
     connect(gridVisible_,&QCheckBox::toggled,canvas_,&Canvas::setGridVisible);
     connect(axesVisible_,&QCheckBox::toggled,this,[this](bool value){QSettings().setValue("perspective/view/axesVisible",value);canvas_->setAxesVisible(value);});
@@ -202,7 +203,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     zoom_ = new QDoubleSpinBox; zoom_->setObjectName("zoomPercent"); zoom_->setRange(5,1600); zoom_->setDecimals(0); zoom_->setSuffix(" %"); zoom_->setKeyboardTracking(false); statusBar()->addPermanentWidget(zoom_);
     connect(zoom_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){canvas_->setZoom(value/100.0);});
     connect(canvas_,&Canvas::viewChanged,this,[this]{QSignalBlocker block(zoom_);zoom_->setValue(canvas_->zoom()*100);});
-    connect(canvas_,&Canvas::positionChanged,this,[this](QPointF p){positionLabel_->setText(QString("X: %1   Y: %2").arg(qRound(p.x())).arg(qRound(p.y())));});
+    connect(canvas_,&Canvas::positionChanged,this,[this](QPointF p){const QString suffix=coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px");positionLabel_->setText(QString("X: %1%3   Y: %2%3").arg(displayedX(p.x()),0,'f',coordinatePercent_?1:0).arg(displayedY(p.y()),0,'f',coordinatePercent_?1:0).arg(suffix));});
     connect(canvas_,&Canvas::stateChanged,this,&MainWindow::updateState);
     connect(canvas_->undoStack(),&QUndoStack::cleanChanged,this,&MainWindow::updateState);
     updateState();
@@ -256,7 +257,7 @@ double MainWindow::displayedX(double imageCoordinate) const {const double pixels
 double MainWindow::displayedY(double imageCoordinate) const {const double pixels=canvas_->state().image.height()/2.0-imageCoordinate;return coordinatePercent_?pixels*100.0/canvas_->state().image.height():pixels;}
 double MainWindow::imageX(double displayed) const {return canvas_->state().image.width()/2.0+(coordinatePercent_?displayed*canvas_->state().image.width()/100.0:displayed);}
 double MainWindow::imageY(double displayed) const {return canvas_->state().image.height()/2.0-(coordinatePercent_?displayed*canvas_->state().image.height()/100.0:displayed);}
-void MainWindow::setCoordinateUnits(bool percent){if(coordinatePercent_==percent){updateState();return;}coordinatePercent_=percent;QSettings().setValue("perspective/coordinatePercent",percent);updateState();}
+void MainWindow::setCoordinateUnits(bool percent){canvas_->setCoordinatePercent(percent);if(coordinatePercent_==percent){updateState();return;}coordinatePercent_=percent;QSettings().setValue("perspective/coordinatePercent",percent);updateState();}
 void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("TechDraw"),error); }
 bool MainWindow::confirmDiscard(){
     if(canvas_->undoStack()->isClean())return true;

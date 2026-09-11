@@ -7,6 +7,12 @@
 #include <cmath>
 
 namespace {
+constexpr int rulerSize=28;
+double niceStep(double minimum){
+    if(!std::isfinite(minimum)||minimum<=0)return 1;
+    const double power=std::pow(10.0,std::floor(std::log10(minimum))),scaled=minimum/power;double nice=1;if(scaled>5)nice=10;else if(scaled>2)nice=5;else if(scaled>1)nice=2;return nice*power;
+}
+QString coordinateLabel(double value){if(std::abs(value)<0.0001)value=0;return std::abs(value)>=1000?QString::number(value,'g',4):QString::number(value,'f',std::abs(value)<10?1:0);}
 void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
     target->gridVisible=source.gridVisible;target->rayStepDegrees=source.rayStepDegrees;target->rayAngleOffset=source.rayAngleOffset;target->rayPattern=source.rayPattern;target->rayWidth=source.rayWidth;
     target->rayGap=source.rayGap;target->rayStartOpacity=source.rayStartOpacity;target->rayEndOpacity=source.rayEndOpacity;target->rayFadeLength=source.rayFadeLength;
@@ -118,6 +124,7 @@ void Canvas::setHorizonVisible(bool visible){if(state_.horizonVisible==visible)r
 void Canvas::setAxesVisible(bool visible){if(state_.axesVisible==visible)return;state_.axesVisible=visible;emit stateChanged();update();}
 void Canvas::setMarkersVisible(bool visible){if(state_.markersVisible==visible)return;state_.markersVisible=visible;emit stateChanged();update();}
 void Canvas::setSymmetricPoints(bool enabled){if(state_.symmetricPoints==enabled)return;state_.symmetricPoints=enabled;emit stateChanged();update();}
+void Canvas::setCoordinatePercent(bool percent){if(coordinatePercent_==percent)return;coordinatePercent_=percent;update();}
 void Canvas::selectPoint(int index) {
     const int next=state_.vanishingPoints.isEmpty()?-1:qBound(0,index,state_.vanishingPoints.size()-1);
     if (selectedPointIndex_==next) return;
@@ -170,20 +177,22 @@ void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
     else{point.attachmentType.clear();point.attachmentTargetId.clear();}
     commit(before,tr("привязку точки схода"));emit stateChanged();update();
 }
-QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
-QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
+QRectF Canvas::viewportRect() const{return QRectF(rect()).adjusted(rulerSize,rulerSize,-rulerSize,-rulerSize);}
+QPointF Canvas::toImage(QPointF p) const { return (p - viewportRect().center() - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
+QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + viewportRect().center() + pan_; }
 void Canvas::setZoom(double zoom, QPointF anchor) {
-    if (anchor.x() < 0) anchor = QPointF(width()/2.0, height()/2.0);
+    if (anchor.x() < 0) anchor = viewportRect().center();
     const QPointF imagePoint = toImage(anchor);
     zoom_ = qBound(0.05, zoom, 16.0);
     pan_ += anchor - toView(imagePoint);
     emit viewChanged(); update();
 }
-void Canvas::fit() { pan_ = QPointF(); zoom_ = qBound(0.05, qMin((width()-60.0)/state_.image.width(), (height()-60.0)/state_.image.height()), 16.0); emit viewChanged(); update(); }
+void Canvas::fit() { pan_ = QPointF();const QRectF viewport=viewportRect();zoom_ = qBound(0.05, qMin((viewport.width()-60.0)/state_.image.width(), (viewport.height()-60.0)/state_.image.height()), 16.0); emit viewChanged(); update(); }
 
 void Canvas::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.fillRect(rect(), QColor("#dce0e5"));
+    p.save();p.setClipRect(viewportRect());
     const QRectF paper(toView(QPointF()), QSizeF(state_.image.size())*zoom_);
     p.fillRect(paper.translated(3, 4), QColor(0,0,0,35));
     p.fillRect(paper, Qt::white);
@@ -245,6 +254,38 @@ void Canvas::paintEvent(QPaintEvent *) {
         QPen preview(QColor(40,52,68,170),1,Qt::DashLine);preview.setCosmetic(true);p.setPen(preview);
         p.drawLine(toView(paintAnchor_),toView(endpoint));p.restore();
     }
+    p.restore();drawRulers(p);
+}
+
+void Canvas::drawRulers(QPainter &p){
+    const QRectF viewport=viewportRect();const QColor rulerBackground("#f4f5f7"),border("#9da4ae"),ink("#4c5664");
+    p.fillRect(QRectF(0,0,width(),rulerSize),rulerBackground);p.fillRect(QRectF(0,height()-rulerSize,width(),rulerSize),rulerBackground);p.fillRect(QRectF(0,rulerSize,rulerSize,height()-2*rulerSize),rulerBackground);p.fillRect(QRectF(width()-rulerSize,rulerSize,rulerSize,height()-2*rulerSize),rulerBackground);
+    p.setPen(QPen(border,1));p.drawRect(viewport);
+    QFont font=p.font();font.setPixelSize(9);p.setFont(font);p.setPen(ink);
+    const double horizontalUnitPixels=coordinatePercent_?state_.image.width()/100.0:1.0;
+    const double verticalUnitPixels=coordinatePercent_?state_.image.height()/100.0:1.0;
+    const double horizontalStep=niceStep(72.0/(zoom_*horizontalUnitPixels));
+    const double verticalStep=niceStep(54.0/(zoom_*verticalUnitPixels));
+    const double leftValue=(toImage(viewport.topLeft()).x()-state_.image.width()/2.0)/horizontalUnitPixels;
+    const double rightValue=(toImage(viewport.topRight()).x()-state_.image.width()/2.0)/horizontalUnitPixels;
+    for(double value=std::ceil(qMin(leftValue,rightValue)/horizontalStep)*horizontalStep;value<=qMax(leftValue,rightValue)+horizontalStep*0.01;value+=horizontalStep){
+        const double x=toView(QPointF(state_.image.width()/2.0+value*horizontalUnitPixels,0)).x();if(x<viewport.left()-1||x>viewport.right()+1)continue;
+        p.drawLine(QPointF(x,viewport.top()),QPointF(x,viewport.top()-7));p.drawLine(QPointF(x,viewport.bottom()),QPointF(x,viewport.bottom()+7));const QString label=coordinateLabel(value);p.drawText(QRectF(x+2,2,70,rulerSize-9),Qt::AlignLeft|Qt::AlignVCenter,label);p.drawText(QRectF(x+2,height()-rulerSize+7,70,rulerSize-9),Qt::AlignLeft|Qt::AlignVCenter,label);
+    }
+    const double topValue=(state_.image.height()/2.0-toImage(viewport.topLeft()).y())/verticalUnitPixels;
+    const double bottomValue=(state_.image.height()/2.0-toImage(viewport.bottomLeft()).y())/verticalUnitPixels;
+    for(double value=std::ceil(qMin(topValue,bottomValue)/verticalStep)*verticalStep;value<=qMax(topValue,bottomValue)+verticalStep*0.01;value+=verticalStep){
+        const double y=toView(QPointF(0,state_.image.height()/2.0-value*verticalUnitPixels)).y();if(y<viewport.top()-1||y>viewport.bottom()+1)continue;
+        p.drawLine(QPointF(viewport.left(),y),QPointF(viewport.left()-7,y));p.drawLine(QPointF(viewport.right(),y),QPointF(viewport.right()+7,y));const QString label=coordinateLabel(value);p.drawText(QRectF(1,y-8,rulerSize-9,16),Qt::AlignRight|Qt::AlignVCenter,label);p.drawText(QRectF(width()-rulerSize+8,y-8,rulerSize-9,16),Qt::AlignLeft|Qt::AlignVCenter,label);
+    }
+    if(!cursorInViewport_)return;
+    QPen guide(QColor(49,83,130,170),1,Qt::DashLine);guide.setCosmetic(true);p.setPen(guide);p.drawLine(cursorView_,QPointF(cursorView_.x(),viewport.top()));p.drawLine(cursorView_,QPointF(cursorView_.x(),viewport.bottom()));p.drawLine(cursorView_,QPointF(viewport.left(),cursorView_.y()));p.drawLine(cursorView_,QPointF(viewport.right(),cursorView_.y()));
+    const QPointF image=toImage(cursorView_);const QString xLabel=coordinateLabel((image.x()-state_.image.width()/2.0)/horizontalUnitPixels)+(coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px"));const QString yLabel=coordinateLabel((state_.image.height()/2.0-image.y())/verticalUnitPixels)+(coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px"));
+    p.setPen(QColor("#23405f"));p.setBrush(QColor("#fff4b5"));const int xWidth=qMax(44,p.fontMetrics().horizontalAdvance(xLabel)+8),yWidth=qMax(44,p.fontMetrics().horizontalAdvance(yLabel)+8);
+    QRectF topBox(cursorView_.x()-xWidth/2.0,2,xWidth,rulerSize-5),bottomBox(cursorView_.x()-xWidth/2.0,height()-rulerSize+3,xWidth,rulerSize-5);
+    p.drawRect(topBox);p.drawRect(bottomBox);p.drawText(topBox,Qt::AlignCenter,xLabel);p.drawText(bottomBox,Qt::AlignCenter,xLabel);
+    p.save();p.setClipRect(QRectF(0,rulerSize,rulerSize,height()-2*rulerSize));p.drawRect(QRectF(1,cursorView_.y()-9,yWidth,18));p.drawText(QRectF(2,cursorView_.y()-9,yWidth-2,18),Qt::AlignCenter,yLabel);p.restore();
+    p.save();p.setClipRect(QRectF(width()-rulerSize,rulerSize,rulerSize,height()-2*rulerSize));p.drawRect(QRectF(width()-yWidth-1,cursorView_.y()-9,yWidth,18));p.drawText(QRectF(width()-yWidth,cursorView_.y()-9,yWidth-2,18),Qt::AlignCenter,yLabel);p.restore();
 }
 
 void Canvas::stroke(QPointF a, QPointF b) {
@@ -268,6 +309,7 @@ QPointF Canvas::constrainedPoint(QPointF point, bool constrainAngle) const {
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton && e->button() != Qt::MiddleButton) return;
+    if(e->button()==Qt::LeftButton&&!viewportRect().contains(e->localPos()))return;
     setFocus();
     panning_ = e->button() == Qt::MiddleButton || tool_ == Pan || space_;
     if (panning_) { dragging_ = true; last_ = e->localPos(); setCursor(Qt::ClosedHandCursor); return; }
@@ -292,9 +334,9 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     }
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
-    hoverPoint_=toImage(e->localPos());hasHoverPoint_=QRectF(QPointF(),state_.image.size()).contains(hoverPoint_);
+    cursorView_=e->localPos();cursorInViewport_=viewportRect().contains(cursorView_);hoverPoint_=toImage(cursorView_);hasHoverPoint_=QRectF(QPointF(),state_.image.size()).contains(hoverPoint_);
     emit positionChanged(hoverPoint_);
-    if (!dragging_) { if (shiftPressed_ && hasPaintAnchor_) update(); return; }
+    if (!dragging_) { update(); return; }
     if (panning_) { pan_ += e->localPos() - last_; last_ = e->localPos(); update(); }
     else if (movingPoint_&&movingPointIndex_>=0&&movingPointIndex_<state_.vanishingPoints.size()) {
         QPointF point=toImage(e->localPos());auto &vanishing=state_.vanishingPoints[movingPointIndex_];
@@ -334,3 +376,4 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
     else QWidget::keyReleaseEvent(e);
 }
 void Canvas::focusOutEvent(QFocusEvent *e) { finish(); space_ = shiftPressed_ = controlPressed_ = false; update(); QWidget::focusOutEvent(e); }
+void Canvas::leaveEvent(QEvent *e){cursorInViewport_=false;hasHoverPoint_=false;update();QWidget::leaveEvent(e);}
