@@ -2,6 +2,7 @@
 #include <QtWidgets>
 
 namespace {
+QString productName(){return QStringLiteral("Технический рисунок / Technical Draw");}
 QIcon toolIcon(int kind) {
     QPixmap image(24,24); image.fill(Qt::transparent);
     QPainter p(&image); p.setRenderHint(QPainter::Antialiasing);
@@ -216,7 +217,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
-    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("TechDraw — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точки схода и горизонта.\nЭкспорт PNG сохраняет только рисунок."));});
+    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,productName()+tr(" — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точек схода, их фиксацию и горизонт.\nЭкспорт PNG сохраняет только рисунок."));});
+    auto *aboutAction=help->addAction(tr("О программе…"),this,&MainWindow::showAbout);aboutAction->setObjectName("aboutAction");
     toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setObjectName("canvasPosition");positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
     auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
@@ -255,7 +257,7 @@ void MainWindow::updateRecentFilesMenu(){
 }
 void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
-    setWindowTitle(name+"[*] — TechDraw"); setWindowModified(!canvas_->undoStack()->isClean());
+    setWindowTitle(name+"[*] — "+productName()); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
     QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_),i(vanishingPointsList_),j(selectedPointVisible_),k(horizonPosition_),l(horizonUnits_),m(pointX_),n(pointY_),o(pointUnits_),q(pointAttachment_);
     QSignalBlocker r(rayAngleOffset_),s(rayPattern_),t(rayWidth_),u(horizonVisible_),v(axesVisible_),w(markersVisible_),x(symmetricPoints_),y(horizonLocked_),z(selectedPointLocked_);
@@ -280,7 +282,7 @@ double MainWindow::imageX(double displayed) const {return canvas_->state().image
 double MainWindow::imageY(double displayed) const {return canvas_->state().image.height()/2.0-(coordinatePercent_?displayed*canvas_->state().image.height()/100.0:displayed);}
 void MainWindow::setCoordinateUnits(bool percent){if(coordinatePercent_==percent){updateState();return;}coordinatePercent_=percent;QSettings().setValue("perspective/coordinatePercent",percent);updateState();}
 void MainWindow::showSettings(){
-    QDialog dialog(this);dialog.setObjectName("settingsDialog");dialog.setWindowTitle(tr("Настройки TechDraw"));dialog.resize(460,300);
+    QDialog dialog(this);dialog.setObjectName("settingsDialog");dialog.setWindowTitle(tr("Настройки — ")+productName());dialog.resize(460,300);
     auto *dialogLayout=new QVBoxLayout(&dialog);auto *tabs=new QTabWidget;tabs->setObjectName("settingsTabs");dialogLayout->addWidget(tabs);
     auto *viewPage=new QWidget;auto *viewForm=new QFormLayout(viewPage);auto *rulerUnits=new QComboBox;rulerUnits->setObjectName("rulerUnits");rulerUnits->addItems({tr("Пиксели"),tr("Проценты")});rulerUnits->setCurrentIndex(rulerPercent_?1:0);viewForm->addRow(tr("Единицы линеек"),rulerUnits);viewForm->addRow(new QLabel(tr("Единицы числовых координат точек схода и горизонта выбираются отдельно в панели перспективы.")));tabs->addTab(viewPage,tr("Вид"));
     auto *systemPage=new QWidget;auto *systemLayout=new QVBoxLayout(systemPage);auto *systemHint=new QLabel(tr("Системные параметры будут добавляться по мере необходимости."));systemHint->setWordWrap(true);systemLayout->addWidget(systemHint);systemLayout->addStretch();tabs->addTab(systemPage,tr("Система"));
@@ -289,7 +291,13 @@ void MainWindow::showSettings(){
     if(dialog.exec()!=QDialog::Accepted)return;
     rulerPercent_=rulerUnits->currentIndex()==1;QSettings().setValue("view/rulers/percent",rulerPercent_);canvas_->setRulerPercent(rulerPercent_);positionLabel_->clear();
 }
-void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("TechDraw"),error); }
+void MainWindow::showAbout(){
+    QDialog dialog(this);dialog.setObjectName("aboutDialog");dialog.setWindowTitle(tr("О программе"));auto *layout=new QVBoxLayout(&dialog);layout->setContentsMargins(32,24,32,20);layout->setSpacing(14);
+    auto *icon=new QLabel;icon->setObjectName("aboutIcon");icon->setAlignment(Qt::AlignCenter);icon->setPixmap(QIcon(":/app/techdraw.png").pixmap(96,96));layout->addWidget(icon);
+    auto *name=new QLabel(QStringLiteral("Технический рисунок\nTechnical Draw"));name->setObjectName("aboutName");name->setAlignment(Qt::AlignCenter);QFont nameFont=name->font();nameFont.setPointSize(nameFont.pointSize()+2);nameFont.setBold(true);name->setFont(nameFont);layout->addWidget(name);
+    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Close);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);layout->addWidget(buttons);dialog.exec();
+}
+void MainWindow::showError(const QString &error){ QMessageBox::critical(this,productName(),error); }
 bool MainWindow::confirmDiscard(){
     if(canvas_->undoStack()->isClean())return true;
     QMessageBox message(QMessageBox::Question,tr("Несохранённые изменения"),tr("Сохранить изменения перед продолжением?"),QMessageBox::NoButton,this);
@@ -309,7 +317,7 @@ void MainWindow::newDocument(){
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
 }
-void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("TechDraw и PNG (*.drw *.png);;TechDraw (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
+void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("Технический рисунок и PNG (*.drw *.png);;Проект «Технический рисунок» (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}for(auto &historyState:history.states){applySavedPerspectiveDefaults(&historyState);applySavedViewSettings(&historyState);applySavedPointAppearance(&historyState);}}
@@ -323,7 +331,7 @@ bool MainWindow::saveDocument(bool saveAs){
     QString target=path_;
     if(saveAs||target.isEmpty()){
         const QString name=target.isEmpty()?tr("Без имени.drw"):QFileInfo(target).fileName();
-        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),suggestedFile("files/saveDirectory",name),tr("TechDraw (*.drw)"));
+        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),suggestedFile("files/saveDirectory",name),tr("Проект «Технический рисунок» (*.drw)"));
         if(target.isEmpty())return false;
         const QString suffixed=withSuffix(target,".drw");
         if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Файл %1 уже существует. Заменить?").arg(suffixed))!=QMessageBox::Yes)return false;

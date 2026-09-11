@@ -49,6 +49,7 @@ private:
     void updateRecentFilesMenu();
     void showError(const QString &error);
     void showSettings();
+    void showAbout();
     double displayedX(double imageX) const;
     double displayedY(double imageY) const;
     double imageX(double displayed) const;
