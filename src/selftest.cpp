@@ -17,6 +17,7 @@ int runSelfTests(const QString &outputDirectory){
         if(QGuiApplication::platformName()=="offscreen")QApplication::setStyle("Fusion");
         QFontDatabase::addApplicationFont(qEnvironmentVariable("WINDIR")+"/Fonts/segoeui.ttf");
         QDir().mkpath(outputDirectory);QDir out(outputDirectory);
+        QSettings::setDefaultFormat(QSettings::IniFormat);QSettings::setPath(QSettings::IniFormat,QSettings::UserScope,out.filePath("settings"));QSettings().clear();
         tracePath=out.filePath("trace.txt");{QFile trace(tracePath);trace.open(QIODevice::WriteOnly);}
         QTimer watchdog;watchdog.setSingleShot(true);watchdog.setInterval(12000);QObject::connect(&watchdog,&QTimer::timeout,[]{QFile trace(tracePath);trace.open(QIODevice::Append);trace.write("TIMEOUT\n");for(auto *widget:QApplication::topLevelWidgets()){trace.write(widget->metaObject()->className());trace.write(" ");trace.write(widget->windowTitle().toUtf8());trace.write("\n");}trace.close();std::exit(2);});watchdog.start();
         MainWindow window;window.show();QApplication::processEvents();
@@ -63,6 +64,10 @@ int runSelfTests(const QString &outputDirectory){
         restored.undoStack()->undo();require(restored.state().vanishing!=restoredCurrent.vanishing||restored.state().gridVisible!=restoredCurrent.gridVisible||restored.state().image!=restoredCurrent.image,"restored undo did not change state");
         restored.undoStack()->redo();require(restored.state().image==restoredCurrent.image&&restored.state().vanishing==restoredCurrent.vanishing&&restored.undoStack()->isClean(),"restored redo did not return to saved state");
         DrawingState loaded;require(Project::load(projectPath,&loaded,&error),qPrintable(error));require(loaded.image==canvas->state().image&&loaded.vanishing==canvas->state().vanishing&&loaded.gridVisible,"DRW roundtrip mismatch");
+        MainWindow pathWindow;require(pathWindow.openPath(projectPath),"path settings fixture did not open");
+        require(QDir(QSettings().value("files/openDirectory").toString())==QDir(out.absolutePath())&&!QSettings().contains("files/saveDirectory"),"open and save directories must be independent");
+        auto *pathSaveAction=pathWindow.findChild<QAction*>("saveAction");require(pathSaveAction,"save action missing");pathSaveAction->trigger();QApplication::processEvents();
+        require(QDir(QSettings().value("files/saveDirectory").toString())==QDir(out.absolutePath()),"successful save did not remember its directory");pathWindow.close();
         require(Project::exportPng(out.filePath("export.png"),canvas->state().image,&error),qPrintable(error));QImage png;require(Project::loadPng(out.filePath("export.png"),&png,&error),qPrintable(error));require(png==pixels,"grid leaked into exported PNG");
         DrawingState transparent=loaded;transparent.image.fill(Qt::transparent);transparent.image.setPixelColor(7,8,QColor(40,80,120,128));require(Project::save(out.filePath("alpha.drw"),transparent,&error),qPrintable(error));require(Project::load(out.filePath("alpha.drw"),&loaded,&error),qPrintable(error));require(loaded.image==transparent.image,"alpha roundtrip failed");
         QFile bad(out.filePath("bad.drw"));bad.open(QIODevice::WriteOnly);bad.write("not a zip");bad.close();DrawingState unchanged=loaded;require(!Project::load(bad.fileName(),&loaded,&error),"bad project accepted");require(loaded.image==unchanged.image,"failed load modified destination");

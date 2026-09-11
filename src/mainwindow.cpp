@@ -29,6 +29,20 @@ QString withSuffix(QString path, const QString &suffix) {
     if (!path.endsWith(suffix,Qt::CaseInsensitive)) path += suffix;
     return path;
 }
+QString defaultDirectory() {
+    const QString documents=QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    return documents.isEmpty()?QDir::homePath():documents;
+}
+QString rememberedDirectory(const QString &key) {
+    const QString path=QSettings().value(key).toString();
+    return QDir(path).exists()?path:defaultDirectory();
+}
+void rememberDirectory(const QString &key,const QString &filePath) {
+    QSettings().setValue(key,QFileInfo(filePath).absolutePath());
+}
+QString suggestedFile(const QString &key,const QString &name) {
+    return QDir(rememberedDirectory(key)).filePath(name);
+}
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
@@ -43,7 +57,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *help = menuBar()->addMenu(tr("&Справка"));
     auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);
     auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);
-    auto *saveAction = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),tr("Сохранить проект"),this,[this]{saveDocument();},QKeySequence::Save);
+    auto *saveAction = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),tr("Сохранить проект"),this,[this]{saveDocument();},QKeySequence::Save);saveAction->setObjectName("saveAction");
     file->addAction(tr("Сохранить проект как…"),this,[this]{saveDocument(true);},QKeySequence::SaveAs);
     file->addSeparator();
     file->addAction(tr("Экспортировать PNG…"),this,&MainWindow::exportImage,QKeySequence("Ctrl+Shift+E"));
@@ -132,7 +146,7 @@ void MainWindow::newDocument(){
     if(!confirmDiscard())return;
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
 }
-void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),QString(),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
+void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}}
@@ -140,23 +154,24 @@ bool MainWindow::openPath(const QString &path){
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);
-    canvas_->fit();return true;
+    rememberDirectory("files/openDirectory",path);canvas_->fit();return true;
 }
 bool MainWindow::saveDocument(bool saveAs){
     QString target=path_;
     if(saveAs||target.isEmpty()){
-        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),target.isEmpty()?tr("Без имени.drw"):target,tr("Drawing (*.drw)"));
+        const QString name=target.isEmpty()?tr("Без имени.drw"):QFileInfo(target).fileName();
+        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),suggestedFile("files/saveDirectory",name),tr("Drawing (*.drw)"));
         if(target.isEmpty())return false;
         const QString suffixed=withSuffix(target,".drw");
         if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Файл %1 уже существует. Заменить?").arg(suffixed))!=QMessageBox::Yes)return false;
         target=suffixed;
     }
     QString error;if(!Project::save(target,canvas_->history(),&error)){showError(error);return false;}
-    path_=QFileInfo(target).absoluteFilePath();canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
+    path_=QFileInfo(target).absoluteFilePath();rememberDirectory("files/saveDirectory",path_);canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
 }
 void MainWindow::exportImage(){
-    QString target=QFileDialog::getSaveFileName(this,tr("Экспортировать рисунок без направляющих"),tr("Рисунок.png"),tr("PNG (*.png)"));if(target.isEmpty())return;
+    QString target=QFileDialog::getSaveFileName(this,tr("Экспортировать рисунок без направляющих"),suggestedFile("files/saveDirectory",tr("Рисунок.png")),tr("PNG (*.png)"));if(target.isEmpty())return;
     QString suffixed=withSuffix(target,".png");if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Заменить существующий PNG?"))!=QMessageBox::Yes)return;
-    QString error;if(!Project::exportPng(suffixed,canvas_->state().image,&error))showError(error);else statusBar()->showMessage(tr("PNG экспортирован; проект сохраняется отдельно"),4000);
+    QString error;if(!Project::exportPng(suffixed,canvas_->state().image,&error))showError(error);else{rememberDirectory("files/saveDirectory",suffixed);statusBar()->showMessage(tr("PNG экспортирован; проект сохраняется отдельно"),4000);}
 }
 void MainWindow::closeEvent(QCloseEvent *event){if(confirmDiscard())event->accept();else event->ignore();}
