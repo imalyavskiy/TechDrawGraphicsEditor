@@ -111,7 +111,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     QSettings widthSettings;for(int i=0;i<toolWidths_.size();++i)toolWidths_[i]=qBound(1,widthSettings.value(widthSetting(i),3).toInt(),200);
     strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(toolWidths_[Canvas::Pencil]); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);canvas_->setStrokeWidth(strokeWidth_->value());
     connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),this,[this](int value){const int tool=int(canvas_->tool());if(tool<=int(Canvas::Eraser)){toolWidths_[tool]=value;QSettings().setValue(widthSetting(tool),value);canvas_->setStrokeWidth(value);}});
-    auto *strokeWidthAction=new QAction(tr("Толщина штриха…"),this);strokeWidthAction->setObjectName("strokeWidthAction");connect(strokeWidthAction,&QAction::triggered,this,[this]{if(canvas_->tool()>Canvas::Eraser){statusBar()->showMessage(tr("Сначала выберите карандаш, кисть или ластик"),3000);return;}bool ok=false;const int value=QInputDialog::getInt(this,tr("Толщина штриха"),tr("Толщина в пикселях"),strokeWidth_->value(),1,200,1,&ok);if(ok)strokeWidth_->setValue(value);});
+    auto *strokeWidthAction=new QAction(tr("Толщина штриха…"),this);strokeWidthAction->setObjectName("strokeWidthAction");connect(strokeWidthAction,&QAction::triggered,this,[this]{
+        QDialog dialog(this);dialog.setObjectName("strokeWidthDialog");dialog.setWindowTitle(tr("Толщина штриха"));auto *dialogLayout=new QVBoxLayout(&dialog);auto *form=new QFormLayout;dialogLayout->addLayout(form);
+        QSpinBox *controls[3];const QStringList labels{tr("Карандаш"),tr("Кисть"),tr("Ластик")};const QStringList objectNames{"pencilWidthSetting","brushWidthSetting","eraserWidthSetting"};
+        for(int i=0;i<3;++i){controls[i]=new QSpinBox;controls[i]->setObjectName(objectNames[i]);controls[i]->setRange(1,200);controls[i]->setSuffix(tr(" px"));controls[i]->setValue(toolWidths_[i]);form->addRow(labels[i],controls[i]);}
+        auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);dialogLayout->addWidget(buttons);connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);if(dialog.exec()!=QDialog::Accepted)return;
+        for(int i=0;i<3;++i){toolWidths_[i]=controls[i]->value();QSettings().setValue(widthSetting(i),toolWidths_[i]);}
+        const int active=int(canvas_->tool());if(active<=int(Canvas::Eraser)){QSignalBlocker block(strokeWidth_);strokeWidth_->setValue(toolWidths_[active]);canvas_->setStrokeWidth(toolWidths_[active]);}
+    });
     bar->addSeparator();
     frontButton_ = new QPushButton(bar); frontButton_->setToolTip(tr("Основной цвет (Front)")); frontButton_->setObjectName("frontColor"); frontButton_->setFixedWidth(34); bar->addWidget(frontButton_);
     auto *frontColorAction=new QAction(tr("Основной цвет (Front)…"),this);frontColorAction->setObjectName("frontColorAction");
