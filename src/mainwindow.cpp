@@ -1,0 +1,147 @@
+#include "mainwindow.h"
+#include <QtWidgets>
+
+namespace {
+QIcon toolIcon(int kind) {
+    QPixmap image(24,24); image.fill(Qt::transparent);
+    QPainter p(&image); p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(QColor("#364152"),1.7,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
+    if (kind == 0) { p.drawPolygon(QPolygonF(QVector<QPointF>{QPointF(5,15),QPointF(15,5),QPointF(19,9),QPointF(9,19),QPointF(4,20)})); p.drawLine(13,7,17,11); }
+    else if (kind == 1) { p.drawPolygon(QPolygonF(QVector<QPointF>{QPointF(4,14),QPointF(13,5),QPointF(20,12),QPointF(12,20),QPointF(9,20)})); p.drawLine(8,10,16,17); p.drawLine(11,20,21,20); }
+    else if (kind == 2) { p.drawRoundedRect(QRectF(7,9,12,12),4,4); p.drawLine(7,14,4,10); p.drawLine(9,10,9,4); p.drawLine(12,9,12,3); p.drawLine(15,10,15,4); p.drawLine(18,11,18,7); }
+    else { p.drawEllipse(QPointF(12,10),3,3); p.drawLine(12,1,12,6); p.drawLine(12,14,12,22); p.drawLine(2,10,8,10); p.drawLine(16,10,22,10); p.drawLine(4,22,10,13); p.drawLine(20,22,14,13); }
+    return QIcon(image);
+}
+void colorSwatch(QPushButton *button, QColor color) {
+    QPixmap swatch(22,22); swatch.fill(color);
+    QPainter p(&swatch); p.setPen(QColor("#8e949d")); p.drawRect(0,0,21,21);
+    button->setIcon(QIcon(swatch)); button->setIconSize(QSize(22,22));
+}
+QString withSuffix(QString path, const QString &suffix) {
+    if (!path.endsWith(suffix,Qt::CaseInsensitive)) path += suffix;
+    return path;
+}
+}
+
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
+    setObjectName("drawingWindow");
+    resize(1200,800); setMinimumSize(720,480);
+    setWindowIcon(toolIcon(0));
+    setCentralWidget(canvas_);
+    setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } ");
+    auto *file = menuBar()->addMenu(tr("&Файл"));
+    auto *edit = menuBar()->addMenu(tr("&Правка"));
+    auto *view = menuBar()->addMenu(tr("&Вид"));
+    auto *help = menuBar()->addMenu(tr("&Справка"));
+    auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);
+    auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);
+    auto *saveAction = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),tr("Сохранить проект"),this,[this]{saveDocument();},QKeySequence::Save);
+    file->addAction(tr("Сохранить проект как…"),this,[this]{saveDocument(true);},QKeySequence::SaveAs);
+    file->addSeparator();
+    file->addAction(tr("Экспортировать PNG…"),this,&MainWindow::exportImage,QKeySequence("Ctrl+Shift+E"));
+    file->addSeparator(); file->addAction(tr("Выход"),this,&QWidget::close,QKeySequence("Alt+F4"));
+    auto *undoAction = canvas_->undoStack()->createUndoAction(this,tr("Отменить")); undoAction->setShortcut(QKeySequence::Undo); undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack)); edit->addAction(undoAction);
+    auto *redoAction = canvas_->undoStack()->createRedoAction(this,tr("Повторить")); redoAction->setShortcuts({QKeySequence::Redo,QKeySequence("Ctrl+Shift+Z")}); redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward)); edit->addAction(redoAction);
+    auto *bar = addToolBar(tr("Файл и параметры")); bar->setObjectName("mainToolbar"); bar->setMovable(false); bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    bar->addAction(newAction); bar->addAction(openAction); bar->addAction(saveAction); bar->addSeparator(); bar->addAction(undoAction); bar->addAction(redoAction); bar->addSeparator();
+    bar->addWidget(new QLabel(tr(" Ширина "),bar));
+    strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(3); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);
+    connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setStrokeWidth);
+    bar->addSeparator();
+    frontButton_ = new QPushButton("Front",bar); frontButton_->setToolTip(tr("Цвет карандаша")); frontButton_->setObjectName("frontColor"); bar->addWidget(frontButton_);
+    auto *swap = new QAction(tr("⇄"),this); swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
+    backButton_ = new QPushButton("Back",bar); backButton_->setToolTip(tr("Цвет фона и ластика")); backButton_->setObjectName("backColor"); bar->addWidget(backButton_);
+    connect(frontButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Цвет карандаша — Front"));if(c.isValid()){front_=c;updateColors();}});
+    connect(backButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(back_,this,tr("Цвет фона и ластика — Back"));if(c.isValid()){back_=c;updateColors();}});
+    connect(swap,&QAction::triggered,this,[this]{qSwap(front_,back_);updateColors();}); updateColors();
+    auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); addToolBar(Qt::LeftToolBarArea,toolBar);
+    auto *group = new QActionGroup(this); group->setExclusive(true);
+    QStringList names{tr("Карандаш"),tr("Ластик"),tr("Перемещение холста"),tr("Точка схода")};
+    QStringList shortcuts{"B","E","H","P"};
+    for(int i=0;i<4;++i){
+        auto *action = new QAction(toolIcon(i),names[i],this); action->setObjectName(QString("tool%1").arg(i)); action->setCheckable(true); action->setShortcut(QKeySequence(shortcuts[i])); action->setToolTip(names[i]+" ("+shortcuts[i]+")"); group->addAction(action); toolBar->addAction(action); if(i==0)action->setChecked(true);
+        connect(action,&QAction::triggered,this,[this,i,names]{canvas_->setTool(Canvas::Tool(i));toolLabel_->setText(names[i]);if(i==3){perspectiveDock_->show();canvas_->setGridVisible(true);}canvas_->setFocus();});
+        if(i==3)perspectiveAction_=action;
+    }
+    perspectiveDock_ = new QDockWidget(tr("Перспектива · прототип"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
+    auto *panel = new QWidget; auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(14,14,14,14);
+    layout->addWidget(new QLabel(tr("Одна точка схода")));
+    gridVisible_ = new QCheckBox(tr("Показать направляющие")); gridVisible_->setObjectName("gridVisible"); layout->addWidget(gridVisible_);
+    auto *form = new QFormLayout;
+    rays_ = new QSpinBox; rays_->setRange(4,64); rays_->setKeyboardTracking(false); form->addRow(tr("Количество лучей"),rays_);
+    gridColorButton_ = new QPushButton(tr("Выбрать…")); form->addRow(tr("Цвет линий"),gridColorButton_); layout->addLayout(form);
+    auto *tip = new QLabel(tr("P — перемещение точки схода.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
+    view->addAction(perspectiveDock_->toggleViewAction());
+    connect(gridVisible_,&QCheckBox::toggled,canvas_,&Canvas::setGridVisible);
+    connect(rays_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayCount);
+    connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
+    auto *fitAction = view->addAction(tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));
+    auto *actualAction = view->addAction(tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));
+    view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
+    view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
+    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG и параметры перспективы.\nЭкспорт PNG сохраняет только рисунок."));});
+    toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
+    statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
+    auto *fitButton = new QToolButton; fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
+    auto *actualButton = new QToolButton; actualButton->setDefaultAction(actualAction); statusBar()->addPermanentWidget(actualButton);
+    zoom_ = new QDoubleSpinBox; zoom_->setObjectName("zoomPercent"); zoom_->setRange(5,1600); zoom_->setDecimals(0); zoom_->setSuffix(" %"); zoom_->setKeyboardTracking(false); statusBar()->addPermanentWidget(zoom_);
+    connect(zoom_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){canvas_->setZoom(value/100.0);});
+    connect(canvas_,&Canvas::viewChanged,this,[this]{QSignalBlocker block(zoom_);zoom_->setValue(canvas_->zoom()*100);});
+    connect(canvas_,&Canvas::positionChanged,this,[this](QPointF p){positionLabel_->setText(QString("X: %1   Y: %2").arg(qRound(p.x())).arg(qRound(p.y())));});
+    connect(canvas_,&Canvas::stateChanged,this,&MainWindow::updateState);
+    connect(canvas_->undoStack(),&QUndoStack::cleanChanged,this,&MainWindow::updateState);
+    updateState();
+    QTimer::singleShot(0,canvas_,&Canvas::fit);
+}
+
+void MainWindow::updateColors(){ colorSwatch(frontButton_,front_);colorSwatch(backButton_,back_);canvas_->setFront(front_);canvas_->setBack(back_); }
+void MainWindow::updateState(){
+    QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
+    setWindowTitle(name+"[*] — Drawing"); setWindowModified(!canvas_->undoStack()->isClean());
+    sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
+    QSignalBlocker a(gridVisible_),b(rays_); gridVisible_->setChecked(canvas_->state().gridVisible); rays_->setValue(canvas_->state().rays); colorSwatch(gridColorButton_,canvas_->state().gridColor);
+}
+void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("Drawing"),error); }
+bool MainWindow::confirmDiscard(){
+    if(canvas_->undoStack()->isClean())return true;
+    QMessageBox message(QMessageBox::Question,tr("Несохранённые изменения"),tr("Сохранить изменения перед продолжением?"),QMessageBox::NoButton,this);
+    auto *save=message.addButton(tr("Сохранить"),QMessageBox::AcceptRole); auto *discard=message.addButton(tr("Не сохранять"),QMessageBox::DestructiveRole); auto *cancel=message.addButton(tr("Отмена"),QMessageBox::RejectRole); message.setDefaultButton(save); message.setEscapeButton(cancel); message.exec();
+    if(message.clickedButton()==save)return saveDocument();
+    return message.clickedButton()==discard;
+}
+void MainWindow::newDocument(){
+    QDialog dialog(this);dialog.setWindowTitle(tr("Новый холст"));auto *layout=new QVBoxLayout(&dialog);auto *form=new QFormLayout;
+    QSpinBox w,h;w.setRange(1,8192);h.setRange(1,8192);w.setValue(1000);h.setValue(620);w.setSuffix(" px");h.setSuffix(" px");form->addRow(tr("Ширина"),&w);form->addRow(tr("Высота"),&h);layout->addLayout(form);layout->addWidget(new QLabel(tr("До 16 млн пикселей. Фон — цвет Back.")));
+    QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+    if(dialog.exec()!=QDialog::Accepted)return;
+    if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
+    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);
+    if(!confirmDiscard())return;
+    path_.clear();canvas_->setDocument(state,false);canvas_->fit();
+}
+void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),QString(),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
+bool MainWindow::openPath(const QString &path){
+    DrawingState state;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
+    if(project){if(!Project::load(path,&state,&error)){showError(error);return false;}}
+    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);}
+    if(!confirmDiscard())return false;
+    path_=project?QFileInfo(path).absoluteFilePath():QString();canvas_->setDocument(state,project);canvas_->fit();return true;
+}
+bool MainWindow::saveDocument(bool saveAs){
+    QString target=path_;
+    if(saveAs||target.isEmpty()){
+        target=QFileDialog::getSaveFileName(this,tr("Сохранить проект"),target.isEmpty()?tr("Без имени.drw"):target,tr("Drawing (*.drw)"));
+        if(target.isEmpty())return false;
+        const QString suffixed=withSuffix(target,".drw");
+        if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Файл %1 уже существует. Заменить?").arg(suffixed))!=QMessageBox::Yes)return false;
+        target=suffixed;
+    }
+    QString error;if(!Project::save(target,canvas_->state(),&error)){showError(error);return false;}
+    path_=QFileInfo(target).absoluteFilePath();canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
+}
+void MainWindow::exportImage(){
+    QString target=QFileDialog::getSaveFileName(this,tr("Экспортировать рисунок без направляющих"),tr("Рисунок.png"),tr("PNG (*.png)"));if(target.isEmpty())return;
+    QString suffixed=withSuffix(target,".png");if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Заменить существующий PNG?"))!=QMessageBox::Yes)return;
+    QString error;if(!Project::exportPng(suffixed,canvas_->state().image,&error))showError(error);else statusBar()->showMessage(tr("PNG экспортирован; проект сохраняется отдельно"),4000);
+}
+void MainWindow::closeEvent(QCloseEvent *event){if(confirmDiscard())event->accept();else event->ignore();}
