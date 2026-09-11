@@ -7,8 +7,9 @@
 namespace {
 QString tracePath;
 void require(bool value,const char *message){QFile trace(tracePath);if(trace.open(QIODevice::Append)){trace.write(value?"PASS ":"FAIL ");trace.write(message);trace.write("\n");}if(!value)throw std::runtime_error(message);}
-void mouse(Canvas *canvas,QEvent::Type type,QPointF position,Qt::MouseButton button,Qt::MouseButtons buttons){QMouseEvent event(type,position,button,buttons,Qt::NoModifier);QApplication::sendEvent(canvas,&event);}
+void mouse(Canvas *canvas,QEvent::Type type,QPointF position,Qt::MouseButton button,Qt::MouseButtons buttons,Qt::KeyboardModifiers modifiers=Qt::NoModifier){QMouseEvent event(type,position,button,buttons,modifiers);QApplication::sendEvent(canvas,&event);}
 void drag(Canvas *canvas,QPointF a,QPointF b){mouse(canvas,QEvent::MouseButtonPress,canvas->toView(a),Qt::LeftButton,Qt::LeftButton);mouse(canvas,QEvent::MouseMove,canvas->toView(b),Qt::NoButton,Qt::LeftButton);mouse(canvas,QEvent::MouseButtonRelease,canvas->toView(b),Qt::LeftButton,Qt::NoButton);}
+void click(Canvas *canvas,QPointF point,Qt::KeyboardModifiers modifiers=Qt::NoModifier){mouse(canvas,QEvent::MouseButtonPress,canvas->toView(point),Qt::LeftButton,Qt::LeftButton,modifiers);mouse(canvas,QEvent::MouseButtonRelease,canvas->toView(point),Qt::LeftButton,Qt::NoButton,modifiers);}
 }
 
 int runSelfTests(const QString &outputDirectory){
@@ -36,6 +37,16 @@ int runSelfTests(const QString &outputDirectory){
         canvas->undoStack()->undo();require(canvas->state().image==initial.image,"undo must restore pixels");require(canvas->undoStack()->isClean(),"undo back to saved image must be clean");
         canvas->undoStack()->redo();require(canvas->state().image!=initial.image,"redo must restore stroke");
         canvas->setBack(QColor("#e8cf9b"));canvas->setTool(Canvas::Eraser);drag(canvas,QPointF(190,95),QPointF(190,105));require(canvas->state().image.pixelColor(190,100)==QColor("#e8cf9b"),"eraser must use Back");
+        canvas->setDocument(initial);canvas->setTool(Canvas::Pencil);canvas->setFront(QColor("#26364a"));canvas->setStrokeWidth(3);
+        click(canvas,{100,200});click(canvas,{200,200},Qt::ShiftModifier);click(canvas,{200,260},Qt::ShiftModifier);
+        require(canvas->state().image.pixelColor(150,200)==QColor("#26364a")&&canvas->state().image.pixelColor(200,230)==QColor("#26364a"),"shift clicks must create connected segments");
+        canvas->undoStack()->undo();require(canvas->state().image.pixelColor(150,200)==QColor("#26364a")&&canvas->state().image.pixelColor(200,230)==QColor(Qt::white),"each connected segment must be separately undoable");canvas->undoStack()->redo();
+        click(canvas,{300,300});click(canvas,{390,310},Qt::ShiftModifier|Qt::ControlModifier);
+        require(canvas->state().image.pixelColor(350,300)==QColor("#26364a"),"ctrl shift must constrain segment angle");
+        canvas->setDocument(initial);canvas->setTool(Canvas::Brush);canvas->setFront(QColor("#6c3f88"));canvas->setStrokeWidth(11);drag(canvas,{110,180},{210,180});
+        require(canvas->state().image.pixelColor(160,180)==QColor("#6c3f88"),"brush stroke did not reach image");
+        canvas->setBack(QColor("#e8cf9b"));canvas->setTool(Canvas::Eraser);click(canvas,{110,180});click(canvas,{210,180},Qt::ShiftModifier);
+        require(canvas->state().image.pixelColor(160,180)==QColor("#e8cf9b"),"eraser straight segment must use Back");
         const int undoIndex=canvas->undoStack()->index();const QImage pixels=canvas->state().image;
         canvas->setZoom(1.7,QPointF(100,150));require(canvas->state().image==pixels&&canvas->undoStack()->index()==undoIndex,"zoom must not edit document");
         QPointF point(100,100);require(QLineF(canvas->toImage(canvas->toView(point)),point).length()<0.001,"view coordinate roundtrip failed");
@@ -72,9 +83,9 @@ int runSelfTests(const QString &outputDirectory){
         require(Project::save(out.filePath("Набросок.drw"),canvas->state(),&error),qPrintable(error));
         QApplication::processEvents();require(window.grab().save(out.filePath("editor.png")),"screenshot failed");
         window.resize(720,480);QApplication::processEvents();require(window.grab().save(out.filePath("editor-small.png")),"small screenshot failed");window.resize(1200,800);QApplication::processEvents();
-        auto *action=window.findChild<QAction*>("tool3");require(action,"perspective action missing");action->trigger();QApplication::processEvents();require(window.grab().save(out.filePath("perspective.png")),"perspective screenshot failed");
+        auto *action=window.findChild<QAction*>("tool4");require(action,"perspective action missing");action->trigger();QApplication::processEvents();require(window.grab().save(out.filePath("perspective.png")),"perspective screenshot failed");
         canvas->undoStack()->setClean();window.close();
-        QFile report(out.filePath("result.txt"));report.open(QIODevice::WriteOnly);report.write("PASS: pencil, eraser, undo/redo, pan/zoom, perspective, DRW/PNG, alpha, invalid input, screenshots\n");
+        QFile report(out.filePath("result.txt"));report.open(QIODevice::WriteOnly);report.write("PASS: pencil, brush, eraser, connected segments, angle constraint, undo/redo, pan/zoom, perspective, DRW/PNG, alpha, invalid input, screenshots\n");
         report.write(QGuiApplication::platformName()=="offscreen"?"SKIP: native dialog tests (run with -platform windows)\n":"PASS: close cancel/save, failed open preserves document\n");
         return 0;
     }catch(const std::exception &error){qCritical()<<"SELF_TEST_FAILED:"<<error.what();return 1;}

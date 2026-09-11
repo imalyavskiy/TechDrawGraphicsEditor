@@ -7,8 +7,9 @@ QIcon toolIcon(int kind) {
     QPainter p(&image); p.setRenderHint(QPainter::Antialiasing);
     p.setPen(QPen(QColor("#364152"),1.7,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
     if (kind == 0) { p.drawPolygon(QPolygonF(QVector<QPointF>{QPointF(5,15),QPointF(15,5),QPointF(19,9),QPointF(9,19),QPointF(4,20)})); p.drawLine(13,7,17,11); }
-    else if (kind == 1) { p.drawPolygon(QPolygonF(QVector<QPointF>{QPointF(4,14),QPointF(13,5),QPointF(20,12),QPointF(12,20),QPointF(9,20)})); p.drawLine(8,10,16,17); p.drawLine(11,20,21,20); }
-    else if (kind == 2) { p.drawRoundedRect(QRectF(7,9,12,12),4,4); p.drawLine(7,14,4,10); p.drawLine(9,10,9,4); p.drawLine(12,9,12,3); p.drawLine(15,10,15,4); p.drawLine(18,11,18,7); }
+    else if (kind == 1) { p.drawLine(6,19,17,8);p.drawLine(14,5,20,11);p.drawLine(17,8,14,5);p.setBrush(QColor("#364152"));p.drawEllipse(QRectF(3,16,7,5)); }
+    else if (kind == 2) { p.drawPolygon(QPolygonF(QVector<QPointF>{QPointF(4,14),QPointF(13,5),QPointF(20,12),QPointF(12,20),QPointF(9,20)})); p.drawLine(8,10,16,17); p.drawLine(11,20,21,20); }
+    else if (kind == 3) { p.drawRoundedRect(QRectF(7,9,12,12),4,4); p.drawLine(7,14,4,10); p.drawLine(9,10,9,4); p.drawLine(12,9,12,3); p.drawLine(15,10,15,4); p.drawLine(18,11,18,7); }
     else { p.drawEllipse(QPointF(12,10),3,3); p.drawLine(12,1,12,6); p.drawLine(12,14,12,22); p.drawLine(2,10,8,10); p.drawLine(16,10,22,10); p.drawLine(4,22,10,13); p.drawLine(20,22,14,13); }
     return QIcon(image);
 }
@@ -68,12 +69,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(swap,&QAction::triggered,this,[this]{qSwap(front_,back_);updateColors();}); updateColors();
     auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); addToolBar(Qt::LeftToolBarArea,toolBar);
     auto *group = new QActionGroup(this); group->setExclusive(true);
-    QStringList names{tr("Карандаш"),tr("Ластик"),tr("Перемещение холста"),tr("Точка схода")};
-    QStringList shortcuts{"B","E","H","P"};
-    for(int i=0;i<4;++i){
+    QStringList names{tr("Карандаш"),tr("Кисть"),tr("Ластик"),tr("Перемещение холста"),tr("Точка схода")};
+    QStringList shortcuts{"B","K","E","H","P"};
+    for(int i=0;i<5;++i){
         auto *action = new QAction(toolIcon(i),names[i],this); action->setObjectName(QString("tool%1").arg(i)); action->setCheckable(true); action->setShortcut(QKeySequence(shortcuts[i])); action->setToolTip(names[i]+" ("+shortcuts[i]+")"); group->addAction(action); toolBar->addAction(action); if(i==0)action->setChecked(true);
-        connect(action,&QAction::triggered,this,[this,i,names]{canvas_->setTool(Canvas::Tool(i));toolLabel_->setText(names[i]);if(i==3){perspectiveDock_->show();canvas_->setGridVisible(true);}canvas_->setFocus();});
-        if(i==3)perspectiveAction_=action;
+        connect(action,&QAction::triggered,this,[this,i,names]{canvas_->setTool(Canvas::Tool(i));toolLabel_->setText(names[i]);if(i==4){perspectiveDock_->show();canvas_->setGridVisible(true);}canvas_->setFocus();});
+        if(i==4)perspectiveAction_=action;
     }
     perspectiveDock_ = new QDockWidget(tr("Перспектива · прототип"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
     auto *panel = new QWidget; auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(14,14,14,14);
@@ -91,7 +92,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
-    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG и параметры перспективы.\nЭкспорт PNG сохраняет только рисунок."));});
+    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG и параметры перспективы.\nЭкспорт PNG сохраняет только рисунок."));});
     toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
     auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);

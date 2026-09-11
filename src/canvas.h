@@ -6,7 +6,7 @@
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Pencil, Eraser, Pan, Perspective };
+    enum Tool { Pencil, Brush, Eraser, Pan, Perspective };
     explicit Canvas(QWidget *parent = nullptr);
     const DrawingState &state() const { return state_; }
     QUndoStack *undoStack() { return &undo_; }
@@ -45,9 +45,13 @@ private:
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     int width_ = 3;
     double zoom_ = 1.0;
-    QPointF pan_, last_;
+    QPointF pan_, last_, paintAnchor_, hoverPoint_;
     bool dragging_ = false, panning_ = false, movingPoint_ = false, space_ = false;
+    bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
+    bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
     void stroke(QPointF a, QPointF b);
     void commit(const DrawingState &before, const QString &label);
     void finish();
+    bool isPaintTool() const;
+    QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
 };

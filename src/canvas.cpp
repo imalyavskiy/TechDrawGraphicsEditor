@@ -30,6 +30,8 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
 
 void Canvas::setDocument(const DrawingState &state, bool clean) {
     dragging_ = panning_ = movingPoint_ = false;
+    straightStroke_ = shiftPressed_ = controlPressed_ = false;
+    hasPaintAnchor_ = hasHoverPoint_ = false;
     state_ = state;
     undo_.clear();
     undo_.setUndoLimit(qBound(1, int(128000000 / qMax(qint64(1), qint64(state.image.sizeInBytes()))), 30));
@@ -41,7 +43,7 @@ void Canvas::setDocument(const DrawingState &state, bool clean) {
 
 void Canvas::apply(const DrawingState &state) { state_ = state; emit stateChanged(); update(); }
 void Canvas::commit(const DrawingState &before, const QString &label) { undo_.push(new StateCommand(this, before, state_, label)); }
-void Canvas::setTool(Tool tool) { finish(); tool_ = tool; setCursor(tool == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); }
+void Canvas::setTool(Tool tool) { finish(); if (tool_ != tool) hasPaintAnchor_ = false; tool_ = tool; setCursor(tool == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
 void Canvas::setGridVisible(bool visible) { if (state_.gridVisible == visible) return; auto before = state_; state_.gridVisible = visible; commit(before, tr("видимость перспективы")); }
 void Canvas::setRayCount(int count) { if (state_.rays == count) return; auto before = state_; state_.rays = count; commit(before, tr("число направляющих")); }
 void Canvas::setGridColor(QColor color) { if (!color.isValid() || state_.gridColor == color) return; auto before = state_; state_.gridColor = color; commit(before, tr("цвет направляющих")); }
@@ -87,16 +89,32 @@ void Canvas::paintEvent(QPaintEvent *) {
         p.setPen(QColor("#355274"));
         p.drawText(toView(state_.vanishing) + QPointF(11, -10), tr("Точка схода"));
     }
+    if (isPaintTool() && hasPaintAnchor_ && hasHoverPoint_ && shiftPressed_ && !dragging_) {
+        const QPointF endpoint=constrainedPoint(hoverPoint_,controlPressed_);
+        p.save();p.setClipRect(paper);p.setRenderHint(QPainter::Antialiasing);
+        QPen preview(QColor(40,52,68,170),1,Qt::DashLine);preview.setCosmetic(true);p.setPen(preview);
+        p.drawLine(toView(paintAnchor_),toView(endpoint));p.restore();
+    }
 }
 
 void Canvas::stroke(QPointF a, QPointF b) {
     QPainter p(&state_.image);
-    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::Antialiasing,tool_ != Pencil);
     QPen pen(tool_ == Eraser ? back_ : front_, width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     p.setPen(pen);
     if (a == b) { p.setPen(Qt::NoPen); p.setBrush(pen.color()); p.drawEllipse(a, width_/2.0, width_/2.0); }
     else p.drawLine(a, b);
     update();
+}
+bool Canvas::isPaintTool() const { return tool_ == Pencil || tool_ == Brush || tool_ == Eraser; }
+QPointF Canvas::constrainedPoint(QPointF point, bool constrainAngle) const {
+    if (!constrainAngle || !hasPaintAnchor_) return point;
+    const QPointF delta=point-paintAnchor_;
+    const double radius=std::hypot(delta.x(),delta.y());
+    if (radius == 0) return point;
+    constexpr double step=3.14159265358979323846/12.0;
+    const double angle=std::round(std::atan2(delta.y(),delta.x())/step)*step;
+    return paintAnchor_+QPointF(std::cos(angle)*radius,std::sin(angle)*radius);
 }
 void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton && e->button() != Qt::MiddleButton) return;
@@ -109,29 +127,45 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     }
     QPointF point = toImage(e->localPos());
     if (!QRectF(QPointF(), state_.image.size()).contains(point)) return;
-    before_ = state_; dragging_ = true; last_ = point; stroke(point, point);
+    before_ = state_; dragging_ = true;
+    const bool straight=(e->modifiers()&Qt::ShiftModifier)||shiftPressed_;
+    if (straight && hasPaintAnchor_) {
+        point=constrainedPoint(point,(e->modifiers()&Qt::ControlModifier)||controlPressed_);
+        straightStroke_=true;last_=point;stroke(paintAnchor_,point);
+    } else {
+        straightStroke_=false;last_=point;stroke(point,point);
+    }
 }
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
-    emit positionChanged(toImage(e->localPos()));
-    if (!dragging_) return;
+    hoverPoint_=toImage(e->localPos());hasHoverPoint_=QRectF(QPointF(),state_.image.size()).contains(hoverPoint_);
+    emit positionChanged(hoverPoint_);
+    if (!dragging_) { if (shiftPressed_ && hasPaintAnchor_) update(); return; }
     if (panning_) { pan_ += e->localPos() - last_; last_ = e->localPos(); update(); }
     else if (movingPoint_) { state_.vanishing = toImage(e->localPos()); update(); }
-    else { auto point = toImage(e->localPos()); stroke(last_, point); last_ = point; }
+    else if (!straightStroke_) { stroke(last_, hoverPoint_); last_ = hoverPoint_; }
 }
 void Canvas::finish() {
     if (!dragging_) return;
     if (!panning_ && (movingPoint_ ? state_.vanishing != before_.vanishing : state_.image != before_.image))
         commit(before_, movingPoint_ ? tr("точку схода") : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
+    if (!panning_ && !movingPoint_ && isPaintTool()) { paintAnchor_=last_;hasPaintAnchor_=true; }
     before_ = DrawingState();
-    dragging_ = panning_ = movingPoint_ = false;
+    dragging_ = panning_ = movingPoint_ = straightStroke_ = false;
     setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *) { finish(); }
 void Canvas::wheelEvent(QWheelEvent *e) { setZoom(zoom_*std::pow(1.15, e->angleDelta().y()/120.0), e->position()); e->accept(); }
 void Canvas::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) { space_ = true; setCursor(Qt::OpenHandCursor); e->accept(); }
+    else if (e->key() == Qt::Key_Shift) { shiftPressed_=true;update();e->accept(); }
+    else if (e->key() == Qt::Key_Control) { controlPressed_=true;update();e->accept(); }
     else if (e->key() == Qt::Key_Escape && dragging_) { if (!panning_) state_ = before_; dragging_ = panning_ = movingPoint_ = false; before_ = DrawingState(); update(); }
     else QWidget::keyPressEvent(e);
 }
-void Canvas::keyReleaseEvent(QKeyEvent *e) { if (e->key() == Qt::Key_Space) { space_ = false; setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); } else QWidget::keyReleaseEvent(e); }
-void Canvas::focusOutEvent(QFocusEvent *e) { finish(); space_ = false; QWidget::focusOutEvent(e); }
+void Canvas::keyReleaseEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Space) { space_ = false; setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); }
+    else if (e->key() == Qt::Key_Shift) { shiftPressed_=false;update(); }
+    else if (e->key() == Qt::Key_Control) { controlPressed_=false;update(); }
+    else QWidget::keyReleaseEvent(e);
+}
+void Canvas::focusOutEvent(QFocusEvent *e) { finish(); space_ = shiftPressed_ = controlPressed_ = false; update(); QWidget::focusOutEvent(e); }
