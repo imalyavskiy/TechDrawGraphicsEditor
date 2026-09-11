@@ -54,6 +54,7 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     initial.horizonY = 240;
     initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(650, 240), QStringLiteral("construction"), QStringLiteral("horizon")});
+    initial.vanishingPoints.last().name=tr("Точка схода 1");
     setDocument(initial);
 }
 
@@ -153,7 +154,7 @@ void Canvas::addVanishingPoint() {
     point.id=QStringLiteral("vp-")+QUuid::createUuid().toString(QUuid::WithoutBraces);
     point.position=QPointF(state_.image.width()/2.0,state_.image.height()/2.0);constexpr double placementStep=40.0;
     auto occupied=[this](QPointF candidate){for(const auto &existing:state_.vanishingPoints)if(QLineF(candidate,existing.position).length()<1.0)return true;return false;};while(occupied(point.position))point.position.rx()-=placementStep;
-    static const QColor colors[]{QColor("#628ed1"),QColor("#d06b4c"),QColor("#4b9b67"),QColor("#896ac1"),QColor("#c08a34")};point.color=colors[state_.vanishingPoints.size()%5];state_.vanishingPoints.append(point);selectedPointIndex_=state_.vanishingPoints.size()-1;
+    static const QColor colors[]{QColor("#628ed1"),QColor("#d06b4c"),QColor("#4b9b67"),QColor("#896ac1"),QColor("#c08a34")};point.color=colors[state_.vanishingPoints.size()%5];point.name=tr("Точка схода %1").arg(state_.vanishingPoints.size()+1);state_.vanishingPoints.append(point);selectedPointIndex_=state_.vanishingPoints.size()-1;
     commit(before,tr("добавление точки схода"));emit selectedPointChanged(selectedPointIndex_);emit stateChanged();update();
 }
 void Canvas::removeSelectedVanishingPoint() {
@@ -165,6 +166,10 @@ void Canvas::removeSelectedVanishingPoint() {
 void Canvas::setSelectedPointColor(QColor color) {
     if(!color.isValid()||selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||state_.vanishingPoints[selectedPointIndex_].color==color)return;
     state_.vanishingPoints[selectedPointIndex_].color=color;emit stateChanged();update();
+}
+void Canvas::setSelectedPointName(const QString &name) {
+    if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||name.size()>120||state_.vanishingPoints[selectedPointIndex_].name==name)return;
+    finish();DrawingState before=state_;state_.vanishingPoints[selectedPointIndex_].name=name;commit(before,tr("название точки схода"));emit stateChanged();update();
 }
 void Canvas::setSelectedPointVisible(bool visible) {
     if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||state_.vanishingPoints[selectedPointIndex_].visible==visible)return;

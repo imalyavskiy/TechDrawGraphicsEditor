@@ -21,6 +21,16 @@ QIcon actualSizeIcon() {
     p.drawText(image.rect(),Qt::AlignCenter,QStringLiteral("1:1"));
     return QIcon(image);
 }
+QIcon eyeIcon(bool open) {
+    QPixmap image(20,20);image.fill(Qt::transparent);QPainter painter(&image);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#364152"),1.7,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));
+    QPainterPath lid;lid.moveTo(2,10);lid.cubicTo(6,open?4:7,14,open?4:7,18,10);if(open){lid.cubicTo(14,16,6,16,2,10);painter.drawPath(lid);painter.setBrush(QColor("#364152"));painter.drawEllipse(QPointF(10,10),2.2,2.2);}else{painter.drawPath(lid);painter.drawLine(5,13,4,15);painter.drawLine(10,14,10,16);painter.drawLine(15,13,16,15);}
+    return QIcon(image);
+}
+QIcon lockIcon(bool locked) {
+    QPixmap image(20,20);image.fill(Qt::transparent);QPainter painter(&image);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#364152"),1.7,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));painter.setBrush(QColor("#edf0f4"));painter.drawRoundedRect(QRectF(4,9,12,9),2,2);painter.setBrush(Qt::NoBrush);
+    QPainterPath shackle;if(locked){shackle.moveTo(6.5,9);shackle.lineTo(6.5,7);shackle.cubicTo(6.5,2.5,13.5,2.5,13.5,7);shackle.lineTo(13.5,9);}else{shackle.moveTo(7,9);shackle.lineTo(7,7);shackle.cubicTo(7,2.5,14,2.5,14,7);shackle.lineTo(16,7);}painter.drawPath(shackle);painter.drawLine(10,12,10,15);
+    return QIcon(image);
+}
 void colorSwatch(QPushButton *button, QColor color) {
     QPixmap swatch(22,22); swatch.fill(color);
     QPainter p(&swatch); p.setPen(QColor("#8e949d")); p.drawRect(0,0,21,21);
@@ -82,7 +92,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     resize(1200,800); setMinimumSize(720,480);
     setWindowIcon(QIcon(":/app/techdraw.png"));
     setCentralWidget(canvas_);
-    setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } ");
+    setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } QWidget#vanishingPointCard { background: #f5f6f8; border: 1px solid #d5d8dd; border-radius: 4px; } QWidget#vanishingPointCard[selected=\"true\"] { background: #e4effd; border-color: #8aaedb; } QWidget#vanishingPointCard QLineEdit { border: 0; background: transparent; padding: 2px; } QListWidget#vanishingPointsListControl::item { background: transparent; border: 0; } ");
     auto *file = menuBar()->addMenu(tr("&Файл"));file->setObjectName("fileMenu");
     auto *edit = menuBar()->addMenu(tr("&Правка"));edit->setObjectName("editMenu");
     auto *view = menuBar()->addMenu(tr("&Вид"));view->setObjectName("viewMenu");
@@ -176,7 +186,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     verticalOpacity_=new QSpinBox;verticalOpacity_->setObjectName("verticalOpacity");verticalOpacity_->setRange(0,100);verticalOpacity_->setSuffix(" %");verticalOpacity_->setKeyboardTracking(false);verticalForm->addRow(tr("Непрозрачность"),verticalOpacity_);
     verticalWidth_=new QDoubleSpinBox;verticalWidth_->setObjectName("verticalWidth");verticalWidth_->setRange(0.1,20);verticalWidth_->setDecimals(1);verticalWidth_->setSingleStep(0.5);verticalWidth_->setSuffix(tr(" px"));verticalWidth_->setKeyboardTracking(false);verticalForm->addRow(tr("Ширина"),verticalWidth_);layout->addWidget(verticalGroup);layout->addWidget(commonGroup);
     auto *pointsListGroup = new QGroupBox(tr("Точки схода")); pointsListGroup->setObjectName("vanishingPointsList"); auto *pointsListLayout = new QVBoxLayout(pointsListGroup);
-    vanishingPointsList_=new QListWidget;vanishingPointsList_->setObjectName("vanishingPointsListControl");vanishingPointsList_->setSelectionMode(QAbstractItemView::SingleSelection);pointsListLayout->addWidget(vanishingPointsList_);
+    vanishingPointsList_=new QListWidget;vanishingPointsList_->setObjectName("vanishingPointsListControl");vanishingPointsList_->setSelectionMode(QAbstractItemView::SingleSelection);vanishingPointsList_->setSpacing(3);pointsListLayout->addWidget(vanishingPointsList_);
     auto *pointButtons=new QHBoxLayout;auto *addPointButton=new QPushButton(tr("Добавить"));addPointButton->setObjectName("addVanishingPoint");removePointButton_=new QPushButton(tr("Удалить"));removePointButton_->setObjectName("removeVanishingPoint");pointButtons->addWidget(addPointButton);pointButtons->addWidget(removePointButton_);pointsListLayout->addLayout(pointButtons);
     auto *pointGroup = new QGroupBox(tr("Свойства выбранной точки")); pointGroup->setObjectName("selectedVanishingPointSettings"); auto *pointForm = new QFormLayout(pointGroup);
     pointX_=new QDoubleSpinBox;pointX_->setObjectName("vanishingPointX");pointX_->setRange(-1000000,1000000);pointX_->setDecimals(2);pointX_->setKeyboardTracking(false);pointForm->addRow(tr("X"),pointX_);
@@ -272,6 +282,9 @@ void MainWindow::updateRecentFilesMenu(){
         connect(action,&QAction::triggered,this,[this,path]{openPath(path);});
     }
 }
+int MainWindow::vanishingPointIndex(const QString &id) const{
+    const auto &points=canvas_->state().vanishingPoints;for(int index=0;index<points.size();++index)if(points[index].id==id)return index;return -1;
+}
 void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
     setWindowTitle(name+"[*] — "+productName()); setWindowModified(!canvas_->undoStack()->isClean());
@@ -287,8 +300,30 @@ void MainWindow::updateState(){
     const auto &points=canvas_->state().vanishingPoints;
     bool rebuild=vanishingPointsList_->count()!=points.size();
     if(!rebuild)for(int row=0;row<points.size();++row)if(vanishingPointsList_->item(row)->data(Qt::UserRole).toString()!=points[row].id){rebuild=true;break;}
-    if(rebuild){vanishingPointsList_->clear();for(int row=0;row<points.size();++row){auto *item=new QListWidgetItem(tr("Точка схода %1").arg(row+1));item->setData(Qt::UserRole,points[row].id);vanishingPointsList_->addItem(item);}}
+    if(rebuild){
+        vanishingPointsList_->clear();
+        for(int row=0;row<points.size();++row){
+            const QString id=points[row].id;auto *item=new QListWidgetItem;item->setData(Qt::UserRole,id);vanishingPointsList_->addItem(item);
+            auto *card=new QWidget;card->setObjectName("vanishingPointCard");auto *cardLayout=new QHBoxLayout(card);cardLayout->setContentsMargins(7,3,4,3);cardLayout->setSpacing(4);
+            auto *number=new QLabel;number->setObjectName("vanishingPointNumber");number->setAlignment(Qt::AlignCenter);number->setMinimumWidth(22);cardLayout->addWidget(number);
+            auto *name=new QLineEdit;name->setObjectName("vanishingPointName");name->setMaxLength(120);name->setProperty("vanishingPointId",id);cardLayout->addWidget(name,1);
+            auto *visibility=new QToolButton;visibility->setObjectName("vanishingPointVisibility");visibility->setCheckable(true);visibility->setAutoRaise(true);visibility->setIconSize(QSize(20,20));visibility->setFixedSize(30,30);cardLayout->addWidget(visibility);
+            auto *lock=new QToolButton;lock->setObjectName("vanishingPointLock");lock->setCheckable(true);lock->setAutoRaise(true);lock->setIconSize(QSize(20,20));lock->setFixedSize(30,30);cardLayout->addWidget(lock);
+            item->setSizeHint(QSize(card->sizeHint().width(),36));vanishingPointsList_->setItemWidget(item,card);
+            connect(name,&QLineEdit::textEdited,this,[this,id](const QString &){const int index=vanishingPointIndex(id);if(index>=0){vanishingPointsList_->setCurrentRow(index);canvas_->selectPoint(index);}});
+            connect(name,&QLineEdit::editingFinished,this,[this,name,id]{const int index=vanishingPointIndex(id);if(index<0)return;vanishingPointsList_->setCurrentRow(index);canvas_->selectPoint(index);canvas_->setSelectedPointName(name->text());name->setModified(false);});
+            connect(visibility,&QToolButton::toggled,this,[this,id](bool visible){const int index=vanishingPointIndex(id);if(index<0)return;vanishingPointsList_->setCurrentRow(index);canvas_->selectPoint(index);QSettings().setValue(QString("perspective/points/%1/visible").arg(index),visible);canvas_->setSelectedPointVisible(visible);});
+            connect(lock,&QToolButton::toggled,this,[this,id](bool locked){const int index=vanishingPointIndex(id);if(index<0)return;vanishingPointsList_->setCurrentRow(index);canvas_->selectPoint(index);canvas_->setSelectedPointLocked(locked);});
+        }
+    }
     const int selected=canvas_->selectedPointIndex();vanishingPointsList_->setCurrentRow(selected);const bool hasPoint=selected>=0&&selected<points.size();
+    for(int row=0;row<points.size();++row){
+        auto *card=vanishingPointsList_->itemWidget(vanishingPointsList_->item(row));if(!card)continue;card->setProperty("selected",row==selected);card->style()->unpolish(card);card->style()->polish(card);
+        auto *number=card->findChild<QLabel*>("vanishingPointNumber");auto *name=card->findChild<QLineEdit*>("vanishingPointName");auto *visibility=card->findChild<QToolButton*>("vanishingPointVisibility");auto *lock=card->findChild<QToolButton*>("vanishingPointLock");if(number)number->setText(QString::number(row+1));
+        if(name&&!name->isModified()){QSignalBlocker blocker(name);name->setText(points[row].name);name->setPlaceholderText(tr("Точка схода %1").arg(row+1));}
+        if(visibility){QSignalBlocker blocker(visibility);visibility->setChecked(points[row].visible);visibility->setIcon(eyeIcon(points[row].visible));visibility->setToolTip(points[row].visible?tr("Скрыть семейство линий"):tr("Показать семейство линий"));}
+        if(lock){QSignalBlocker blocker(lock);lock->setChecked(points[row].locked);lock->setIcon(lockIcon(points[row].locked));lock->setToolTip(points[row].locked?tr("Снять фиксацию"):tr("Фиксировать"));}
+    }
     removePointButton_->setEnabled(hasPoint);selectedPointVisible_->setEnabled(hasPoint);selectedPointLocked_->setEnabled(hasPoint);gridColorButton_->setEnabled(hasPoint);pointX_->setEnabled(hasPoint);pointY_->setEnabled(hasPoint);pointUnits_->setEnabled(hasPoint);pointAttachment_->setEnabled(hasPoint);
     pointX_->setSuffix(coordinatePercent_?" %":tr(" px"));pointY_->setSuffix(coordinatePercent_?" %":tr(" px"));pointUnits_->setCurrentIndex(coordinatePercent_?0:1);
     if(hasPoint){pointX_->setValue(displayedX(points[selected].position.x()));pointY_->setValue(displayedY(points[selected].position.y()));const QString attachment=points[selected].attachmentType==QStringLiteral("construction")?points[selected].attachmentTargetId:QString();pointAttachment_->setCurrentIndex(attachment==QStringLiteral("horizon")?1:attachment==QStringLiteral("vertical")?2:0);selectedPointLocked_->setChecked(points[selected].locked);}
@@ -331,7 +366,7 @@ void MainWindow::newDocument(){
     QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     if(dialog.exec()!=QDialog::Accepted)return;
     if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
-    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.horizonY=h.value()/2.0;state.verticalX=w.value()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(w.value()/2.0,h.value()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});applySavedPerspectiveDefaults(&state);applySavedViewSettings(&state);applySavedPointAppearance(&state);
+    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.horizonY=h.value()/2.0;state.verticalX=w.value()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(w.value()/2.0,h.value()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});state.vanishingPoints.last().name=tr("Точка схода 1");applySavedPerspectiveDefaults(&state);applySavedViewSettings(&state);applySavedPointAppearance(&state);
     if(!confirmDiscard())return;
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
@@ -340,7 +375,7 @@ void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,t
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}for(auto &historyState:history.states){applySavedPerspectiveDefaults(&historyState);applySavedViewSettings(&historyState);applySavedPointAppearance(&historyState);}}
-    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.horizonY=state.image.height()/2.0;state.verticalX=state.image.width()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(state.image.width()/2.0,state.image.height()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});applySavedPerspectiveDefaults(&state);applySavedViewSettings(&state);applySavedPointAppearance(&state);}
+    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.horizonY=state.image.height()/2.0;state.verticalX=state.image.width()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(state.image.width()/2.0,state.image.height()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});state.vanishingPoints.last().name=tr("Точка схода 1");applySavedPerspectiveDefaults(&state);applySavedViewSettings(&state);applySavedPointAppearance(&state);}
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);

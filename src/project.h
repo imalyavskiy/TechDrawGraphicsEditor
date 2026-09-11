@@ -6,6 +6,9 @@
 #include <QVector>
 
 struct VanishingPoint {
+    VanishingPoint() = default;
+    VanishingPoint(const QString &pointId,QPointF pointPosition,const QString &type=QString(),const QString &targetId=QString())
+        : id(pointId),position(pointPosition),attachmentType(type),attachmentTargetId(targetId) {}
     QString id;
     QPointF position;
     QString attachmentType;
@@ -13,11 +16,12 @@ struct VanishingPoint {
     QColor color = QColor("#628ed1");
     bool visible = true;
     bool locked = false;
+    QString name;
 
     bool operator==(const VanishingPoint &other) const {
         return id == other.id && position == other.position &&
                attachmentType == other.attachmentType && attachmentTargetId == other.attachmentTargetId &&
-               color == other.color && visible == other.visible && locked == other.locked;
+               color == other.color && visible == other.visible && locked == other.locked && name == other.name;
     }
     bool operator!=(const VanishingPoint &other) const { return !(*this == other); }
 };
