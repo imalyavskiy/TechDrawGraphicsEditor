@@ -31,6 +31,7 @@ private:
     QAction *perspectiveAction_;
     QMenu *recentFilesMenu_;
     QStringList recentFiles_;
+    QVector<int> toolWidths_{3,3,3};
     void newDocument();
     void openDocument();
     bool saveDocument(bool saveAs = false);
@@ -38,6 +39,7 @@ private:
     bool confirmDiscard();
     void updateState();
     void updateColors();
+    void activateTool(Canvas::Tool tool,const QString &name);
     void addRecentFile(const QString &path);
     void updateRecentFilesMenu();
     void showError(const QString &error);

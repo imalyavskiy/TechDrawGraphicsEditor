@@ -43,6 +43,10 @@ void rememberDirectory(const QString &key,const QString &filePath) {
 QString suggestedFile(const QString &key,const QString &name) {
     return QDir(rememberedDirectory(key)).filePath(name);
 }
+QString widthSetting(int tool) {
+    static const QStringList keys{"tools/pencilWidth","tools/brushWidth","tools/eraserWidth"};
+    return keys[tool];
+}
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
@@ -75,13 +79,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *bar = addToolBar(tr("Файл и параметры")); bar->setObjectName("mainToolbar"); bar->setMovable(false); bar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     bar->addAction(newAction); bar->addAction(openAction); bar->addAction(saveAction); bar->addSeparator(); bar->addAction(undoAction); bar->addAction(redoAction); bar->addSeparator();
     bar->addWidget(new QLabel(tr(" Ширина "),bar));
-    strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(3); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);
-    connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setStrokeWidth);
+    QSettings widthSettings;for(int i=0;i<toolWidths_.size();++i)toolWidths_[i]=qBound(1,widthSettings.value(widthSetting(i),3).toInt(),200);
+    strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(toolWidths_[Canvas::Pencil]); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);canvas_->setStrokeWidth(strokeWidth_->value());
+    connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),this,[this](int value){const int tool=int(canvas_->tool());if(tool<=int(Canvas::Eraser)){toolWidths_[tool]=value;QSettings().setValue(widthSetting(tool),value);canvas_->setStrokeWidth(value);}});
     bar->addSeparator();
     frontButton_ = new QPushButton(bar); frontButton_->setToolTip(tr("Основной цвет (Front)")); frontButton_->setObjectName("frontColor"); frontButton_->setFixedWidth(34); bar->addWidget(frontButton_);
     auto *swap = new QAction(style()->standardIcon(QStyle::SP_BrowserReload),tr("Поменять цвета местами"),this); swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
     backButton_ = new QPushButton(bar); backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)")); backButton_->setObjectName("backColor"); backButton_->setFixedWidth(34); bar->addWidget(backButton_);
-    connect(frontButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Цвет карандаша — Front"));if(c.isValid()){front_=c;updateColors();}});
+    connect(frontButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Основной цвет — Front"));if(c.isValid()){front_=c;updateColors();}});
     connect(backButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(back_,this,tr("Цвет фона и ластика — Back"));if(c.isValid()){back_=c;updateColors();}});
     connect(swap,&QAction::triggered,this,[this]{qSwap(front_,back_);updateColors();}); updateColors();
     auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); addToolBar(Qt::LeftToolBarArea,toolBar);
@@ -90,7 +95,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     QStringList shortcuts{"B","K","E","H","P"};
     for(int i=0;i<5;++i){
         auto *action = new QAction(toolIcon(i),names[i],this); action->setObjectName(QString("tool%1").arg(i)); action->setCheckable(true); action->setShortcut(QKeySequence(shortcuts[i])); action->setToolTip(names[i]+" ("+shortcuts[i]+")"); group->addAction(action); toolBar->addAction(action); if(i==0)action->setChecked(true);
-        connect(action,&QAction::triggered,this,[this,i,names]{canvas_->setTool(Canvas::Tool(i));toolLabel_->setText(names[i]);if(i==4){perspectiveDock_->show();canvas_->setGridVisible(true);}canvas_->setFocus();});
+        connect(action,&QAction::triggered,this,[this,i,names]{activateTool(Canvas::Tool(i),names[i]);});
         if(i==4)perspectiveAction_=action;
     }
     perspectiveDock_ = new QDockWidget(tr("Перспектива · прототип"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
@@ -125,6 +130,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
 }
 
 void MainWindow::updateColors(){ colorSwatch(frontButton_,front_);colorSwatch(backButton_,back_);canvas_->setFront(front_);canvas_->setBack(back_); }
+void MainWindow::activateTool(Canvas::Tool tool,const QString &name){
+    canvas_->setTool(tool);toolLabel_->setText(name);
+    const bool paints=tool<=Canvas::Eraser;strokeWidth_->setEnabled(paints);
+    if(paints){QSignalBlocker block(strokeWidth_);strokeWidth_->setValue(toolWidths_[int(tool)]);canvas_->setStrokeWidth(toolWidths_[int(tool)]);}
+    if(tool==Canvas::Perspective){perspectiveDock_->show();canvas_->setGridVisible(true);}canvas_->setFocus();
+}
 void MainWindow::addRecentFile(const QString &path){
     const QString absolute=QFileInfo(path).absoluteFilePath();
     for(int i=recentFiles_.size()-1;i>=0;--i)if(QString::compare(recentFiles_[i],absolute,Qt::CaseInsensitive)==0)recentFiles_.removeAt(i);
