@@ -50,6 +50,7 @@ public:
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
+    void addVerticalVanishingPoint();
     void removeSelectedVanishingPoint();
     void setSelectedPointColor(QColor color);
     void setSelectedPointVisible(bool visible);
@@ -100,6 +101,7 @@ private:
     bool isPaintTool() const;
     QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
     void updateSymmetricPoint(int movedIndex);
+    QVector<int> attachedPointIndices(const QString &targetId) const;
     QRectF viewportRect() const;
     void drawRulers(QPainter &painter);
 };
