@@ -20,15 +20,22 @@ public:
     void setStrokeWidth(int width) { width_ = width; }
     void setGridVisible(bool visible);
     void setRayStep(double degrees);
+    void setRayAngleOffset(double degrees);
+    void setRayPattern(int pattern);
+    void setRayWidth(double width);
     void setRayGap(int gap);
     void setRayStartOpacity(int opacity);
     void setRayEndOpacity(int opacity);
     void setRayFadeLength(int length);
-    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength);
+    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength, int pattern = 0);
     void setHorizonColor(QColor color);
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
     void setHorizonY(double imageY);
+    void setHorizonVisible(bool visible);
+    void setAxesVisible(bool visible);
+    void setMarkersVisible(bool visible);
+    void setSymmetricPoints(bool enabled);
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
@@ -76,4 +83,5 @@ private:
     void finish();
     bool isPaintTool() const;
     QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
+    void updateSymmetricPoint(int movedIndex);
 };

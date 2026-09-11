@@ -79,7 +79,7 @@ bool validState(const DrawingState &state) {
     if(!Project::validSize(state.image.size())||state.image.isNull()||!std::isfinite(state.horizonY)||std::abs(state.horizonY)>1000000||state.vanishingPoints.size()>32)return false;
     QSet<QString> ids;for(const auto &point:state.vanishingPoints){if(point.id.isEmpty()||point.id.size()>80||ids.contains(point.id)||!std::isfinite(point.position.x())||!std::isfinite(point.position.y())||std::abs(point.position.x())>1000000||std::abs(point.position.y())>1000000||!point.color.isValid())return false;ids.insert(point.id);if(!point.attachmentType.isEmpty()&&(point.attachmentType!=QStringLiteral("construction")||point.attachmentTargetId!=QStringLiteral("horizon")))return false;}
     return
-        std::isfinite(state.rayStepDegrees)&&state.rayStepDegrees>=1&&state.rayStepDegrees<=30&&state.rayGap>=0&&state.rayGap<=200&&
+        std::isfinite(state.rayStepDegrees)&&state.rayStepDegrees>=1&&state.rayStepDegrees<=30&&std::isfinite(state.rayAngleOffset)&&state.rayAngleOffset>=-180&&state.rayAngleOffset<=180&&state.rayPattern>=0&&state.rayPattern<=3&&std::isfinite(state.rayWidth)&&state.rayWidth>=0.1&&state.rayWidth<=20&&state.rayGap>=0&&state.rayGap<=200&&
         state.rayStartOpacity>=0&&state.rayStartOpacity<=100&&state.rayEndOpacity>=0&&state.rayEndOpacity<=100&&
         state.rayFadeLength>=0&&state.rayFadeLength<=500&&state.horizonColor.isValid()&&state.horizonOpacity>=0&&state.horizonOpacity<=100&&
         std::isfinite(state.horizonWidth)&&state.horizonWidth>=0.1&&state.horizonWidth<=20;
