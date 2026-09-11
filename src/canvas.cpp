@@ -124,7 +124,7 @@ void Canvas::setHorizonVisible(bool visible){if(state_.horizonVisible==visible)r
 void Canvas::setAxesVisible(bool visible){if(state_.axesVisible==visible)return;state_.axesVisible=visible;emit stateChanged();update();}
 void Canvas::setMarkersVisible(bool visible){if(state_.markersVisible==visible)return;state_.markersVisible=visible;emit stateChanged();update();}
 void Canvas::setSymmetricPoints(bool enabled){if(state_.symmetricPoints==enabled)return;state_.symmetricPoints=enabled;emit stateChanged();update();}
-void Canvas::setCoordinatePercent(bool percent){if(coordinatePercent_==percent)return;coordinatePercent_=percent;update();}
+void Canvas::setRulerPercent(bool percent){if(rulerPercent_==percent)return;rulerPercent_=percent;update();}
 void Canvas::selectPoint(int index) {
     const int next=state_.vanishingPoints.isEmpty()?-1:qBound(0,index,state_.vanishingPoints.size()-1);
     if (selectedPointIndex_==next) return;
@@ -262,8 +262,8 @@ void Canvas::drawRulers(QPainter &p){
     p.fillRect(QRectF(0,0,width(),rulerSize),rulerBackground);p.fillRect(QRectF(0,height()-rulerSize,width(),rulerSize),rulerBackground);p.fillRect(QRectF(0,rulerSize,rulerSize,height()-2*rulerSize),rulerBackground);p.fillRect(QRectF(width()-rulerSize,rulerSize,rulerSize,height()-2*rulerSize),rulerBackground);
     p.setPen(QPen(border,1));p.drawRect(viewport);
     QFont font=p.font();font.setPixelSize(9);p.setFont(font);p.setPen(ink);
-    const double horizontalUnitPixels=coordinatePercent_?state_.image.width()/100.0:1.0;
-    const double verticalUnitPixels=coordinatePercent_?state_.image.height()/100.0:1.0;
+    const double horizontalUnitPixels=rulerPercent_?state_.image.width()/100.0:1.0;
+    const double verticalUnitPixels=rulerPercent_?state_.image.height()/100.0:1.0;
     const double horizontalStep=niceStep(72.0/(zoom_*horizontalUnitPixels));
     const double verticalStep=niceStep(54.0/(zoom_*verticalUnitPixels));
     const double leftValue=(toImage(viewport.topLeft()).x()-state_.image.width()/2.0)/horizontalUnitPixels;
@@ -280,7 +280,7 @@ void Canvas::drawRulers(QPainter &p){
     }
     if(!cursorInViewport_)return;
     QPen guide(QColor(49,83,130,170),1,Qt::DashLine);guide.setCosmetic(true);p.setPen(guide);p.drawLine(cursorView_,QPointF(cursorView_.x(),viewport.top()));p.drawLine(cursorView_,QPointF(cursorView_.x(),viewport.bottom()));p.drawLine(cursorView_,QPointF(viewport.left(),cursorView_.y()));p.drawLine(cursorView_,QPointF(viewport.right(),cursorView_.y()));
-    const QPointF image=toImage(cursorView_);const QString xLabel=coordinateLabel((image.x()-state_.image.width()/2.0)/horizontalUnitPixels)+(coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px"));const QString yLabel=coordinateLabel((state_.image.height()/2.0-image.y())/verticalUnitPixels)+(coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px"));
+    const QPointF image=toImage(cursorView_);const QString suffix=rulerPercent_?QStringLiteral("%"):QStringLiteral(" px");const QString xLabel=coordinateLabel((image.x()-state_.image.width()/2.0)/horizontalUnitPixels)+suffix;const QString yLabel=coordinateLabel((state_.image.height()/2.0-image.y())/verticalUnitPixels)+suffix;
     p.setPen(QColor("#23405f"));p.setBrush(QColor("#fff4b5"));const int xWidth=qMax(44,p.fontMetrics().horizontalAdvance(xLabel)+8),yWidth=qMax(44,p.fontMetrics().horizontalAdvance(yLabel)+8);
     QRectF topBox(cursorView_.x()-xWidth/2.0,2,xWidth,rulerSize-5),bottomBox(cursorView_.x()-xWidth/2.0,height()-rulerSize+3,xWidth,rulerSize-5);
     p.drawRect(topBox);p.drawRect(bottomBox);p.drawText(topBox,Qt::AlignCenter,xLabel);p.drawText(bottomBox,Qt::AlignCenter,xLabel);

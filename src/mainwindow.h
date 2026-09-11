@@ -36,7 +36,7 @@ private:
     QMenu *recentFilesMenu_;
     QStringList recentFiles_;
     QVector<int> toolWidths_{3,3,3};
-    bool coordinatePercent_ = true;
+    bool coordinatePercent_ = true, rulerPercent_ = false;
     void newDocument();
     void openDocument();
     bool saveDocument(bool saveAs = false);
@@ -48,6 +48,7 @@ private:
     void addRecentFile(const QString &path);
     void updateRecentFilesMenu();
     void showError(const QString &error);
+    void showSettings();
     double displayedX(double imageX) const;
     double displayedY(double imageY) const;
     double imageX(double displayed) const;

@@ -38,7 +38,8 @@ public:
     void setAxesVisible(bool visible);
     void setMarkersVisible(bool visible);
     void setSymmetricPoints(bool enabled);
-    void setCoordinatePercent(bool percent);
+    void setRulerPercent(bool percent);
+    bool rulerPercent() const { return rulerPercent_; }
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
@@ -82,7 +83,7 @@ private:
     bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
-    bool coordinatePercent_ = true, cursorInViewport_ = false;
+    bool rulerPercent_ = false, cursorInViewport_ = false;
     QPointF cursorView_;
     void stroke(QPointF a, QPointF b);
     void commit(const DrawingState &before, const QString &label);

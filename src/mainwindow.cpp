@@ -75,19 +75,20 @@ bool matchesPerspectiveDefaults(const DrawingState &state) {
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
     coordinatePercent_=QSettings().value("perspective/coordinatePercent",true).toBool();
-    canvas_->setCoordinatePercent(coordinatePercent_);
+    rulerPercent_=QSettings().value("view/rulers/percent",false).toBool();canvas_->setRulerPercent(rulerPercent_);
     DrawingState initialState=canvas_->state();applySavedPerspectiveDefaults(&initialState);applySavedViewSettings(&initialState);applySavedPointAppearance(&initialState);canvas_->setDocument(initialState,true);
     setObjectName("drawingWindow");
     resize(1200,800); setMinimumSize(720,480);
     setWindowIcon(QIcon(":/app/techdraw.png"));
     setCentralWidget(canvas_);
     setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } ");
-    auto *file = menuBar()->addMenu(tr("&Файл"));
-    auto *edit = menuBar()->addMenu(tr("&Правка"));
-    auto *view = menuBar()->addMenu(tr("&Вид"));
+    auto *file = menuBar()->addMenu(tr("&Файл"));file->setObjectName("fileMenu");
+    auto *edit = menuBar()->addMenu(tr("&Правка"));edit->setObjectName("editMenu");
+    auto *view = menuBar()->addMenu(tr("&Вид"));view->setObjectName("viewMenu");
+    auto *toolsMenu = menuBar()->addMenu(tr("&Инструменты"));toolsMenu->setObjectName("toolsMenu");
     auto *help = menuBar()->addMenu(tr("&Справка"));
     auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);newAction->setObjectName("newAction");
-    auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);
+    auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);openAction->setObjectName("openAction");
     recentFilesMenu_=file->addMenu(tr("Недавние файлы"));recentFilesMenu_->setObjectName("recentFilesMenu");
     recentFiles_=QSettings().value("files/recentFiles").toStringList();while(recentFiles_.size()>5)recentFiles_.removeLast();updateRecentFilesMenu();
     file->addSeparator();
@@ -96,8 +97,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     file->addSeparator();
     file->addAction(tr("Экспортировать PNG…"),this,&MainWindow::exportImage,QKeySequence("Ctrl+Shift+E"));
     file->addSeparator(); file->addAction(tr("Выход"),this,&QWidget::close,QKeySequence("Alt+F4"));
-    auto *undoAction = canvas_->undoStack()->createUndoAction(this,tr("Отменить")); undoAction->setShortcut(QKeySequence::Undo); undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack)); edit->addAction(undoAction);
-    auto *redoAction = canvas_->undoStack()->createRedoAction(this,tr("Повторить")); redoAction->setShortcuts({QKeySequence::Redo,QKeySequence("Ctrl+Shift+Z")}); redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward)); edit->addAction(redoAction);
+    auto *undoAction = canvas_->undoStack()->createUndoAction(this,tr("Отменить"));undoAction->setObjectName("undoAction");undoAction->setShortcut(QKeySequence::Undo); undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack)); edit->addAction(undoAction);
+    auto *redoAction = canvas_->undoStack()->createRedoAction(this,tr("Повторить"));redoAction->setObjectName("redoAction");redoAction->setShortcuts({QKeySequence::Redo,QKeySequence("Ctrl+Shift+Z")}); redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward)); edit->addAction(redoAction);
+    edit->addSeparator();auto *settingsAction=edit->addAction(tr("Настройки…"),this,&MainWindow::showSettings);settingsAction->setObjectName("settingsAction");
     newAction->setToolTip(tr("Создать (Ctrl+N)"));
     openAction->setToolTip(tr("Открыть (Ctrl+O)"));
     saveAction->setToolTip(tr("Сохранить проект (Ctrl+S)"));
@@ -109,22 +111,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     QSettings widthSettings;for(int i=0;i<toolWidths_.size();++i)toolWidths_[i]=qBound(1,widthSettings.value(widthSetting(i),3).toInt(),200);
     strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(toolWidths_[Canvas::Pencil]); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);canvas_->setStrokeWidth(strokeWidth_->value());
     connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),this,[this](int value){const int tool=int(canvas_->tool());if(tool<=int(Canvas::Eraser)){toolWidths_[tool]=value;QSettings().setValue(widthSetting(tool),value);canvas_->setStrokeWidth(value);}});
+    auto *strokeWidthAction=new QAction(tr("Толщина штриха…"),this);strokeWidthAction->setObjectName("strokeWidthAction");connect(strokeWidthAction,&QAction::triggered,this,[this]{if(canvas_->tool()>Canvas::Eraser){statusBar()->showMessage(tr("Сначала выберите карандаш, кисть или ластик"),3000);return;}bool ok=false;const int value=QInputDialog::getInt(this,tr("Толщина штриха"),tr("Толщина в пикселях"),strokeWidth_->value(),1,200,1,&ok);if(ok)strokeWidth_->setValue(value);});
     bar->addSeparator();
     frontButton_ = new QPushButton(bar); frontButton_->setToolTip(tr("Основной цвет (Front)")); frontButton_->setObjectName("frontColor"); frontButton_->setFixedWidth(34); bar->addWidget(frontButton_);
-    auto *swap = new QAction(style()->standardIcon(QStyle::SP_BrowserReload),tr("Поменять цвета местами"),this); swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
+    auto *frontColorAction=new QAction(tr("Основной цвет (Front)…"),this);frontColorAction->setObjectName("frontColorAction");
+    auto *backColorAction=new QAction(tr("Фоновый цвет (Back)…"),this);backColorAction->setObjectName("backColorAction");
+    auto *swap = new QAction(style()->standardIcon(QStyle::SP_BrowserReload),tr("Поменять цвета местами"),this); swap->setObjectName("swapColorsAction");swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
     backButton_ = new QPushButton(bar); backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)")); backButton_->setObjectName("backColor"); backButton_->setFixedWidth(34); bar->addWidget(backButton_);
-    connect(frontButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Основной цвет — Front"));if(c.isValid()){front_=c;updateColors();}});
-    connect(backButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(back_,this,tr("Цвет фона и ластика — Back"));if(c.isValid()){back_=c;updateColors();}});
+    connect(frontColorAction,&QAction::triggered,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Основной цвет — Front"));if(c.isValid()){front_=c;updateColors();}});
+    connect(backColorAction,&QAction::triggered,this,[this]{auto c=QColorDialog::getColor(back_,this,tr("Цвет фона и ластика — Back"));if(c.isValid()){back_=c;updateColors();}});
+    connect(frontButton_,&QPushButton::clicked,frontColorAction,&QAction::trigger);
+    connect(backButton_,&QPushButton::clicked,backColorAction,&QAction::trigger);
     connect(swap,&QAction::triggered,this,[this]{qSwap(front_,back_);updateColors();}); updateColors();
     auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); addToolBar(Qt::LeftToolBarArea,toolBar);
     auto *group = new QActionGroup(this); group->setExclusive(true);
     QStringList names{tr("Карандаш"),tr("Кисть"),tr("Ластик"),tr("Перемещение холста"),tr("Точка схода")};
     QStringList shortcuts{"B","K","E","H","P"};
     for(int i=0;i<5;++i){
-        auto *action = new QAction(toolIcon(i),names[i],this); action->setObjectName(QString("tool%1").arg(i)); action->setCheckable(true); action->setShortcut(QKeySequence(shortcuts[i])); action->setToolTip(names[i]+" ("+shortcuts[i]+")"); group->addAction(action); toolBar->addAction(action); if(i==0)action->setChecked(true);
+        auto *action = new QAction(toolIcon(i),names[i],this); action->setObjectName(QString("tool%1").arg(i)); action->setCheckable(true); action->setShortcut(QKeySequence(shortcuts[i])); action->setToolTip(names[i]+" ("+shortcuts[i]+")"); group->addAction(action); toolBar->addAction(action);toolsMenu->addAction(action);if(i==0)action->setChecked(true);
         connect(action,&QAction::triggered,this,[this,i,names]{activateTool(Canvas::Tool(i),names[i]);});
         if(i==4)perspectiveAction_=action;
     }
+    toolsMenu->addSeparator();toolsMenu->addAction(strokeWidthAction);toolsMenu->addSeparator();toolsMenu->addAction(frontColorAction);toolsMenu->addAction(backColorAction);toolsMenu->addAction(swap);
     perspectiveDock_ = new QDockWidget(tr("Перспектива · прототип"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
     auto *panel = new QWidget; auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(14,14,14,14);
     gridVisible_ = new QCheckBox(tr("Показать направляющие")); gridVisible_->setObjectName("gridVisible"); layout->addWidget(gridVisible_);
@@ -160,7 +168,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     selectedPointVisible_=new QCheckBox(tr("Показывать семейство линий"));selectedPointVisible_->setObjectName("selectedPointVisible");pointForm->addRow(selectedPointVisible_);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_);pointsListLayout->addWidget(pointGroup);layout->addWidget(pointsListGroup);
     auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch();auto *panelScroll=new QScrollArea;panelScroll->setObjectName("perspectiveScroll");panelScroll->setWidgetResizable(true);panelScroll->setFrameShape(QFrame::NoFrame);panelScroll->setWidget(panel);perspectiveDock_->setWidget(panelScroll); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
-    view->addAction(perspectiveDock_->toggleViewAction());
+    auto *mainToolbarToggle=bar->toggleViewAction();mainToolbarToggle->setObjectName("mainToolbarToggle");mainToolbarToggle->setText(tr("Панель команд"));view->addAction(mainToolbarToggle);
+    auto *toolsToolbarToggle=toolBar->toggleViewAction();toolsToolbarToggle->setObjectName("toolsToolbarToggle");toolsToolbarToggle->setText(tr("Панель инструментов"));view->addAction(toolsToolbarToggle);
+    auto *perspectivePanelToggle=perspectiveDock_->toggleViewAction();perspectivePanelToggle->setObjectName("perspectivePanelToggle");perspectivePanelToggle->setText(tr("Панель перспективы"));view->addAction(perspectivePanelToggle);view->addSeparator();
     connect(gridVisible_,&QCheckBox::toggled,canvas_,&Canvas::setGridVisible);
     connect(axesVisible_,&QCheckBox::toggled,this,[this](bool value){QSettings().setValue("perspective/view/axesVisible",value);canvas_->setAxesVisible(value);});
     connect(markersVisible_,&QCheckBox::toggled,this,[this](bool value){QSettings().setValue("perspective/view/markersVisible",value);canvas_->setMarkersVisible(value);});
@@ -196,14 +206,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
     help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("TechDraw — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точки схода и горизонта.\nЭкспорт PNG сохраняет только рисунок."));});
-    toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
+    toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setObjectName("canvasPosition");positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
     auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
     auto *actualButton = new QToolButton; actualButton->setObjectName("actualSizeButton");actualButton->setToolButtonStyle(Qt::ToolButtonIconOnly);actualButton->setDefaultAction(actualAction); statusBar()->addPermanentWidget(actualButton);
     zoom_ = new QDoubleSpinBox; zoom_->setObjectName("zoomPercent"); zoom_->setRange(5,1600); zoom_->setDecimals(0); zoom_->setSuffix(" %"); zoom_->setKeyboardTracking(false); statusBar()->addPermanentWidget(zoom_);
     connect(zoom_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){canvas_->setZoom(value/100.0);});
     connect(canvas_,&Canvas::viewChanged,this,[this]{QSignalBlocker block(zoom_);zoom_->setValue(canvas_->zoom()*100);});
-    connect(canvas_,&Canvas::positionChanged,this,[this](QPointF p){const QString suffix=coordinatePercent_?QStringLiteral("%"):QStringLiteral(" px");positionLabel_->setText(QString("X: %1%3   Y: %2%3").arg(displayedX(p.x()),0,'f',coordinatePercent_?1:0).arg(displayedY(p.y()),0,'f',coordinatePercent_?1:0).arg(suffix));});
+    connect(canvas_,&Canvas::positionChanged,this,[this](QPointF p){const double xPixels=p.x()-canvas_->state().image.width()/2.0,yPixels=canvas_->state().image.height()/2.0-p.y();const double x=rulerPercent_?xPixels*100.0/canvas_->state().image.width():xPixels,y=rulerPercent_?yPixels*100.0/canvas_->state().image.height():yPixels;const QString suffix=rulerPercent_?QStringLiteral("%"):QStringLiteral(" px");positionLabel_->setText(QString("X: %1%3   Y: %2%3").arg(x,0,'f',rulerPercent_?1:0).arg(y,0,'f',rulerPercent_?1:0).arg(suffix));});
     connect(canvas_,&Canvas::stateChanged,this,&MainWindow::updateState);
     connect(canvas_->undoStack(),&QUndoStack::cleanChanged,this,&MainWindow::updateState);
     updateState();
@@ -257,7 +267,17 @@ double MainWindow::displayedX(double imageCoordinate) const {const double pixels
 double MainWindow::displayedY(double imageCoordinate) const {const double pixels=canvas_->state().image.height()/2.0-imageCoordinate;return coordinatePercent_?pixels*100.0/canvas_->state().image.height():pixels;}
 double MainWindow::imageX(double displayed) const {return canvas_->state().image.width()/2.0+(coordinatePercent_?displayed*canvas_->state().image.width()/100.0:displayed);}
 double MainWindow::imageY(double displayed) const {return canvas_->state().image.height()/2.0-(coordinatePercent_?displayed*canvas_->state().image.height()/100.0:displayed);}
-void MainWindow::setCoordinateUnits(bool percent){canvas_->setCoordinatePercent(percent);if(coordinatePercent_==percent){updateState();return;}coordinatePercent_=percent;QSettings().setValue("perspective/coordinatePercent",percent);updateState();}
+void MainWindow::setCoordinateUnits(bool percent){if(coordinatePercent_==percent){updateState();return;}coordinatePercent_=percent;QSettings().setValue("perspective/coordinatePercent",percent);updateState();}
+void MainWindow::showSettings(){
+    QDialog dialog(this);dialog.setObjectName("settingsDialog");dialog.setWindowTitle(tr("Настройки TechDraw"));dialog.resize(460,300);
+    auto *dialogLayout=new QVBoxLayout(&dialog);auto *tabs=new QTabWidget;tabs->setObjectName("settingsTabs");dialogLayout->addWidget(tabs);
+    auto *viewPage=new QWidget;auto *viewForm=new QFormLayout(viewPage);auto *rulerUnits=new QComboBox;rulerUnits->setObjectName("rulerUnits");rulerUnits->addItems({tr("Пиксели"),tr("Проценты")});rulerUnits->setCurrentIndex(rulerPercent_?1:0);viewForm->addRow(tr("Единицы линеек"),rulerUnits);viewForm->addRow(new QLabel(tr("Единицы числовых координат точек схода и горизонта выбираются отдельно в панели перспективы.")));tabs->addTab(viewPage,tr("Вид"));
+    auto *systemPage=new QWidget;auto *systemLayout=new QVBoxLayout(systemPage);auto *systemHint=new QLabel(tr("Системные параметры будут добавляться по мере необходимости."));systemHint->setWordWrap(true);systemLayout->addWidget(systemHint);systemLayout->addStretch();tabs->addTab(systemPage,tr("Система"));
+    auto *filesPage=new QWidget;auto *filesLayout=new QVBoxLayout(filesPage);auto *filesHint=new QLabel(tr("Параметры файлов и списка недавних документов будут добавлены в следующих задачах."));filesHint->setWordWrap(true);filesLayout->addWidget(filesHint);filesLayout->addStretch();tabs->addTab(filesPage,tr("Файлы"));
+    auto *buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);dialogLayout->addWidget(buttons);connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+    if(dialog.exec()!=QDialog::Accepted)return;
+    rulerPercent_=rulerUnits->currentIndex()==1;QSettings().setValue("view/rulers/percent",rulerPercent_);canvas_->setRulerPercent(rulerPercent_);positionLabel_->clear();
+}
 void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("TechDraw"),error); }
 bool MainWindow::confirmDiscard(){
     if(canvas_->undoStack()->isClean())return true;
