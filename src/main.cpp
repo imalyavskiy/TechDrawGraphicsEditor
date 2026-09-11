@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
     QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     QApplication app(argc,argv);
-    app.setOrganizationName("TechDraw");app.setApplicationName("TechDraw");app.setApplicationDisplayName("TechDraw");migrateLegacySettings();
+    app.setOrganizationName("TechDraw");app.setApplicationName("TechDraw");app.setApplicationDisplayName(QStringLiteral("Технический рисунок / Technical Draw"));migrateLegacySettings();
     app.setWindowIcon(QIcon(":/app/techdraw.png"));
     QFont font("Segoe UI",9);app.setFont(font);
     const auto args=app.arguments();

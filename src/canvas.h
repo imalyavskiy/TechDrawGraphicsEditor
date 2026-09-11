@@ -3,6 +3,8 @@
 #include <QWidget>
 #include <QUndoStack>
 
+class QPainter;
+
 class Canvas : public QWidget {
     Q_OBJECT
 public:
@@ -20,15 +22,34 @@ public:
     void setStrokeWidth(int width) { width_ = width; }
     void setGridVisible(bool visible);
     void setRayStep(double degrees);
-    void setGridColor(QColor color);
+    void setRayAngleOffset(double degrees);
+    void setRayPattern(int pattern);
+    void setRayWidth(double width);
     void setRayGap(int gap);
     void setRayStartOpacity(int opacity);
     void setRayEndOpacity(int opacity);
     void setRayFadeLength(int length);
-    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength);
+    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength, int pattern = 0);
     void setHorizonColor(QColor color);
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
+    void setHorizonY(double imageY);
+    void setHorizonLocked(bool locked);
+    void setHorizonVisible(bool visible);
+    void setAxesVisible(bool visible);
+    void setMarkersVisible(bool visible);
+    void setSymmetricPoints(bool enabled);
+    void setRulerPercent(bool percent);
+    bool rulerPercent() const { return rulerPercent_; }
+    int selectedPointIndex() const { return selectedPointIndex_; }
+    void selectPoint(int index);
+    void addVanishingPoint();
+    void removeSelectedVanishingPoint();
+    void setSelectedPointColor(QColor color);
+    void setSelectedPointVisible(bool visible);
+    void setSelectedPointPosition(QPointF position);
+    void setSelectedPointAttachedToHorizon(bool attached);
+    void setSelectedPointLocked(bool locked);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();
@@ -39,6 +60,7 @@ signals:
     void stateChanged();
     void viewChanged();
     void positionChanged(QPointF position);
+    void selectedPointChanged(int index);
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
@@ -48,6 +70,7 @@ protected:
     void keyPressEvent(QKeyEvent *) override;
     void keyReleaseEvent(QKeyEvent *) override;
     void focusOutEvent(QFocusEvent *) override;
+    void leaveEvent(QEvent *) override;
 private:
     DrawingState state_, before_;
     QUndoStack undo_;
@@ -57,12 +80,19 @@ private:
     double zoom_ = 1.0;
     QPointF pan_, last_, paintAnchor_, hoverPoint_;
     bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, space_ = false;
+    int selectedPointIndex_ = 0;
+    int movingPointIndex_ = -1;
     bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
+    bool rulerPercent_ = false, cursorInViewport_ = false;
+    QPointF cursorView_;
     void stroke(QPointF a, QPointF b);
     void commit(const DrawingState &before, const QString &label);
     void finish();
     bool isPaintTool() const;
     QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
+    void updateSymmetricPoint(int movedIndex);
+    QRectF viewportRect() const;
+    void drawRulers(QPainter &painter);
 };
