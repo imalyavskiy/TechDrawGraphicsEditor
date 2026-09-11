@@ -20,6 +20,12 @@ int runSelfTests(const QString &outputDirectory){
         QTimer watchdog;watchdog.setSingleShot(true);watchdog.setInterval(12000);QObject::connect(&watchdog,&QTimer::timeout,[]{QFile trace(tracePath);trace.open(QIODevice::Append);trace.write("TIMEOUT\n");for(auto *widget:QApplication::topLevelWidgets()){trace.write(widget->metaObject()->className());trace.write(" ");trace.write(widget->windowTitle().toUtf8());trace.write("\n");}trace.close();std::exit(2);});watchdog.start();
         MainWindow window;window.show();QApplication::processEvents();
         Canvas *canvas=window.canvas();
+        auto *mainToolbar=window.findChild<QToolBar*>("mainToolbar");auto *toolsToolbar=window.findChild<QToolBar*>("toolsToolbar");
+        require(mainToolbar&&toolsToolbar&&mainToolbar->toolButtonStyle()==Qt::ToolButtonIconOnly&&toolsToolbar->toolButtonStyle()==Qt::ToolButtonIconOnly,"toolbars must show icons only");
+        auto *frontButton=window.findChild<QPushButton*>("frontColor");auto *backButton=window.findChild<QPushButton*>("backColor");
+        require(frontButton&&backButton&&frontButton->text().isEmpty()&&backButton->text().isEmpty()&&!frontButton->toolTip().isEmpty()&&!backButton->toolTip().isEmpty(),"color buttons must use tooltips instead of labels");
+        auto *fitButton=window.findChild<QToolButton*>("fitButton");auto *actualButton=window.findChild<QToolButton*>("actualSizeButton");
+        require(fitButton&&actualButton&&fitButton->toolButtonStyle()==Qt::ToolButtonIconOnly&&actualButton->toolButtonStyle()==Qt::ToolButtonIconOnly&&!fitButton->toolTip().isEmpty()&&!actualButton->toolTip().isEmpty(),"status buttons must show icons and tooltips");
         DrawingState initial;initial.image=QImage(1000,620,QImage::Format_ARGB32_Premultiplied);initial.image.fill(Qt::white);initial.vanishing=QPointF(650,240);
         canvas->setDocument(initial);canvas->fit();
         require(canvas->undoStack()->isClean(),"initial document must be clean");

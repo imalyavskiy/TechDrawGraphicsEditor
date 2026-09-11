@@ -12,6 +12,13 @@ QIcon toolIcon(int kind) {
     else { p.drawEllipse(QPointF(12,10),3,3); p.drawLine(12,1,12,6); p.drawLine(12,14,12,22); p.drawLine(2,10,8,10); p.drawLine(16,10,22,10); p.drawLine(4,22,10,13); p.drawLine(20,22,14,13); }
     return QIcon(image);
 }
+QIcon actualSizeIcon() {
+    QPixmap image(28,20); image.fill(Qt::transparent);
+    QPainter p(&image); p.setPen(QColor("#364152"));
+    QFont font=p.font();font.setBold(true);font.setPixelSize(11);p.setFont(font);
+    p.drawText(image.rect(),Qt::AlignCenter,QStringLiteral("1:1"));
+    return QIcon(image);
+}
 void colorSwatch(QPushButton *button, QColor color) {
     QPixmap swatch(22,22); swatch.fill(color);
     QPainter p(&swatch); p.setPen(QColor("#8e949d")); p.drawRect(0,0,21,21);
@@ -42,19 +49,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     file->addSeparator(); file->addAction(tr("Выход"),this,&QWidget::close,QKeySequence("Alt+F4"));
     auto *undoAction = canvas_->undoStack()->createUndoAction(this,tr("Отменить")); undoAction->setShortcut(QKeySequence::Undo); undoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowBack)); edit->addAction(undoAction);
     auto *redoAction = canvas_->undoStack()->createRedoAction(this,tr("Повторить")); redoAction->setShortcuts({QKeySequence::Redo,QKeySequence("Ctrl+Shift+Z")}); redoAction->setIcon(style()->standardIcon(QStyle::SP_ArrowForward)); edit->addAction(redoAction);
-    auto *bar = addToolBar(tr("Файл и параметры")); bar->setObjectName("mainToolbar"); bar->setMovable(false); bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    newAction->setToolTip(tr("Создать (Ctrl+N)"));
+    openAction->setToolTip(tr("Открыть (Ctrl+O)"));
+    saveAction->setToolTip(tr("Сохранить проект (Ctrl+S)"));
+    undoAction->setToolTip(tr("Отменить (Ctrl+Z)"));
+    redoAction->setToolTip(tr("Повторить (Ctrl+Y)"));
+    auto *bar = addToolBar(tr("Файл и параметры")); bar->setObjectName("mainToolbar"); bar->setMovable(false); bar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     bar->addAction(newAction); bar->addAction(openAction); bar->addAction(saveAction); bar->addSeparator(); bar->addAction(undoAction); bar->addAction(redoAction); bar->addSeparator();
     bar->addWidget(new QLabel(tr(" Ширина "),bar));
     strokeWidth_ = new QSpinBox(bar); strokeWidth_->setObjectName("strokeWidth"); strokeWidth_->setRange(1,200); strokeWidth_->setValue(3); strokeWidth_->setSuffix(tr(" px")); strokeWidth_->setKeyboardTracking(false); bar->addWidget(strokeWidth_);
     connect(strokeWidth_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setStrokeWidth);
     bar->addSeparator();
-    frontButton_ = new QPushButton("Front",bar); frontButton_->setToolTip(tr("Цвет карандаша")); frontButton_->setObjectName("frontColor"); bar->addWidget(frontButton_);
-    auto *swap = new QAction(tr("⇄"),this); swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
-    backButton_ = new QPushButton("Back",bar); backButton_->setToolTip(tr("Цвет фона и ластика")); backButton_->setObjectName("backColor"); bar->addWidget(backButton_);
+    frontButton_ = new QPushButton(bar); frontButton_->setToolTip(tr("Основной цвет (Front)")); frontButton_->setObjectName("frontColor"); frontButton_->setFixedWidth(34); bar->addWidget(frontButton_);
+    auto *swap = new QAction(style()->standardIcon(QStyle::SP_BrowserReload),tr("Поменять цвета местами"),this); swap->setToolTip(tr("Поменять цвета местами (X)")); swap->setShortcut(QKeySequence("X")); bar->addAction(swap);
+    backButton_ = new QPushButton(bar); backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)")); backButton_->setObjectName("backColor"); backButton_->setFixedWidth(34); bar->addWidget(backButton_);
     connect(frontButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(front_,this,tr("Цвет карандаша — Front"));if(c.isValid()){front_=c;updateColors();}});
     connect(backButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(back_,this,tr("Цвет фона и ластика — Back"));if(c.isValid()){back_=c;updateColors();}});
     connect(swap,&QAction::triggered,this,[this]{qSwap(front_,back_);updateColors();}); updateColors();
-    auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); addToolBar(Qt::LeftToolBarArea,toolBar);
+    auto *toolBar = new QToolBar(tr("Инструменты"),this); toolBar->setObjectName("toolsToolbar"); toolBar->setMovable(false); toolBar->setIconSize(QSize(24,24)); toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly); addToolBar(Qt::LeftToolBarArea,toolBar);
     auto *group = new QActionGroup(this); group->setExclusive(true);
     QStringList names{tr("Карандаш"),tr("Ластик"),tr("Перемещение холста"),tr("Точка схода")};
     QStringList shortcuts{"B","E","H","P"};
@@ -75,15 +87,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(gridVisible_,&QCheckBox::toggled,canvas_,&Canvas::setGridVisible);
     connect(rays_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayCount);
     connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
-    auto *fitAction = view->addAction(tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));
-    auto *actualAction = view->addAction(tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));
+    auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
+    auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
     help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG и параметры перспективы.\nЭкспорт PNG сохраняет только рисунок."));});
     toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
-    auto *fitButton = new QToolButton; fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
-    auto *actualButton = new QToolButton; actualButton->setDefaultAction(actualAction); statusBar()->addPermanentWidget(actualButton);
+    auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
+    auto *actualButton = new QToolButton; actualButton->setObjectName("actualSizeButton");actualButton->setToolButtonStyle(Qt::ToolButtonIconOnly);actualButton->setDefaultAction(actualAction); statusBar()->addPermanentWidget(actualButton);
     zoom_ = new QDoubleSpinBox; zoom_->setObjectName("zoomPercent"); zoom_->setRange(5,1600); zoom_->setDecimals(0); zoom_->setSuffix(" %"); zoom_->setKeyboardTracking(false); statusBar()->addPermanentWidget(zoom_);
     connect(zoom_,qOverload<double>(&QDoubleSpinBox::valueChanged),this,[this](double value){canvas_->setZoom(value/100.0);});
     connect(canvas_,&Canvas::viewChanged,this,[this]{QSignalBlocker block(zoom_);zoom_->setValue(canvas_->zoom()*100);});
