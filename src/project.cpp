@@ -30,8 +30,9 @@ bool decode(QIODevice *device, QImage *image, QString *error) {
     return true;
 }
 QJsonObject perspectiveJson(const DrawingState &state) {
-    return QJsonObject{{"visible",state.gridVisible},{"x",state.vanishing.x()},{"y",state.vanishing.y()},
-        {"rays",state.rays},{"color",state.gridColor.name(QColor::HexArgb)}};
+    return QJsonObject{{"visible",state.gridVisible},{"x",state.vanishing.x()},{"y",state.vanishing.y()},{"horizonY",state.horizonY},
+        {"rayStepDegrees",state.rayStepDegrees},{"color",state.gridColor.name(QColor::HexArgb)},{"rayGap",state.rayGap},
+        {"rayStartOpacity",state.rayStartOpacity},{"rayEndOpacity",state.rayEndOpacity},{"rayFadeLength",state.rayFadeLength}};
 }
 bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error) {
     if (!value.isObject()) return fail(error,QStringLiteral("Отсутствуют параметры перспективы."));
@@ -39,20 +40,37 @@ bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error
     if (!perspective.value("x").isDouble()||!perspective.value("y").isDouble()||!perspective.value("visible").isBool())
         return fail(error,QStringLiteral("Некорректные параметры перспективы."));
     const double x=perspective.value("x").toDouble(),y=perspective.value("y").toDouble();
-    const double rays=perspective.value("rays").toDouble(-1);
+    const double horizonY=perspective.value("horizonY").toDouble(y);
+    double rayStepDegrees=perspective.value("rayStepDegrees").toDouble(-1);
+    if (rayStepDegrees<0) {
+        const double legacyRays=perspective.value("rays").toDouble(-1);
+        if (legacyRays>=4&&legacyRays<=64&&legacyRays==std::floor(legacyRays)) rayStepDegrees=360.0/legacyRays;
+    }
+    const double rayGap=perspective.value("rayGap").toDouble(12);
+    const double rayStartOpacity=perspective.value("rayStartOpacity").toDouble(10);
+    const double rayEndOpacity=perspective.value("rayEndOpacity").toDouble(70);
+    const double rayFadeLength=perspective.value("rayFadeLength").toDouble(50);
     const QColor color(perspective.value("color").toString());
-    if (!std::isfinite(x)||!std::isfinite(y)||std::abs(x)>1000000||std::abs(y)>1000000||rays<4||rays>64||rays!=std::floor(rays)||!color.isValid())
+    if (!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(horizonY)||std::abs(x)>1000000||std::abs(y)>1000000||std::abs(horizonY)>1000000||
+        !std::isfinite(rayStepDegrees)||rayStepDegrees<1||rayStepDegrees>30||rayGap<0||rayGap>200||rayGap!=std::floor(rayGap)||
+        rayStartOpacity<0||rayStartOpacity>100||rayStartOpacity!=std::floor(rayStartOpacity)||
+        rayEndOpacity<0||rayEndOpacity>100||rayEndOpacity!=std::floor(rayEndOpacity)||
+        rayFadeLength<0||rayFadeLength>500||rayFadeLength!=std::floor(rayFadeLength)||!color.isValid())
         return fail(error,QStringLiteral("Параметры перспективы вне допустимого диапазона."));
-    state->vanishing=QPointF(x,y);state->rays=int(rays);state->gridVisible=perspective.value("visible").toBool();state->gridColor=color;
+    state->horizonY=horizonY;state->vanishing=QPointF(x,y);state->rayStepDegrees=rayStepDegrees;state->gridVisible=perspective.value("visible").toBool();state->gridColor=color;
+    state->rayGap=int(rayGap);state->rayStartOpacity=int(rayStartOpacity);state->rayEndOpacity=int(rayEndOpacity);state->rayFadeLength=int(rayFadeLength);
     return true;
 }
 bool validState(const DrawingState &state) {
-    return Project::validSize(state.image.size())&&!state.image.isNull()&&std::isfinite(state.vanishing.x())&&
-        std::isfinite(state.vanishing.y())&&std::abs(state.vanishing.x())<=1000000&&std::abs(state.vanishing.y())<=1000000&&
-        state.rays>=4&&state.rays<=64&&state.gridColor.isValid();
+    return Project::validSize(state.image.size())&&!state.image.isNull()&&std::isfinite(state.vanishing.x())&&std::isfinite(state.horizonY)&&
+        std::isfinite(state.vanishing.y())&&std::abs(state.vanishing.x())<=1000000&&std::abs(state.vanishing.y())<=1000000&&std::abs(state.horizonY)<=1000000&&
+        std::isfinite(state.rayStepDegrees)&&state.rayStepDegrees>=1&&state.rayStepDegrees<=30&&state.gridColor.isValid()&&state.rayGap>=0&&state.rayGap<=200&&
+        state.rayStartOpacity>=0&&state.rayStartOpacity<=100&&state.rayEndOpacity>=0&&state.rayEndOpacity<=100&&
+        state.rayFadeLength>=0&&state.rayFadeLength<=500;
 }
 bool sameState(const DrawingState &a,const DrawingState &b) {
-    return a.image==b.image&&a.vanishing==b.vanishing&&a.gridVisible==b.gridVisible&&a.rays==b.rays&&a.gridColor==b.gridColor;
+    return a.image==b.image&&a.vanishing==b.vanishing&&qFuzzyCompare(a.horizonY+1,b.horizonY+1)&&a.gridVisible==b.gridVisible&&qFuzzyCompare(a.rayStepDegrees,b.rayStepDegrees)&&a.gridColor==b.gridColor&&
+        a.rayGap==b.rayGap&&a.rayStartOpacity==b.rayStartOpacity&&a.rayEndOpacity==b.rayEndOpacity&&a.rayFadeLength==b.rayFadeLength;
 }
 }
 

@@ -103,12 +103,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     layout->addWidget(new QLabel(tr("Одна точка схода")));
     gridVisible_ = new QCheckBox(tr("Показать направляющие")); gridVisible_->setObjectName("gridVisible"); layout->addWidget(gridVisible_);
     auto *form = new QFormLayout;
-    rays_ = new QSpinBox; rays_->setRange(4,64); rays_->setKeyboardTracking(false); form->addRow(tr("Количество лучей"),rays_);
+    rayStep_ = new QDoubleSpinBox; rayStep_->setObjectName("rayStep"); rayStep_->setRange(1,30); rayStep_->setDecimals(1); rayStep_->setSingleStep(1); rayStep_->setSuffix(tr("°")); rayStep_->setKeyboardTracking(false); form->addRow(tr("Угловой шаг"),rayStep_);
+    rayGap_ = new QSpinBox; rayGap_->setObjectName("rayGap"); rayGap_->setRange(0,200); rayGap_->setSuffix(tr(" px")); rayGap_->setKeyboardTracking(false); form->addRow(tr("Отступ от точки"),rayGap_);
+    rayStartOpacity_ = new QSpinBox; rayStartOpacity_->setObjectName("rayStartOpacity"); rayStartOpacity_->setRange(0,100); rayStartOpacity_->setSuffix(" %"); rayStartOpacity_->setKeyboardTracking(false); form->addRow(tr("Непрозрачность у точки"),rayStartOpacity_);
+    rayEndOpacity_ = new QSpinBox; rayEndOpacity_->setObjectName("rayEndOpacity"); rayEndOpacity_->setRange(0,100); rayEndOpacity_->setSuffix(" %"); rayEndOpacity_->setKeyboardTracking(false); form->addRow(tr("Итоговая непрозрачность"),rayEndOpacity_);
+    rayFadeLength_ = new QSpinBox; rayFadeLength_->setObjectName("rayFadeLength"); rayFadeLength_->setRange(0,500); rayFadeLength_->setSuffix(tr(" px")); rayFadeLength_->setKeyboardTracking(false); form->addRow(tr("Длина нарастания"),rayFadeLength_);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); form->addRow(tr("Цвет линий"),gridColorButton_); layout->addLayout(form);
-    auto *tip = new QLabel(tr("P — перемещение точки схода.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
+    auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
     view->addAction(perspectiveDock_->toggleViewAction());
     connect(gridVisible_,&QCheckBox::toggled,canvas_,&Canvas::setGridVisible);
-    connect(rays_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayCount);
+    connect(rayStep_,qOverload<double>(&QDoubleSpinBox::valueChanged),canvas_,&Canvas::setRayStep);
+    connect(rayGap_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayGap);
+    connect(rayStartOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayStartOpacity);
+    connect(rayEndOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayEndOpacity);
+    connect(rayFadeLength_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayFadeLength);
     connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
     auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
@@ -155,7 +163,10 @@ void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
     setWindowTitle(name+"[*] — Drawing"); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
-    QSignalBlocker a(gridVisible_),b(rays_); gridVisible_->setChecked(canvas_->state().gridVisible); rays_->setValue(canvas_->state().rays); colorSwatch(gridColorButton_,canvas_->state().gridColor);
+    QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_);
+    gridVisible_->setChecked(canvas_->state().gridVisible); rayStep_->setValue(canvas_->state().rayStepDegrees); rayGap_->setValue(canvas_->state().rayGap);
+    rayStartOpacity_->setValue(canvas_->state().rayStartOpacity); rayEndOpacity_->setValue(canvas_->state().rayEndOpacity); rayFadeLength_->setValue(canvas_->state().rayFadeLength);
+    colorSwatch(gridColorButton_,canvas_->state().gridColor);
 }
 void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("Drawing"),error); }
 bool MainWindow::confirmDiscard(){
@@ -172,7 +183,7 @@ void MainWindow::newDocument(){
     QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     if(dialog.exec()!=QDialog::Accepted)return;
     if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
-    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);
+    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);state.horizonY=state.vanishing.y();
     if(!confirmDiscard())return;
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
@@ -181,7 +192,7 @@ void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,t
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}}
-    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);}
+    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);state.horizonY=state.vanishing.y();}
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);

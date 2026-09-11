@@ -22,8 +22,8 @@ private:
     Canvas *canvas_;
     QString path_;
     QLabel *toolLabel_, *sizeLabel_, *positionLabel_;
-    QDoubleSpinBox *zoom_;
-    QSpinBox *strokeWidth_, *rays_;
+    QDoubleSpinBox *zoom_, *rayStep_;
+    QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_;
     QCheckBox *gridVisible_;
     QPushButton *frontButton_, *backButton_, *gridColorButton_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
