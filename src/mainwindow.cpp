@@ -59,7 +59,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *edit = menuBar()->addMenu(tr("&Правка"));
     auto *view = menuBar()->addMenu(tr("&Вид"));
     auto *help = menuBar()->addMenu(tr("&Справка"));
-    auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);
+    auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);newAction->setObjectName("newAction");
     auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);
     recentFilesMenu_=file->addMenu(tr("Недавние файлы"));recentFilesMenu_->setObjectName("recentFilesMenu");
     recentFiles_=QSettings().value("files/recentFiles").toStringList();while(recentFiles_.size()>5)recentFiles_.removeLast();updateRecentFilesMenu();
@@ -167,12 +167,14 @@ bool MainWindow::confirmDiscard(){
 }
 void MainWindow::newDocument(){
     QDialog dialog(this);dialog.setWindowTitle(tr("Новый холст"));auto *layout=new QVBoxLayout(&dialog);auto *form=new QFormLayout;
-    QSpinBox w,h;w.setRange(1,8192);h.setRange(1,8192);w.setValue(1000);h.setValue(620);w.setSuffix(" px");h.setSuffix(" px");form->addRow(tr("Ширина"),&w);form->addRow(tr("Высота"),&h);layout->addLayout(form);layout->addWidget(new QLabel(tr("До 16 млн пикселей. Фон — цвет Back.")));
+    QSettings settings;QSize remembered(settings.value("canvas/newWidth",1000).toInt(),settings.value("canvas/newHeight",620).toInt());if(!Project::validSize(remembered))remembered=QSize(1000,620);
+    QSpinBox w,h;w.setObjectName("newCanvasWidth");h.setObjectName("newCanvasHeight");w.setRange(1,8192);h.setRange(1,8192);w.setValue(remembered.width());h.setValue(remembered.height());w.setSuffix(" px");h.setSuffix(" px");form->addRow(tr("Ширина"),&w);form->addRow(tr("Высота"),&h);layout->addLayout(form);layout->addWidget(new QLabel(tr("До 16 млн пикселей. Фон — цвет Back.")));
     QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     if(dialog.exec()!=QDialog::Accepted)return;
     if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
     DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);
     if(!confirmDiscard())return;
+    settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
 }
 void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}

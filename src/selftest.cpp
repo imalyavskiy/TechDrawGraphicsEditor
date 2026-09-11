@@ -28,6 +28,12 @@ int runSelfTests(const QString &outputDirectory){
         require(frontButton&&backButton&&frontButton->text().isEmpty()&&backButton->text().isEmpty()&&!frontButton->toolTip().isEmpty()&&!backButton->toolTip().isEmpty(),"color buttons must use tooltips instead of labels");
         auto *fitButton=window.findChild<QToolButton*>("fitButton");auto *actualButton=window.findChild<QToolButton*>("actualSizeButton");
         require(fitButton&&actualButton&&fitButton->toolButtonStyle()==Qt::ToolButtonIconOnly&&actualButton->toolButtonStyle()==Qt::ToolButtonIconOnly&&!fitButton->toolTip().isEmpty()&&!actualButton->toolTip().isEmpty(),"status buttons must show icons and tooltips");
+        auto *newAction=window.findChild<QAction*>("newAction");require(newAction,"new canvas action missing");
+        QTimer::singleShot(0,&window,[]{auto *dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto *width=dialog->findChild<QSpinBox*>("newCanvasWidth");auto *height=dialog->findChild<QSpinBox*>("newCanvasHeight");if(width&&height){width->setValue(640);height->setValue(480);dialog->accept();}});newAction->trigger();
+        require(window.canvas()->state().image.size()==QSize(640,480)&&QSettings().value("canvas/newWidth").toInt()==640&&QSettings().value("canvas/newHeight").toInt()==480,"new canvas size was not remembered after creation");
+        MainWindow rememberedSizeWindow;bool rememberedSizeShown=false;auto *rememberedNewAction=rememberedSizeWindow.findChild<QAction*>("newAction");
+        QTimer::singleShot(0,&rememberedSizeWindow,[&]{auto *dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto *width=dialog->findChild<QSpinBox*>("newCanvasWidth");auto *height=dialog->findChild<QSpinBox*>("newCanvasHeight");rememberedSizeShown=width&&height&&width->value()==640&&height->value()==480;if(width&&height){width->setValue(800);height->setValue(600);}dialog->reject();});rememberedNewAction->trigger();
+        require(rememberedSizeShown&&QSettings().value("canvas/newWidth").toInt()==640&&QSettings().value("canvas/newHeight").toInt()==480,"new canvas dialog did not restore size or cancel changed it");rememberedSizeWindow.close();
         DrawingState initial;initial.image=QImage(1000,620,QImage::Format_ARGB32_Premultiplied);initial.image.fill(Qt::white);initial.vanishing=QPointF(650,240);
         canvas->setDocument(initial);canvas->fit();
         require(canvas->undoStack()->isClean(),"initial document must be clean");
