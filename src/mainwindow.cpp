@@ -134,11 +134,13 @@ void MainWindow::newDocument(){
 }
 void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),QString(),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
 bool MainWindow::openPath(const QString &path){
-    DrawingState state;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
-    if(project){if(!Project::load(path,&state,&error)){showError(error);return false;}}
+    DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
+    if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}}
     else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);}
     if(!confirmDiscard())return false;
-    path_=project?QFileInfo(path).absoluteFilePath():QString();canvas_->setDocument(state,project);canvas_->fit();return true;
+    path_=project?QFileInfo(path).absoluteFilePath():QString();
+    if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);
+    canvas_->fit();return true;
 }
 bool MainWindow::saveDocument(bool saveAs){
     QString target=path_;
@@ -149,7 +151,7 @@ bool MainWindow::saveDocument(bool saveAs){
         if(suffixed!=target&&QFileInfo::exists(suffixed)&&QMessageBox::question(this,tr("Заменить файл?"),tr("Файл %1 уже существует. Заменить?").arg(suffixed))!=QMessageBox::Yes)return false;
         target=suffixed;
     }
-    QString error;if(!Project::save(target,canvas_->state(),&error)){showError(error);return false;}
+    QString error;if(!Project::save(target,canvas_->history(),&error)){showError(error);return false;}
     path_=QFileInfo(target).absoluteFilePath();canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
 }
 void MainWindow::exportImage(){

@@ -11,6 +11,8 @@ public:
         : canvas_(canvas), before_(std::move(before)), after_(std::move(after)) { setText(label); }
     void undo() override { canvas_->apply(before_); }
     void redo() override { canvas_->apply(after_); }
+    const DrawingState &before() const { return before_; }
+    const DrawingState &after() const { return after_; }
 private:
     Canvas *canvas_;
     DrawingState before_, after_;
@@ -29,16 +31,42 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
 }
 
 void Canvas::setDocument(const DrawingState &state, bool clean) {
+    DrawingHistory history;
+    history.states.append(state);
+    setDocument(history,clean);
+}
+
+void Canvas::setDocument(const DrawingHistory &history, bool clean) {
     dragging_ = panning_ = movingPoint_ = false;
     straightStroke_ = shiftPressed_ = controlPressed_ = false;
     hasPaintAnchor_ = hasHoverPoint_ = false;
-    state_ = state;
+    state_ = history.states.first();
     undo_.clear();
-    undo_.setUndoLimit(qBound(1, int(128000000 / qMax(qint64(1), qint64(state.image.sizeInBytes()))), 30));
+    const int memoryLimit=qBound(1,int(128000000/qMax(qint64(1),qint64(state_.image.sizeInBytes()))),30);
+    undo_.setUndoLimit(qMax(memoryLimit,history.labels.size()));
+    for (int i=0;i<history.labels.size();++i)
+        undo_.push(new StateCommand(this,history.states[i],history.states[i+1],history.labels[i]));
+    undo_.setIndex(history.index);
     if (clean) undo_.setClean(); else undo_.resetClean();
     pan_ = QPointF();
     emit stateChanged();
     update();
+}
+
+DrawingHistory Canvas::history() const {
+    DrawingHistory result;
+    result.index=undo_.index();
+    if (undo_.count()==0) { result.states.append(state_);return result; }
+    const auto *first=dynamic_cast<const StateCommand*>(undo_.command(0));
+    if (!first) { result.states.append(state_);result.index=0;return result; }
+    result.states.append(first->before());
+    for (int i=0;i<undo_.count();++i) {
+        const auto *command=dynamic_cast<const StateCommand*>(undo_.command(i));
+        if (!command) { result.states.clear();result.labels.clear();result.states.append(state_);result.index=0;return result; }
+        result.states.append(command->after());
+        result.labels.append(command->text());
+    }
+    return result;
 }
 
 void Canvas::apply(const DrawingState &state) { state_ = state; emit stateChanged(); update(); }

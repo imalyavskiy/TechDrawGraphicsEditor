@@ -11,6 +11,8 @@ public:
     const DrawingState &state() const { return state_; }
     QUndoStack *undoStack() { return &undo_; }
     void setDocument(const DrawingState &state, bool clean = true);
+    void setDocument(const DrawingHistory &history, bool clean = true);
+    DrawingHistory history() const;
     void setTool(Tool tool);
     Tool tool() const { return tool_; }
     void setFront(QColor color) { front_ = color; }
