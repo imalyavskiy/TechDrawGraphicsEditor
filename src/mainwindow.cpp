@@ -131,6 +131,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     rayFadeLength_ = new QSpinBox; rayFadeLength_->setObjectName("rayFadeLength"); rayFadeLength_->setRange(0,500); rayFadeLength_->setSuffix(tr(" px")); rayFadeLength_->setKeyboardTracking(false); commonForm->addRow(tr("Длина нарастания"),rayFadeLength_);
     auto *defaultButtons = new QHBoxLayout; savePerspectiveDefaultsButton_ = new QPushButton(tr("Сохранить")); savePerspectiveDefaultsButton_->setObjectName("savePerspectiveDefaults"); savePerspectiveDefaultsButton_->setToolTip(tr("Использовать эти пять значений для новых документов"));
     auto *resetDefaults = new QPushButton(tr("Сбросить")); resetDefaults->setObjectName("resetPerspectiveDefaults"); resetDefaults->setToolTip(tr("Вернуть заводские значения")); defaultButtons->addWidget(savePerspectiveDefaultsButton_);defaultButtons->addWidget(resetDefaults);commonForm->addRow(defaultButtons);layout->addWidget(commonGroup);
+    auto *horizonGroup = new QGroupBox(tr("Линия горизонта")); horizonGroup->setObjectName("horizonSettings"); auto *horizonForm = new QFormLayout(horizonGroup);
+    horizonColorButton_ = new QPushButton(tr("Выбрать…")); horizonColorButton_->setObjectName("horizonColor"); horizonForm->addRow(tr("Цвет"),horizonColorButton_);
+    horizonOpacity_ = new QSpinBox; horizonOpacity_->setObjectName("horizonOpacity"); horizonOpacity_->setRange(0,100); horizonOpacity_->setSuffix(" %"); horizonOpacity_->setKeyboardTracking(false); horizonForm->addRow(tr("Непрозрачность"),horizonOpacity_);
+    horizonWidth_ = new QDoubleSpinBox; horizonWidth_->setObjectName("horizonWidth"); horizonWidth_->setRange(0.1,20); horizonWidth_->setDecimals(1); horizonWidth_->setSingleStep(0.5); horizonWidth_->setSuffix(tr(" px")); horizonWidth_->setKeyboardTracking(false); horizonForm->addRow(tr("Ширина"),horizonWidth_);layout->addWidget(horizonGroup);
     auto *pointGroup = new QGroupBox(tr("Точка схода 1")); pointGroup->setObjectName("vanishingPoint1Settings"); auto *pointForm = new QFormLayout(pointGroup);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_); layout->addWidget(pointGroup);
     auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
@@ -143,12 +147,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(rayFadeLength_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setRayFadeLength);
     connect(savePerspectiveDefaultsButton_,&QPushButton::clicked,this,[this]{savePerspectiveDefaults(canvas_->state());updateState();statusBar()->showMessage(tr("Общие настройки направляющих сохранены"),3000);});
     connect(resetDefaults,&QPushButton::clicked,this,[this]{clearPerspectiveDefaults();canvas_->setRayAppearance(10,12,10,70,50);updateState();statusBar()->showMessage(tr("Восстановлены настройки направляющих по умолчанию"),3000);});
+    connect(horizonColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().horizonColor,this,tr("Цвет линии горизонта"));if(c.isValid())canvas_->setHorizonColor(c);});
+    connect(horizonOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setHorizonOpacity);
+    connect(horizonWidth_,qOverload<double>(&QDoubleSpinBox::valueChanged),canvas_,&Canvas::setHorizonWidth);
     connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
     auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
     view->addAction(tr("Уменьшить"),this,[this]{canvas_->setZoom(canvas_->zoom()/1.2);},QKeySequence("Ctrl+-"));
-    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG и параметры перспективы.\nЭкспорт PNG сохраняет только рисунок."));});
+    help->addAction(tr("Управление"),this,[this]{QMessageBox::information(this,tr("Drawing — управление"),tr("B — карандаш\nK — кисть\nE — ластик (цвет Back)\nH — перемещение холста\nP — точка схода\nX — поменять Front и Back\n\nShift + щелчок — отрезок от последней точки\nCtrl + Shift — привязка угла по 15°\nКолесо — масштаб под курсором\nСредняя кнопка или Пробел + мышь — перемещение\nCtrl+Z / Ctrl+Y — отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точки схода и горизонта.\nЭкспорт PNG сохраняет только рисунок."));});
     toolLabel_ = new QLabel(tr("Карандаш")); sizeLabel_ = new QLabel; positionLabel_ = new QLabel; positionLabel_->setMinimumWidth(125);
     statusBar()->addWidget(toolLabel_); statusBar()->addWidget(sizeLabel_); statusBar()->addWidget(positionLabel_,1);
     auto *fitButton = new QToolButton; fitButton->setObjectName("fitButton");fitButton->setToolButtonStyle(Qt::ToolButtonIconOnly);fitButton->setDefaultAction(fitAction); statusBar()->addPermanentWidget(fitButton);
@@ -189,11 +196,12 @@ void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
     setWindowTitle(name+"[*] — Drawing"); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
-    QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_);
+    QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_);
     gridVisible_->setChecked(canvas_->state().gridVisible); rayStep_->setValue(canvas_->state().rayStepDegrees); rayGap_->setValue(canvas_->state().rayGap);
     rayStartOpacity_->setValue(canvas_->state().rayStartOpacity); rayEndOpacity_->setValue(canvas_->state().rayEndOpacity); rayFadeLength_->setValue(canvas_->state().rayFadeLength);
     savePerspectiveDefaultsButton_->setEnabled(!matchesPerspectiveDefaults(canvas_->state()));
-    colorSwatch(gridColorButton_,canvas_->state().gridColor);
+    horizonOpacity_->setValue(canvas_->state().horizonOpacity);horizonWidth_->setValue(canvas_->state().horizonWidth);
+    colorSwatch(gridColorButton_,canvas_->state().gridColor);colorSwatch(horizonColorButton_,canvas_->state().horizonColor);
 }
 void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("Drawing"),error); }
 bool MainWindow::confirmDiscard(){

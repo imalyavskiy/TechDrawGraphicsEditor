@@ -9,6 +9,7 @@ namespace {
 void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
     target->gridVisible=source.gridVisible;target->rayStepDegrees=source.rayStepDegrees;target->gridColor=source.gridColor;
     target->rayGap=source.rayGap;target->rayStartOpacity=source.rayStartOpacity;target->rayEndOpacity=source.rayEndOpacity;target->rayFadeLength=source.rayFadeLength;
+    target->horizonColor=source.horizonColor;target->horizonOpacity=source.horizonOpacity;target->horizonWidth=source.horizonWidth;
 }
 }
 
@@ -91,6 +92,9 @@ void Canvas::setRayAppearance(double stepDegrees, int gap, int startOpacity, int
     if (qFuzzyCompare(state_.rayStepDegrees,stepDegrees)&&state_.rayGap==gap&&state_.rayStartOpacity==startOpacity&&state_.rayEndOpacity==endOpacity&&state_.rayFadeLength==fadeLength) return;
     state_.rayStepDegrees=stepDegrees;state_.rayGap=gap;state_.rayStartOpacity=startOpacity;state_.rayEndOpacity=endOpacity;state_.rayFadeLength=fadeLength;emit stateChanged();update();
 }
+void Canvas::setHorizonColor(QColor color) { if (!color.isValid()||state_.horizonColor==color) return;state_.horizonColor=color;emit stateChanged();update(); }
+void Canvas::setHorizonOpacity(int opacity) { if (state_.horizonOpacity==opacity) return;state_.horizonOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setHorizonWidth(double width) { if (qFuzzyCompare(state_.horizonWidth,width)) return;state_.horizonWidth=width;emit stateChanged();update(); }
 QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
 QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
 void Canvas::setZoom(double zoom, QPointF anchor) {
@@ -153,8 +157,8 @@ void Canvas::paintEvent(QPaintEvent *) {
             ray.setCosmetic(true); p.setPen(ray); p.drawLine(start, end);
         }
         const double horizonY = toView(QPointF(0, state_.horizonY)).y();
-        QColor horizonColor = state_.gridColor; horizonColor.setAlphaF(state_.rayEndOpacity/100.0);
-        QPen horizon(horizonColor, 1); horizon.setCosmetic(true); p.setPen(horizon);
+        QColor horizonColor = state_.horizonColor; horizonColor.setAlphaF(state_.horizonOpacity/100.0);
+        QPen horizon(horizonColor, state_.horizonWidth); horizon.setCosmetic(true); p.setPen(horizon);
         p.drawLine(QPointF(0, horizonY), QPointF(width(), horizonY));
         p.setPen(QPen(state_.gridColor, 2)); p.setBrush(Qt::white);
         p.drawEllipse(vanishing, 6, 6);

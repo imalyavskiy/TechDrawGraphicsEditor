@@ -49,7 +49,8 @@ bool validState(const DrawingState &state) {
         std::isfinite(state.vanishing.y())&&std::abs(state.vanishing.x())<=1000000&&std::abs(state.vanishing.y())<=1000000&&std::abs(state.horizonY)<=1000000&&
         std::isfinite(state.rayStepDegrees)&&state.rayStepDegrees>=1&&state.rayStepDegrees<=30&&state.gridColor.isValid()&&state.rayGap>=0&&state.rayGap<=200&&
         state.rayStartOpacity>=0&&state.rayStartOpacity<=100&&state.rayEndOpacity>=0&&state.rayEndOpacity<=100&&
-        state.rayFadeLength>=0&&state.rayFadeLength<=500;
+        state.rayFadeLength>=0&&state.rayFadeLength<=500&&state.horizonColor.isValid()&&state.horizonOpacity>=0&&state.horizonOpacity<=100&&
+        std::isfinite(state.horizonWidth)&&state.horizonWidth>=0.1&&state.horizonWidth<=20;
 }
 bool samePersistentState(const DrawingState &a,const DrawingState &b) {
     return a.image==b.image&&a.vanishing==b.vanishing&&qFuzzyCompare(a.horizonY+1,b.horizonY+1);

@@ -16,6 +16,9 @@ struct DrawingState {
     int rayStartOpacity = 10;
     int rayEndOpacity = 70;
     int rayFadeLength = 50;
+    QColor horizonColor = QColor("#628ed1");
+    int horizonOpacity = 70;
+    double horizonWidth = 1.0;
 };
 
 struct DrawingHistory {
