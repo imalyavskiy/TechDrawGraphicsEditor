@@ -4,10 +4,10 @@
 namespace {
 QString productName(){return QStringLiteral("Технический рисунок / Technical Draw");}
 
-class RolloutSection final : public QWidget {
+class RolloutSection final : public QFrame {
 public:
-    RolloutSection(const QString &title,const QString &name,QWidget *parent=nullptr) : QWidget(parent) {
-        setObjectName(name);setProperty("title",title);setProperty("expanded",true);
+    RolloutSection(const QString &title,const QString &name,QWidget *parent=nullptr) : QFrame(parent) {
+        setObjectName(name);setProperty("title",title);setProperty("expanded",true);setFrameShape(QFrame::StyledPanel);setFrameShadow(QFrame::Plain);setLineWidth(1);
         auto *outer=new QVBoxLayout(this);outer->setContentsMargins(0,0,0,0);outer->setSpacing(0);
         auto *header=new QFrame(this);header->setObjectName("rolloutHeader");
         auto *headerLayout=new QHBoxLayout(header);headerLayout->setContentsMargins(4,2,7,2);headerLayout->setSpacing(3);
@@ -117,7 +117,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     setWindowIcon(QIcon(":/app/techdraw.png"));
     setCentralWidget(canvas_);
     setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } QWidget#vanishingPointCard { background: #f5f6f8; border: 1px solid #d5d8dd; border-radius: 4px; } QWidget#vanishingPointCard[selected=\"true\"] { background: #e4effd; border-color: #8aaedb; } QWidget#vanishingPointCard QLineEdit { border: 0; background: transparent; padding: 2px; } QListWidget#vanishingPointsListControl::item { background: transparent; border: 0; } ");
-    setStyleSheet(styleSheet()+" QFrame#rolloutHeader { background: #eef1f5; border: 1px solid #b9c0ca; } QFrame#rolloutHeader QToolButton { padding: 0; border: 0; background: transparent; } QFrame#rolloutHeader QToolButton:hover { background: #dce7f5; border-radius: 2px; }");
+    setStyleSheet(styleSheet()+" QFrame#rolloutHeader { background: #eef1f5; border: 0; border-bottom: 1px solid #b9c0ca; } QFrame#rolloutHeader QToolButton { padding: 0; border: 0; background: transparent; } QFrame#rolloutHeader QToolButton:hover { background: #dce7f5; border-radius: 2px; }");
     auto *file = menuBar()->addMenu(tr("&Файл"));file->setObjectName("fileMenu");
     auto *edit = menuBar()->addMenu(tr("&Правка"));edit->setObjectName("editMenu");
     auto *view = menuBar()->addMenu(tr("&Вид"));view->setObjectName("viewMenu");
