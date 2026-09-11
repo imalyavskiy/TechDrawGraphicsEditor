@@ -5,13 +5,28 @@
 #include <QStringList>
 #include <QVector>
 
+struct VanishingPoint {
+    QString id;
+    QPointF position;
+    QString attachmentType;
+    QString attachmentTargetId;
+    QColor color = QColor("#628ed1");
+    bool visible = true;
+
+    bool operator==(const VanishingPoint &other) const {
+        return id == other.id && position == other.position &&
+               attachmentType == other.attachmentType && attachmentTargetId == other.attachmentTargetId &&
+               color == other.color && visible == other.visible;
+    }
+    bool operator!=(const VanishingPoint &other) const { return !(*this == other); }
+};
+
 struct DrawingState {
     QImage image;
-    QPointF vanishing;
+    QVector<VanishingPoint> vanishingPoints;
     double horizonY = 0;
     bool gridVisible = false;
     double rayStepDegrees = 10.0;
-    QColor gridColor = QColor("#628ed1");
     int rayGap = 12;
     int rayStartOpacity = 10;
     int rayEndOpacity = 70;

@@ -20,7 +20,6 @@ public:
     void setStrokeWidth(int width) { width_ = width; }
     void setGridVisible(bool visible);
     void setRayStep(double degrees);
-    void setGridColor(QColor color);
     void setRayGap(int gap);
     void setRayStartOpacity(int opacity);
     void setRayEndOpacity(int opacity);
@@ -29,6 +28,12 @@ public:
     void setHorizonColor(QColor color);
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
+    int selectedPointIndex() const { return selectedPointIndex_; }
+    void selectPoint(int index);
+    void addVanishingPoint();
+    void removeSelectedVanishingPoint();
+    void setSelectedPointColor(QColor color);
+    void setSelectedPointVisible(bool visible);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();
@@ -39,6 +44,7 @@ signals:
     void stateChanged();
     void viewChanged();
     void positionChanged(QPointF position);
+    void selectedPointChanged(int index);
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
@@ -57,6 +63,8 @@ private:
     double zoom_ = 1.0;
     QPointF pan_, last_, paintAnchor_, hoverPoint_;
     bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, space_ = false;
+    int selectedPointIndex_ = 0;
+    int movingPointIndex_ = -1;
     bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;

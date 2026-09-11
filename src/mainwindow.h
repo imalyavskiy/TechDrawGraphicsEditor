@@ -9,6 +9,7 @@ class QCheckBox;
 class QPushButton;
 class QDockWidget;
 class QMenu;
+class QListWidget;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -24,8 +25,9 @@ private:
     QLabel *toolLabel_, *sizeLabel_, *positionLabel_;
     QDoubleSpinBox *zoom_, *rayStep_, *horizonWidth_;
     QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_, *horizonOpacity_;
-    QCheckBox *gridVisible_;
-    QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *savePerspectiveDefaultsButton_;
+    QCheckBox *gridVisible_, *selectedPointVisible_;
+    QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *savePerspectiveDefaultsButton_, *removePointButton_;
+    QListWidget *vanishingPointsList_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     QDockWidget *perspectiveDock_;
     QAction *perspectiveAction_;

@@ -135,7 +135,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     horizonOpacity_ = new QSpinBox; horizonOpacity_->setObjectName("horizonOpacity"); horizonOpacity_->setRange(0,100); horizonOpacity_->setSuffix(" %"); horizonOpacity_->setKeyboardTracking(false); horizonForm->addRow(tr("Непрозрачность"),horizonOpacity_);
     horizonWidth_ = new QDoubleSpinBox; horizonWidth_->setObjectName("horizonWidth"); horizonWidth_->setRange(0.1,20); horizonWidth_->setDecimals(1); horizonWidth_->setSingleStep(0.5); horizonWidth_->setSuffix(tr(" px")); horizonWidth_->setKeyboardTracking(false); horizonForm->addRow(tr("Ширина"),horizonWidth_);layout->addWidget(horizonGroup);layout->addWidget(commonGroup);
     auto *pointsListGroup = new QGroupBox(tr("Точки схода")); pointsListGroup->setObjectName("vanishingPointsList"); auto *pointsListLayout = new QVBoxLayout(pointsListGroup);
-    auto *pointGroup = new QGroupBox(tr("Точка схода 1")); pointGroup->setObjectName("vanishingPoint1Settings"); auto *pointForm = new QFormLayout(pointGroup);
+    vanishingPointsList_=new QListWidget;vanishingPointsList_->setObjectName("vanishingPointsListControl");vanishingPointsList_->setSelectionMode(QAbstractItemView::SingleSelection);pointsListLayout->addWidget(vanishingPointsList_);
+    auto *pointButtons=new QHBoxLayout;auto *addPointButton=new QPushButton(tr("Добавить"));addPointButton->setObjectName("addVanishingPoint");removePointButton_=new QPushButton(tr("Удалить"));removePointButton_->setObjectName("removeVanishingPoint");pointButtons->addWidget(addPointButton);pointButtons->addWidget(removePointButton_);pointsListLayout->addLayout(pointButtons);
+    auto *pointGroup = new QGroupBox(tr("Свойства выбранной точки")); pointGroup->setObjectName("selectedVanishingPointSettings"); auto *pointForm = new QFormLayout(pointGroup);
+    selectedPointVisible_=new QCheckBox(tr("Показывать семейство линий"));selectedPointVisible_->setObjectName("selectedPointVisible");pointForm->addRow(selectedPointVisible_);
     gridColorButton_ = new QPushButton(tr("Выбрать…")); gridColorButton_->setObjectName("gridColor"); pointForm->addRow(tr("Цвет лучей"),gridColorButton_);pointsListLayout->addWidget(pointGroup);layout->addWidget(pointsListGroup);
     auto *tip = new QLabel(tr("P — перемещение точки схода и горизонта.\nТочка прилипает к горизонту вблизи него, но может быть свободно снята.\nB — вернуться к карандашу.\n\nНаправляющие не попадают\nв экспорт PNG.")); tip->setWordWrap(true); layout->addSpacing(12); layout->addWidget(tip); layout->addStretch(); perspectiveDock_->setWidget(panel); addDockWidget(Qt::RightDockWidgetArea,perspectiveDock_); perspectiveDock_->hide();
     view->addAction(perspectiveDock_->toggleViewAction());
@@ -150,7 +153,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     connect(horizonColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().horizonColor,this,tr("Цвет линии горизонта"));if(c.isValid())canvas_->setHorizonColor(c);});
     connect(horizonOpacity_,qOverload<int>(&QSpinBox::valueChanged),canvas_,&Canvas::setHorizonOpacity);
     connect(horizonWidth_,qOverload<double>(&QDoubleSpinBox::valueChanged),canvas_,&Canvas::setHorizonWidth);
-    connect(gridColorButton_,&QPushButton::clicked,this,[this]{auto c=QColorDialog::getColor(canvas_->state().gridColor,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setGridColor(c);});
+    connect(vanishingPointsList_,&QListWidget::currentRowChanged,canvas_,&Canvas::selectPoint);
+    connect(canvas_,&Canvas::selectedPointChanged,this,[this](int index){QSignalBlocker block(vanishingPointsList_);vanishingPointsList_->setCurrentRow(index);updateState();});
+    connect(addPointButton,&QPushButton::clicked,canvas_,&Canvas::addVanishingPoint);
+    connect(removePointButton_,&QPushButton::clicked,canvas_,&Canvas::removeSelectedVanishingPoint);
+    connect(selectedPointVisible_,&QCheckBox::toggled,canvas_,&Canvas::setSelectedPointVisible);
+    connect(gridColorButton_,&QPushButton::clicked,this,[this]{const int i=canvas_->selectedPointIndex();if(i<0)return;auto c=QColorDialog::getColor(canvas_->state().vanishingPoints[i].color,this,tr("Цвет направляющих"));if(c.isValid())canvas_->setSelectedPointColor(c);});
     auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),tr("Вписать холст"),canvas_,&Canvas::fit,QKeySequence("Ctrl+0"));fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
     auto *actualAction = view->addAction(actualSizeIcon(),tr("Масштаб 100%"),this,[this]{canvas_->setZoom(1);},QKeySequence("Ctrl+1"));actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
     view->addAction(tr("Увеличить"),this,[this]{canvas_->setZoom(canvas_->zoom()*1.2);},QKeySequence("Ctrl++"));
@@ -196,12 +204,18 @@ void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
     setWindowTitle(name+"[*] — TechDraw"); setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
-    QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_);
+    QSignalBlocker a(gridVisible_),b(rayStep_),c(rayGap_),d(rayStartOpacity_),e(rayEndOpacity_),f(rayFadeLength_),g(horizonOpacity_),h(horizonWidth_),i(vanishingPointsList_),j(selectedPointVisible_);
     gridVisible_->setChecked(canvas_->state().gridVisible); rayStep_->setValue(canvas_->state().rayStepDegrees); rayGap_->setValue(canvas_->state().rayGap);
     rayStartOpacity_->setValue(canvas_->state().rayStartOpacity); rayEndOpacity_->setValue(canvas_->state().rayEndOpacity); rayFadeLength_->setValue(canvas_->state().rayFadeLength);
     savePerspectiveDefaultsButton_->setEnabled(!matchesPerspectiveDefaults(canvas_->state()));
     horizonOpacity_->setValue(canvas_->state().horizonOpacity);horizonWidth_->setValue(canvas_->state().horizonWidth);
-    colorSwatch(gridColorButton_,canvas_->state().gridColor);colorSwatch(horizonColorButton_,canvas_->state().horizonColor);
+    const auto &points=canvas_->state().vanishingPoints;
+    bool rebuild=vanishingPointsList_->count()!=points.size();
+    if(!rebuild)for(int row=0;row<points.size();++row)if(vanishingPointsList_->item(row)->data(Qt::UserRole).toString()!=points[row].id){rebuild=true;break;}
+    if(rebuild){vanishingPointsList_->clear();for(int row=0;row<points.size();++row){auto *item=new QListWidgetItem(tr("Точка схода %1").arg(row+1));item->setData(Qt::UserRole,points[row].id);vanishingPointsList_->addItem(item);}}
+    const int selected=canvas_->selectedPointIndex();vanishingPointsList_->setCurrentRow(selected);const bool hasPoint=selected>=0&&selected<points.size();
+    removePointButton_->setEnabled(hasPoint);selectedPointVisible_->setEnabled(hasPoint);gridColorButton_->setEnabled(hasPoint);
+    selectedPointVisible_->setChecked(hasPoint&&points[selected].visible);colorSwatch(gridColorButton_,hasPoint?points[selected].color:QColor("#d0d0d0"));colorSwatch(horizonColorButton_,canvas_->state().horizonColor);
 }
 void MainWindow::showError(const QString &error){ QMessageBox::critical(this,tr("TechDraw"),error); }
 bool MainWindow::confirmDiscard(){
@@ -218,7 +232,7 @@ void MainWindow::newDocument(){
     QDialogButtonBox buttons(QDialogButtonBox::Ok|QDialogButtonBox::Cancel);buttons.button(QDialogButtonBox::Ok)->setText(tr("Создать"));buttons.button(QDialogButtonBox::Cancel)->setText(tr("Отмена"));layout->addWidget(&buttons);connect(&buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(&buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     if(dialog.exec()!=QDialog::Accepted)return;
     if(!Project::validSize(QSize(w.value(),h.value()))){showError(tr("Максимум 16 млн пикселей."));return;}
-    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.vanishing=QPointF(w.value()/2.0,h.value()/2.0);state.horizonY=state.vanishing.y();applySavedPerspectiveDefaults(&state);
+    DrawingState state;state.image=QImage(w.value(),h.value(),QImage::Format_ARGB32_Premultiplied);if(state.image.isNull()){showError(tr("Не удалось выделить память для холста."));return;}state.image.fill(back_);state.horizonY=h.value()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(w.value()/2.0,h.value()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});applySavedPerspectiveDefaults(&state);
     if(!confirmDiscard())return;
     settings.setValue("canvas/newWidth",w.value());settings.setValue("canvas/newHeight",h.value());
     path_.clear();canvas_->setDocument(state,false);canvas_->fit();
@@ -227,7 +241,7 @@ void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,t
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
     if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}for(auto &historyState:history.states)applySavedPerspectiveDefaults(&historyState);}
-    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);state.horizonY=state.vanishing.y();applySavedPerspectiveDefaults(&state);}
+    else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.horizonY=state.image.height()/2.0;state.vanishingPoints.append({QStringLiteral("vp-1"),QPointF(state.image.width()/2.0,state.image.height()/2.0),QStringLiteral("construction"),QStringLiteral("horizon")});applySavedPerspectiveDefaults(&state);}
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);
