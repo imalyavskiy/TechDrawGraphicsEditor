@@ -44,13 +44,13 @@ public:
     void setVerticalVisible(bool visible);
     void setAxesVisible(bool visible);
     void setMarkersVisible(bool visible);
-    void setSymmetricPoints(bool enabled);
+    void setHorizonSymmetry(bool enabled);
+    void setVerticalSymmetry(bool enabled);
     void setRulerPercent(bool percent);
     bool rulerPercent() const { return rulerPercent_; }
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
-    void addVerticalVanishingPoint();
     void removeSelectedVanishingPoint();
     void setSelectedPointColor(QColor color);
     void setSelectedPointVisible(bool visible);
@@ -90,6 +90,7 @@ private:
     bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, movingVertical_ = false, space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
+    int movingSymmetricPointIndex_ = -1;
     bool horizonCarriesPoint_ = false;
     bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
     bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
@@ -100,8 +101,12 @@ private:
     void finish();
     bool isPaintTool() const;
     QPointF constrainedPoint(QPointF point, bool constrainAngle) const;
-    void updateSymmetricPoint(int movedIndex);
+    int symmetricPartnerIndex(int movedIndex) const;
+    void updateSymmetricPoint(int movedIndex, int partnerIndex = -1);
     QVector<int> attachedPointIndices(const QString &targetId) const;
+    enum PerspectiveHit { NoPerspectiveHit = -1, VerticalHit = -2, HorizonHit = -3 };
+    int perspectiveHit(QPointF viewPosition) const;
+    void updatePerspectiveCursor(QPointF viewPosition);
     QRectF viewportRect() const;
     void drawRulers(QPainter &painter);
 };
