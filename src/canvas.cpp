@@ -16,7 +16,8 @@ QString coordinateLabel(double value){if(std::abs(value)<0.0001)value=0;return s
 void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
     target->gridVisible=source.gridVisible;target->rayStepDegrees=source.rayStepDegrees;target->rayAngleOffset=source.rayAngleOffset;target->rayPattern=source.rayPattern;target->rayWidth=source.rayWidth;
     target->rayGap=source.rayGap;target->rayStartOpacity=source.rayStartOpacity;target->rayEndOpacity=source.rayEndOpacity;target->rayFadeLength=source.rayFadeLength;
-    target->horizonColor=source.horizonColor;target->horizonOpacity=source.horizonOpacity;target->horizonWidth=source.horizonWidth;target->horizonVisible=source.horizonVisible;target->axesVisible=source.axesVisible;target->markersVisible=source.markersVisible;target->symmetricPoints=source.symmetricPoints;
+    target->horizonColor=source.horizonColor;target->horizonOpacity=source.horizonOpacity;target->horizonWidth=source.horizonWidth;target->horizonVisible=source.horizonVisible;
+    target->verticalColor=source.verticalColor;target->verticalOpacity=source.verticalOpacity;target->verticalWidth=source.verticalWidth;target->verticalVisible=source.verticalVisible;target->axesVisible=source.axesVisible;target->markersVisible=source.markersVisible;target->symmetricPoints=source.symmetricPoints;
     for (auto &point : target->vanishingPoints) {
         for (const auto &existing : source.vanishingPoints) {
             if (existing.id != point.id) continue;
@@ -50,6 +51,7 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
     initial.image.fill(Qt::white);
     initial.horizonY = 240;
+    initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(650, 240), QStringLiteral("construction"), QStringLiteral("horizon")});
     setDocument(initial);
 }
@@ -61,7 +63,7 @@ void Canvas::setDocument(const DrawingState &state, bool clean) {
 }
 
 void Canvas::setDocument(const DrawingHistory &history, bool clean) {
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = false;
     movingPointIndex_ = -1;
     straightStroke_ = shiftPressed_ = controlPressed_ = false;
     hasPaintAnchor_ = hasHoverPoint_ = false;
@@ -122,6 +124,17 @@ void Canvas::setHorizonY(double imageY) {
 }
 void Canvas::setHorizonLocked(bool locked){if(state_.horizonLocked==locked)return;finish();DrawingState before=state_;state_.horizonLocked=locked;commit(before,tr("фиксацию горизонта"));emit stateChanged();update();}
 void Canvas::setHorizonVisible(bool visible){if(state_.horizonVisible==visible)return;state_.horizonVisible=visible;emit stateChanged();update();}
+void Canvas::setVerticalColor(QColor color){if(!color.isValid()||state_.verticalColor==color)return;state_.verticalColor=color;emit stateChanged();update();}
+void Canvas::setVerticalOpacity(int opacity){if(state_.verticalOpacity==opacity)return;state_.verticalOpacity=opacity;emit stateChanged();update();}
+void Canvas::setVerticalWidth(double width){if(qFuzzyCompare(state_.verticalWidth,width))return;state_.verticalWidth=width;emit stateChanged();update();}
+void Canvas::setVerticalX(double imageX){
+    if(!std::isfinite(imageX)||std::abs(imageX)>1000000||qFuzzyCompare(state_.verticalX+1,imageX+1))return;
+    finish();DrawingState before=state_;const double delta=imageX-state_.verticalX;state_.verticalX=imageX;
+    for(auto &point:state_.vanishingPoints)if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("vertical"))point.position.rx()+=delta;
+    commit(before,tr("положение главной вертикали"));emit stateChanged();update();
+}
+void Canvas::setVerticalLocked(bool locked){if(state_.verticalLocked==locked)return;finish();DrawingState before=state_;state_.verticalLocked=locked;commit(before,tr("фиксацию главной вертикали"));emit stateChanged();update();}
+void Canvas::setVerticalVisible(bool visible){if(state_.verticalVisible==visible)return;state_.verticalVisible=visible;emit stateChanged();update();}
 void Canvas::setAxesVisible(bool visible){if(state_.axesVisible==visible)return;state_.axesVisible=visible;emit stateChanged();update();}
 void Canvas::setMarkersVisible(bool visible){if(state_.markersVisible==visible)return;state_.markersVisible=visible;emit stateChanged();update();}
 void Canvas::setSymmetricPoints(bool enabled){if(state_.symmetricPoints==enabled)return;state_.symmetricPoints=enabled;emit stateChanged();update();}
@@ -161,7 +174,7 @@ void Canvas::setSelectedPointVisible(bool visible) {
 }
 void Canvas::setSelectedPointPosition(QPointF position) {
     if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||!std::isfinite(position.x())||!std::isfinite(position.y())||std::abs(position.x())>1000000||std::abs(position.y())>1000000)return;
-    auto &point=state_.vanishingPoints[selectedPointIndex_];if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))position.setY(state_.horizonY);
+    auto &point=state_.vanishingPoints[selectedPointIndex_];if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))position.setY(state_.horizonY);else if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("vertical"))position.setX(state_.verticalX);
     if(point.position==position)return;
     finish();DrawingState before=state_;state_.vanishingPoints[selectedPointIndex_].position=position;updateSymmetricPoint(selectedPointIndex_);commit(before,tr("координаты точки схода"));emit stateChanged();update();
 }
@@ -170,11 +183,15 @@ void Canvas::updateSymmetricPoint(int movedIndex){
     const int otherIndex=1-movedIndex;const auto &moved=state_.vanishingPoints[movedIndex];auto &other=state_.vanishingPoints[otherIndex];other.position.setX(state_.image.width()-moved.position.x());other.position.setY(other.attachmentType==QStringLiteral("construction")&&other.attachmentTargetId==QStringLiteral("horizon")?state_.horizonY:moved.position.y());
 }
 void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
+    setSelectedPointAttachment(attached?QStringLiteral("horizon"):QString());
+}
+void Canvas::setSelectedPointAttachment(const QString &targetId) {
     if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size())return;
     auto &point=state_.vanishingPoints[selectedPointIndex_];
-    const bool current=point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon");if(current==attached)return;
+    const QString target=targetId==QStringLiteral("horizon")||targetId==QStringLiteral("vertical")?targetId:QString();
+    const QString current=point.attachmentType==QStringLiteral("construction")?point.attachmentTargetId:QString();if(current==target)return;
     finish();DrawingState before=state_;
-    if(attached){point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=QStringLiteral("horizon");point.position.setY(state_.horizonY);}
+    if(!target.isEmpty()){point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=target;if(target==QStringLiteral("horizon"))point.position.setY(state_.horizonY);else point.position.setX(state_.verticalX);}
     else{point.attachmentType.clear();point.attachmentTargetId.clear();}
     commit(before,tr("привязку точки схода"));emit stateChanged();update();
 }
@@ -217,6 +234,8 @@ void Canvas::paintEvent(QPaintEvent *) {
         QColor horizonColor = state_.horizonColor; horizonColor.setAlphaF(state_.horizonOpacity/100.0);
         QPen horizon(horizonColor, state_.horizonWidth); horizon.setCosmetic(true); p.setPen(horizon);
         if(state_.horizonVisible)p.drawLine(QPointF(0, horizonY), QPointF(width(), horizonY));
+        const double verticalX=toView(QPointF(state_.verticalX,0)).x();QColor verticalColor=state_.verticalColor;verticalColor.setAlphaF(state_.verticalOpacity/100.0);
+        QPen vertical(verticalColor,state_.verticalWidth);vertical.setCosmetic(true);p.setPen(vertical);if(state_.verticalVisible)p.drawLine(QPointF(verticalX,0),QPointF(verticalX,height()));
         for (int pointIndex=0;pointIndex<state_.vanishingPoints.size();++pointIndex) {
             const auto &point=state_.vanishingPoints[pointIndex];
             const QPointF vanishing=toView(point.position);
@@ -248,7 +267,7 @@ void Canvas::paintEvent(QPaintEvent *) {
             }
             if(state_.markersVisible){
                 p.setPen(QPen(point.color,pointIndex==selectedPointIndex_?3:2));p.setBrush(Qt::white);p.drawEllipse(vanishing,6,6);
-                if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon")){p.setPen(Qt::NoPen);p.setBrush(point.color);p.drawEllipse(vanishing,2.5,2.5);}
+                if(point.attachmentType==QStringLiteral("construction")&&(point.attachmentTargetId==QStringLiteral("horizon")||point.attachmentTargetId==QStringLiteral("vertical"))){p.setPen(Qt::NoPen);p.setBrush(point.color);p.drawEllipse(vanishing,2.5,2.5);}
                 p.setPen(QColor("#355274"));p.drawText(vanishing+QPointF(11,-10),tr("Точка схода %1").arg(pointIndex+1));
             }
         }
@@ -321,9 +340,11 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     if (tool_ == Perspective) {
         if (!state_.gridVisible) return;
         const double horizonY=toView(QPointF(0,state_.horizonY)).y();
+        const double verticalX=toView(QPointF(state_.verticalX,0)).x();
         int hit=-1;double distance=16;
         if(state_.markersVisible)for(int i=0;i<state_.vanishingPoints.size();++i){const double candidate=QLineF(e->localPos(),toView(state_.vanishingPoints[i].position)).length();if(candidate<=distance){distance=candidate;hit=i;}}
         if(hit>=0){selectPoint(hit);if(state_.vanishingPoints[hit].locked)return;before_=state_;movingPointIndex_=hit;movingPoint_=dragging_=true;return;}
+        if(state_.verticalVisible&&!state_.verticalLocked&&std::abs(e->localPos().x()-verticalX)<=8){before_=state_;movingVertical_=dragging_=true;return;}
         if (state_.horizonVisible&&!state_.horizonLocked&&std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;movingHorizon_=dragging_=true;return; }
         return;
     }
@@ -345,7 +366,11 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (panning_) { pan_ += e->localPos() - last_; last_ = e->localPos(); update(); }
     else if (movingPoint_&&movingPointIndex_>=0&&movingPointIndex_<state_.vanishingPoints.size()) {
         QPointF point=toImage(e->localPos());auto &vanishing=state_.vanishingPoints[movingPointIndex_];
-        if(std::abs(e->localPos().y()-toView(QPointF(0,state_.horizonY)).y())<=10){point.setY(state_.horizonY);vanishing.attachmentType=QStringLiteral("construction");vanishing.attachmentTargetId=QStringLiteral("horizon");}
+        const double horizonDistance=std::abs(e->localPos().y()-toView(QPointF(0,state_.horizonY)).y()),verticalDistance=std::abs(e->localPos().x()-toView(QPointF(state_.verticalX,0)).x());
+        QString target;const QString current=vanishing.attachmentType==QStringLiteral("construction")?vanishing.attachmentTargetId:QString();
+        if(current==QStringLiteral("horizon")&&horizonDistance<=10)target=current;else if(current==QStringLiteral("vertical")&&verticalDistance<=10)target=current;else if(horizonDistance<=10||verticalDistance<=10)target=horizonDistance<=verticalDistance?QStringLiteral("horizon"):QStringLiteral("vertical");
+        if(target==QStringLiteral("horizon")){point.setY(state_.horizonY);vanishing.attachmentType=QStringLiteral("construction");vanishing.attachmentTargetId=target;}
+        else if(target==QStringLiteral("vertical")){point.setX(state_.verticalX);vanishing.attachmentType=QStringLiteral("construction");vanishing.attachmentTargetId=target;}
         else{vanishing.attachmentType.clear();vanishing.attachmentTargetId.clear();}
         vanishing.position=point;updateSymmetricPoint(movingPointIndex_);update();
     }
@@ -354,15 +379,20 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         for(auto &point:state_.vanishingPoints)if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))point.position.ry()+=delta;
         update();
     }
+    else if(movingVertical_){
+        const double nextX=toImage(e->localPos()).x(),delta=nextX-state_.verticalX;state_.verticalX=nextX;
+        for(auto &point:state_.vanishingPoints)if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("vertical"))point.position.rx()+=delta;
+        update();
+    }
     else if (!straightStroke_) { stroke(last_, hoverPoint_); last_ = hoverPoint_; }
 }
 void Canvas::finish() {
     if (!dragging_) return;
-    if (!panning_ && (movingPoint_ ? state_.vanishingPoints != before_.vanishingPoints : movingHorizon_ ? state_.horizonY != before_.horizonY : state_.image != before_.image))
-        commit(before_, movingPoint_ ? tr("точку схода") : movingHorizon_ ? tr("горизонт") : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
-    if (!panning_ && !movingPoint_ && !movingHorizon_ && isPaintTool()) { paintAnchor_=last_;hasPaintAnchor_=true; }
+    if (!panning_ && (movingPoint_ ? state_.vanishingPoints != before_.vanishingPoints : movingHorizon_ ? state_.horizonY != before_.horizonY : movingVertical_ ? state_.verticalX != before_.verticalX : state_.image != before_.image))
+        commit(before_, movingPoint_ ? tr("точку схода") : movingHorizon_ ? tr("горизонт") : movingVertical_ ? tr("главную вертикаль") : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
+    if (!panning_ && !movingPoint_ && !movingHorizon_ && !movingVertical_ && isPaintTool()) { paintAnchor_=last_;hasPaintAnchor_=true; }
     before_ = DrawingState();
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = straightStroke_ = false;movingPointIndex_=-1;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = straightStroke_ = false;movingPointIndex_=-1;
     setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *) { finish(); }
@@ -371,7 +401,7 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) { space_ = true; setCursor(Qt::OpenHandCursor); e->accept(); }
     else if (e->key() == Qt::Key_Shift) { shiftPressed_=true;update();e->accept(); }
     else if (e->key() == Qt::Key_Control) { controlPressed_=true;update();e->accept(); }
-    else if (e->key() == Qt::Key_Escape && dragging_) { if (!panning_) state_ = before_; dragging_ = panning_ = movingPoint_ = movingHorizon_ = horizonCarriesPoint_ = false;movingPointIndex_=-1; before_ = DrawingState(); update(); }
+    else if (e->key() == Qt::Key_Escape && dragging_) { if (!panning_) state_ = before_; dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = false;movingPointIndex_=-1; before_ = DrawingState(); update(); }
     else QWidget::keyPressEvent(e);
 }
 void Canvas::keyReleaseEvent(QKeyEvent *e) {

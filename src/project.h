@@ -27,6 +27,8 @@ struct DrawingState {
     QVector<VanishingPoint> vanishingPoints;
     double horizonY = 0;
     bool horizonLocked = false;
+    double verticalX = 0;
+    bool verticalLocked = false;
     bool gridVisible = false;
     double rayStepDegrees = 10.0;
     double rayAngleOffset = 0;
@@ -40,6 +42,10 @@ struct DrawingState {
     int horizonOpacity = 70;
     double horizonWidth = 1.0;
     bool horizonVisible = true;
+    QColor verticalColor = QColor("#9b6bc0");
+    int verticalOpacity = 70;
+    double verticalWidth = 1.0;
+    bool verticalVisible = true;
     bool axesVisible = false;
     bool markersVisible = true;
     bool symmetricPoints = false;
