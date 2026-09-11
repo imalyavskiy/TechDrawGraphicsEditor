@@ -3,6 +3,7 @@
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
 #include <private/qzipwriter_p.h>
+#include <cmath>
 #include <stdexcept>
 
 namespace {
@@ -41,6 +42,11 @@ int runSelfTests(const QString &outputDirectory){
         require(pointsListControl->count()==1&&canvas->state().vanishingPoints.size()==1,"initial vanishing point list is invalid");
         const QString firstPointId=canvas->state().vanishingPoints[0].id;addPoint->click();require(pointsListControl->count()==2&&canvas->state().vanishingPoints.size()==2&&canvas->selectedPointIndex()==1&&canvas->state().vanishingPoints[1].id!=firstPointId,"adding and selecting a second vanishing point failed");
         removePoint->click();require(canvas->state().vanishingPoints.size()==1,"removing a vanishing point failed");canvas->undoStack()->undo();require(canvas->state().vanishingPoints.size()==2,"vanishing point deletion must be undoable");canvas->undoStack()->redo();require(canvas->state().vanishingPoints.size()==1,"vanishing point deletion redo failed");canvas->undoStack()->setClean();
+        auto *pointX=window.findChild<QDoubleSpinBox*>("vanishingPointX");auto *pointY=window.findChild<QDoubleSpinBox*>("vanishingPointY");auto *pointUnits=window.findChild<QComboBox*>("vanishingPointUnits");auto *horizonPosition=window.findChild<QDoubleSpinBox*>("horizonPosition");auto *horizonUnits=window.findChild<QComboBox*>("horizonUnits");auto *pointAttachment=window.findChild<QComboBox*>("vanishingPointAttachment");
+        require(pointX&&pointY&&pointUnits&&horizonPosition&&horizonUnits&&pointAttachment&&pointUnits->currentIndex()==0&&horizonUnits->currentIndex()==0&&std::abs(pointX->value()-15.0)<0.01&&std::abs(pointY->value()-11.29)<0.02,"centered percentage coordinate controls are missing or incorrect");
+        const QPointF beforeUnitChange=canvas->state().vanishingPoints[0].position;pointUnits->setCurrentIndex(1);require(horizonUnits->currentIndex()==1&&pointX->value()==150&&pointY->value()==70&&horizonPosition->value()==70&&canvas->state().vanishingPoints[0].position==beforeUnitChange,"unit switching must preserve geometry and synchronize coordinate controls");
+        pointX->setValue(-300);require(canvas->state().vanishingPoints[0].position==QPointF(200,240),"numeric X coordinate did not update the attached point");pointAttachment->setCurrentIndex(0);pointY->setValue(100);require(canvas->state().vanishingPoints[0].position==QPointF(200,210)&&canvas->state().vanishingPoints[0].attachmentType.isEmpty(),"free point numeric Y coordinate or attachment state is incorrect");
+        horizonPosition->setValue(50);require(canvas->state().horizonY==260&&canvas->state().vanishingPoints[0].position==QPointF(200,210),"numeric horizon position must not move a free point");canvas->undoStack()->setClean();
         require(!savePerspectiveDefaults->isEnabled(),"unchanged factory perspective defaults must not be saveable");
         auto *newAction=window.findChild<QAction*>("newAction");require(newAction,"new canvas action missing");
         QTimer::singleShot(0,&window,[]{auto *dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto *width=dialog->findChild<QSpinBox*>("newCanvasWidth");auto *height=dialog->findChild<QSpinBox*>("newCanvasHeight");if(width&&height){width->setValue(640);height->setValue(480);dialog->accept();}});newAction->trigger();

@@ -28,12 +28,15 @@ public:
     void setHorizonColor(QColor color);
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
+    void setHorizonY(double imageY);
     int selectedPointIndex() const { return selectedPointIndex_; }
     void selectPoint(int index);
     void addVanishingPoint();
     void removeSelectedVanishingPoint();
     void setSelectedPointColor(QColor color);
     void setSelectedPointVisible(bool visible);
+    void setSelectedPointPosition(QPointF position);
+    void setSelectedPointAttachedToHorizon(bool attached);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
     double zoom() const { return zoom_; }
     void fit();

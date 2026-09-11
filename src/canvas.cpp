@@ -105,6 +105,12 @@ void Canvas::setRayAppearance(double stepDegrees, int gap, int startOpacity, int
 void Canvas::setHorizonColor(QColor color) { if (!color.isValid()||state_.horizonColor==color) return;state_.horizonColor=color;emit stateChanged();update(); }
 void Canvas::setHorizonOpacity(int opacity) { if (state_.horizonOpacity==opacity) return;state_.horizonOpacity=opacity;emit stateChanged();update(); }
 void Canvas::setHorizonWidth(double width) { if (qFuzzyCompare(state_.horizonWidth,width)) return;state_.horizonWidth=width;emit stateChanged();update(); }
+void Canvas::setHorizonY(double imageY) {
+    if(!std::isfinite(imageY)||std::abs(imageY)>1000000||qFuzzyCompare(state_.horizonY+1,imageY+1))return;
+    finish();DrawingState before=state_;const double delta=imageY-state_.horizonY;state_.horizonY=imageY;
+    for(auto &point:state_.vanishingPoints)if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))point.position.ry()+=delta;
+    commit(before,tr("положение горизонта"));emit stateChanged();update();
+}
 void Canvas::selectPoint(int index) {
     const int next=state_.vanishingPoints.isEmpty()?-1:qBound(0,index,state_.vanishingPoints.size()-1);
     if (selectedPointIndex_==next) return;
@@ -137,6 +143,21 @@ void Canvas::setSelectedPointColor(QColor color) {
 void Canvas::setSelectedPointVisible(bool visible) {
     if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||state_.vanishingPoints[selectedPointIndex_].visible==visible)return;
     state_.vanishingPoints[selectedPointIndex_].visible=visible;emit stateChanged();update();
+}
+void Canvas::setSelectedPointPosition(QPointF position) {
+    if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size()||!std::isfinite(position.x())||!std::isfinite(position.y())||std::abs(position.x())>1000000||std::abs(position.y())>1000000)return;
+    auto &point=state_.vanishingPoints[selectedPointIndex_];if(point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon"))position.setY(state_.horizonY);
+    if(point.position==position)return;
+    finish();DrawingState before=state_;state_.vanishingPoints[selectedPointIndex_].position=position;commit(before,tr("координаты точки схода"));emit stateChanged();update();
+}
+void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
+    if(selectedPointIndex_<0||selectedPointIndex_>=state_.vanishingPoints.size())return;
+    auto &point=state_.vanishingPoints[selectedPointIndex_];
+    const bool current=point.attachmentType==QStringLiteral("construction")&&point.attachmentTargetId==QStringLiteral("horizon");if(current==attached)return;
+    finish();DrawingState before=state_;
+    if(attached){point.attachmentType=QStringLiteral("construction");point.attachmentTargetId=QStringLiteral("horizon");point.position.setY(state_.horizonY);}
+    else{point.attachmentType.clear();point.attachmentTargetId.clear();}
+    commit(before,tr("привязку точки схода"));emit stateChanged();update();
 }
 QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
 QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
