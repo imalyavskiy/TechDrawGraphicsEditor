@@ -25,7 +25,7 @@ private:
     QDoubleSpinBox *zoom_, *rayStep_;
     QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_;
     QCheckBox *gridVisible_;
-    QPushButton *frontButton_, *backButton_, *gridColorButton_;
+    QPushButton *frontButton_, *backButton_, *gridColorButton_, *savePerspectiveDefaultsButton_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     QDockWidget *perspectiveDock_;
     QAction *perspectiveAction_;
