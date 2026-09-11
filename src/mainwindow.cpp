@@ -3,6 +3,30 @@
 
 namespace {
 QString productName(){return QStringLiteral("Технический рисунок / Technical Draw");}
+
+class RolloutSection final : public QWidget {
+public:
+    RolloutSection(const QString &title,const QString &name,QWidget *parent=nullptr) : QWidget(parent) {
+        setObjectName(name);setProperty("title",title);setProperty("expanded",true);
+        auto *outer=new QVBoxLayout(this);outer->setContentsMargins(0,0,0,0);outer->setSpacing(0);
+        auto *header=new QFrame(this);header->setObjectName("rolloutHeader");
+        auto *headerLayout=new QHBoxLayout(header);headerLayout->setContentsMargins(4,2,7,2);headerLayout->setSpacing(3);
+        toggle_=new QToolButton(header);toggle_->setObjectName(name+"Toggle");toggle_->setCheckable(true);toggle_->setChecked(true);toggle_->setArrowType(Qt::DownArrow);toggle_->setAutoRaise(true);toggle_->setFixedSize(22,22);toggle_->setToolTip(QObject::tr("Свернуть раздел"));
+        auto *titleLabel=new QLabel(title,header);titleLabel->setObjectName(name+"Title");titleLabel->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);
+        QFont titleFont=titleLabel->font();titleFont.setBold(true);titleLabel->setFont(titleFont);
+        headerLayout->addWidget(toggle_);headerLayout->addWidget(titleLabel);
+        content_=new QWidget(this);content_->setObjectName(name+"Content");
+        outer->addWidget(header);outer->addWidget(content_);
+        connect(toggle_,&QToolButton::toggled,this,[this](bool expanded){
+            content_->setVisible(expanded);toggle_->setArrowType(expanded?Qt::DownArrow:Qt::RightArrow);toggle_->setToolTip(expanded?QObject::tr("Свернуть раздел"):QObject::tr("Развернуть раздел"));setProperty("expanded",expanded);updateGeometry();
+        });
+    }
+    QWidget *contentWidget() const { return content_; }
+private:
+    QToolButton *toggle_=nullptr;
+    QWidget *content_=nullptr;
+};
+
 QIcon toolIcon(int kind) {
     QPixmap image(24,24); image.fill(Qt::transparent);
     QPainter p(&image); p.setRenderHint(QPainter::Antialiasing);
@@ -93,6 +117,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     setWindowIcon(QIcon(":/app/techdraw.png"));
     setCentralWidget(canvas_);
     setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } QWidget#vanishingPointCard { background: #f5f6f8; border: 1px solid #d5d8dd; border-radius: 4px; } QWidget#vanishingPointCard[selected=\"true\"] { background: #e4effd; border-color: #8aaedb; } QWidget#vanishingPointCard QLineEdit { border: 0; background: transparent; padding: 2px; } QListWidget#vanishingPointsListControl::item { background: transparent; border: 0; } ");
+    setStyleSheet(styleSheet()+" QFrame#rolloutHeader { background: #eef1f5; border: 1px solid #b9c0ca; } QFrame#rolloutHeader QToolButton { padding: 0; border: 0; background: transparent; } QFrame#rolloutHeader QToolButton:hover { background: #dce7f5; border-radius: 2px; }");
     auto *file = menuBar()->addMenu(tr("&Файл"));file->setObjectName("fileMenu");
     auto *edit = menuBar()->addMenu(tr("&Правка"));edit->setObjectName("editMenu");
     auto *view = menuBar()->addMenu(tr("&Вид"));view->setObjectName("viewMenu");
@@ -151,12 +176,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
         if(i==4)perspectiveAction_=action;
     }
     toolsMenu->addSeparator();toolsMenu->addAction(strokeWidthAction);toolsMenu->addSeparator();toolsMenu->addAction(frontColorAction);toolsMenu->addAction(backColorAction);toolsMenu->addAction(swap);
-    perspectiveDock_ = new QDockWidget(tr("Перспектива · прототип"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
+    perspectiveDock_ = new QDockWidget(tr("Перспектива"),this); perspectiveDock_->setObjectName("perspectiveDock"); perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea|Qt::RightDockWidgetArea); perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
     auto *panel = new QWidget; auto *layout = new QVBoxLayout(panel); layout->setContentsMargins(14,14,14,14);
     gridVisible_ = new QCheckBox(tr("Показать направляющие")); gridVisible_->setObjectName("gridVisible"); layout->addWidget(gridVisible_);
     axesVisible_=new QCheckBox(tr("Показать координатные оси"));axesVisible_->setObjectName("axesVisible");layout->addWidget(axesVisible_);
     markersVisible_=new QCheckBox(tr("Показать управляющие маркеры"));markersVisible_->setObjectName("markersVisible");layout->addWidget(markersVisible_);
-    auto *commonGroup = new QGroupBox(tr("Настройки точек схода")); commonGroup->setObjectName("vanishingPointSettings"); auto *commonForm = new QFormLayout(commonGroup);
+    auto *commonGroup = new RolloutSection(tr("Настройки точек схода"),"vanishingPointSettings"); auto *commonForm = new QFormLayout(commonGroup->contentWidget());
     rayStep_ = new QDoubleSpinBox; rayStep_->setObjectName("rayStep"); rayStep_->setRange(1,30); rayStep_->setDecimals(1); rayStep_->setSingleStep(1); rayStep_->setSuffix(tr("°")); rayStep_->setKeyboardTracking(false); commonForm->addRow(tr("Угловой шаг"),rayStep_);
     rayAngleOffset_=new QDoubleSpinBox;rayAngleOffset_->setObjectName("rayAngleOffset");rayAngleOffset_->setRange(-180,180);rayAngleOffset_->setDecimals(1);rayAngleOffset_->setSuffix(tr("°"));rayAngleOffset_->setKeyboardTracking(false);commonForm->addRow(tr("Смещение первого луча"),rayAngleOffset_);
     rayPattern_=new QComboBox;rayPattern_->setObjectName("rayPattern");rayPattern_->addItems({tr("Сплошная"),tr("Пунктир"),tr("Точки"),tr("Штрих-пунктир")});commonForm->addRow(tr("Шаблон линии"),rayPattern_);
@@ -167,7 +192,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     rayFadeLength_ = new QSpinBox; rayFadeLength_->setObjectName("rayFadeLength"); rayFadeLength_->setRange(0,500); rayFadeLength_->setSuffix(tr(" px")); rayFadeLength_->setKeyboardTracking(false); commonForm->addRow(tr("Длина нарастания"),rayFadeLength_);
     auto *defaultButtons = new QHBoxLayout; savePerspectiveDefaultsButton_ = new QPushButton(tr("Сохранить")); savePerspectiveDefaultsButton_->setObjectName("savePerspectiveDefaults"); savePerspectiveDefaultsButton_->setToolTip(tr("Сохранить пять числовых параметров и шаблон линии"));
     auto *resetDefaults = new QPushButton(tr("Сбросить")); resetDefaults->setObjectName("resetPerspectiveDefaults"); resetDefaults->setToolTip(tr("Вернуть заводские значения")); defaultButtons->addWidget(savePerspectiveDefaultsButton_);defaultButtons->addWidget(resetDefaults);commonForm->addRow(defaultButtons);
-    auto *horizonGroup = new QGroupBox(tr("Линия горизонта")); horizonGroup->setObjectName("horizonSettings"); auto *horizonForm = new QFormLayout(horizonGroup);
+    auto *horizonGroup = new RolloutSection(tr("Линия горизонта"),"horizonSettings"); auto *horizonForm = new QFormLayout(horizonGroup->contentWidget());
     horizonVisible_=new QCheckBox(tr("Показывать линию горизонта"));horizonVisible_->setObjectName("horizonVisible");horizonForm->addRow(horizonVisible_);
     horizonLocked_=new QCheckBox(tr("Фиксировать"));horizonLocked_->setObjectName("horizonLocked");horizonForm->addRow(horizonLocked_);
     horizonSymmetry_=new QCheckBox(tr("Симметрия"));horizonSymmetry_->setObjectName("horizonSymmetry");horizonSymmetry_->setToolTip(tr("Зеркально перемещать ближайшую парную точку на горизонте относительно пересечения осей"));horizonForm->addRow(horizonSymmetry_);
@@ -176,7 +201,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     horizonColorButton_ = new QPushButton(tr("Выбрать…")); horizonColorButton_->setObjectName("horizonColor"); horizonForm->addRow(tr("Цвет"),horizonColorButton_);
     horizonOpacity_ = new QSpinBox; horizonOpacity_->setObjectName("horizonOpacity"); horizonOpacity_->setRange(0,100); horizonOpacity_->setSuffix(" %"); horizonOpacity_->setKeyboardTracking(false); horizonForm->addRow(tr("Непрозрачность"),horizonOpacity_);
     horizonWidth_ = new QDoubleSpinBox; horizonWidth_->setObjectName("horizonWidth"); horizonWidth_->setRange(0.1,20); horizonWidth_->setDecimals(1); horizonWidth_->setSingleStep(0.5); horizonWidth_->setSuffix(tr(" px")); horizonWidth_->setKeyboardTracking(false); horizonForm->addRow(tr("Ширина"),horizonWidth_);layout->addWidget(horizonGroup);
-    auto *verticalGroup=new QGroupBox(tr("Главная вертикаль"));verticalGroup->setObjectName("mainVerticalSettings");auto *verticalForm=new QFormLayout(verticalGroup);
+    auto *verticalGroup=new RolloutSection(tr("Главная вертикаль"),"mainVerticalSettings");auto *verticalForm=new QFormLayout(verticalGroup->contentWidget());
     verticalVisible_=new QCheckBox(tr("Показывать главную вертикаль"));verticalVisible_->setObjectName("verticalVisible");verticalForm->addRow(verticalVisible_);
     verticalLocked_=new QCheckBox(tr("Фиксировать"));verticalLocked_->setObjectName("verticalLocked");verticalForm->addRow(verticalLocked_);
     verticalSymmetry_=new QCheckBox(tr("Симметрия"));verticalSymmetry_->setObjectName("verticalSymmetry");verticalSymmetry_->setToolTip(tr("Зеркально перемещать ближайшую парную точку на главной вертикали относительно пересечения осей"));verticalForm->addRow(verticalSymmetry_);
@@ -185,10 +210,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     verticalColorButton_=new QPushButton(tr("Выбрать…"));verticalColorButton_->setObjectName("verticalColor");verticalForm->addRow(tr("Цвет"),verticalColorButton_);
     verticalOpacity_=new QSpinBox;verticalOpacity_->setObjectName("verticalOpacity");verticalOpacity_->setRange(0,100);verticalOpacity_->setSuffix(" %");verticalOpacity_->setKeyboardTracking(false);verticalForm->addRow(tr("Непрозрачность"),verticalOpacity_);
     verticalWidth_=new QDoubleSpinBox;verticalWidth_->setObjectName("verticalWidth");verticalWidth_->setRange(0.1,20);verticalWidth_->setDecimals(1);verticalWidth_->setSingleStep(0.5);verticalWidth_->setSuffix(tr(" px"));verticalWidth_->setKeyboardTracking(false);verticalForm->addRow(tr("Ширина"),verticalWidth_);layout->addWidget(verticalGroup);layout->addWidget(commonGroup);
-    auto *pointsListGroup = new QGroupBox(tr("Точки схода")); pointsListGroup->setObjectName("vanishingPointsList"); auto *pointsListLayout = new QVBoxLayout(pointsListGroup);
+    auto *pointsListGroup = new RolloutSection(tr("Точки схода"),"vanishingPointsList"); auto *pointsListLayout = new QVBoxLayout(pointsListGroup->contentWidget());
     vanishingPointsList_=new QListWidget;vanishingPointsList_->setObjectName("vanishingPointsListControl");vanishingPointsList_->setSelectionMode(QAbstractItemView::SingleSelection);vanishingPointsList_->setSpacing(3);pointsListLayout->addWidget(vanishingPointsList_);
     auto *pointButtons=new QHBoxLayout;auto *addPointButton=new QPushButton(tr("Добавить"));addPointButton->setObjectName("addVanishingPoint");removePointButton_=new QPushButton(tr("Удалить"));removePointButton_->setObjectName("removeVanishingPoint");pointButtons->addWidget(addPointButton);pointButtons->addWidget(removePointButton_);pointsListLayout->addLayout(pointButtons);
-    auto *pointGroup = new QGroupBox(tr("Свойства выбранной точки")); pointGroup->setObjectName("selectedVanishingPointSettings"); auto *pointForm = new QFormLayout(pointGroup);
+    auto *pointGroup = new RolloutSection(tr("Свойства выбранной точки"),"selectedVanishingPointSettings"); auto *pointForm = new QFormLayout(pointGroup->contentWidget());
     pointX_=new QDoubleSpinBox;pointX_->setObjectName("vanishingPointX");pointX_->setRange(-1000000,1000000);pointX_->setDecimals(2);pointX_->setKeyboardTracking(false);pointForm->addRow(tr("X"),pointX_);
     pointY_=new QDoubleSpinBox;pointY_->setObjectName("vanishingPointY");pointY_->setRange(-1000000,1000000);pointY_->setDecimals(2);pointY_->setKeyboardTracking(false);pointForm->addRow(tr("Y"),pointY_);
     pointUnits_=new QComboBox;pointUnits_->setObjectName("vanishingPointUnits");pointUnits_->addItems({tr("Проценты"),tr("Пиксели")});pointForm->addRow(tr("Единицы"),pointUnits_);
