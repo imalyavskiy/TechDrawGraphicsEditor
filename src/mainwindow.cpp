@@ -218,7 +218,7 @@ void MainWindow::newDocument(){
 void MainWindow::openDocument(){QString path=QFileDialog::getOpenFileName(this,tr("Открыть"),rememberedDirectory("files/openDirectory"),tr("Drawing и PNG (*.drw *.png);;Drawing (*.drw);;PNG (*.png)"));if(!path.isEmpty())openPath(path);}
 bool MainWindow::openPath(const QString &path){
     DrawingState state;DrawingHistory history;QString error;bool project=path.endsWith(".drw",Qt::CaseInsensitive);
-    if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}}
+    if(project){if(!Project::load(path,&history,&error)){showError(error);return false;}for(auto &historyState:history.states)applySavedPerspectiveDefaults(&historyState);}
     else{if(!Project::loadPng(path,&state.image,&error)){showError(error);return false;}state.vanishing=QPointF(state.image.width()/2.0,state.image.height()/2.0);state.horizonY=state.vanishing.y();applySavedPerspectiveDefaults(&state);}
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();

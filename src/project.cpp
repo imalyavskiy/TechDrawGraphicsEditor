@@ -30,35 +30,18 @@ bool decode(QIODevice *device, QImage *image, QString *error) {
     return true;
 }
 QJsonObject perspectiveJson(const DrawingState &state) {
-    return QJsonObject{{"visible",state.gridVisible},{"x",state.vanishing.x()},{"y",state.vanishing.y()},{"horizonY",state.horizonY},
-        {"rayStepDegrees",state.rayStepDegrees},{"color",state.gridColor.name(QColor::HexArgb)},{"rayGap",state.rayGap},
-        {"rayStartOpacity",state.rayStartOpacity},{"rayEndOpacity",state.rayEndOpacity},{"rayFadeLength",state.rayFadeLength}};
+    return QJsonObject{{"x",state.vanishing.x()},{"y",state.vanishing.y()},{"horizonY",state.horizonY}};
 }
 bool parsePerspective(const QJsonValue &value,DrawingState *state,QString *error) {
     if (!value.isObject()) return fail(error,QStringLiteral("Отсутствуют параметры перспективы."));
     const auto perspective=value.toObject();
-    if (!perspective.value("x").isDouble()||!perspective.value("y").isDouble()||!perspective.value("visible").isBool())
+    if (!perspective.value("x").isDouble()||!perspective.value("y").isDouble())
         return fail(error,QStringLiteral("Некорректные параметры перспективы."));
     const double x=perspective.value("x").toDouble(),y=perspective.value("y").toDouble();
     const double horizonY=perspective.value("horizonY").toDouble(y);
-    double rayStepDegrees=perspective.value("rayStepDegrees").toDouble(-1);
-    if (rayStepDegrees<0) {
-        const double legacyRays=perspective.value("rays").toDouble(-1);
-        if (legacyRays>=4&&legacyRays<=64&&legacyRays==std::floor(legacyRays)) rayStepDegrees=360.0/legacyRays;
-    }
-    const double rayGap=perspective.value("rayGap").toDouble(12);
-    const double rayStartOpacity=perspective.value("rayStartOpacity").toDouble(10);
-    const double rayEndOpacity=perspective.value("rayEndOpacity").toDouble(70);
-    const double rayFadeLength=perspective.value("rayFadeLength").toDouble(50);
-    const QColor color(perspective.value("color").toString());
-    if (!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(horizonY)||std::abs(x)>1000000||std::abs(y)>1000000||std::abs(horizonY)>1000000||
-        !std::isfinite(rayStepDegrees)||rayStepDegrees<1||rayStepDegrees>30||rayGap<0||rayGap>200||rayGap!=std::floor(rayGap)||
-        rayStartOpacity<0||rayStartOpacity>100||rayStartOpacity!=std::floor(rayStartOpacity)||
-        rayEndOpacity<0||rayEndOpacity>100||rayEndOpacity!=std::floor(rayEndOpacity)||
-        rayFadeLength<0||rayFadeLength>500||rayFadeLength!=std::floor(rayFadeLength)||!color.isValid())
+    if (!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(horizonY)||std::abs(x)>1000000||std::abs(y)>1000000||std::abs(horizonY)>1000000)
         return fail(error,QStringLiteral("Параметры перспективы вне допустимого диапазона."));
-    state->horizonY=horizonY;state->vanishing=QPointF(x,y);state->rayStepDegrees=rayStepDegrees;state->gridVisible=perspective.value("visible").toBool();state->gridColor=color;
-    state->rayGap=int(rayGap);state->rayStartOpacity=int(rayStartOpacity);state->rayEndOpacity=int(rayEndOpacity);state->rayFadeLength=int(rayFadeLength);
+    state->horizonY=horizonY;state->vanishing=QPointF(x,y);
     return true;
 }
 bool validState(const DrawingState &state) {
@@ -68,9 +51,8 @@ bool validState(const DrawingState &state) {
         state.rayStartOpacity>=0&&state.rayStartOpacity<=100&&state.rayEndOpacity>=0&&state.rayEndOpacity<=100&&
         state.rayFadeLength>=0&&state.rayFadeLength<=500;
 }
-bool sameState(const DrawingState &a,const DrawingState &b) {
-    return a.image==b.image&&a.vanishing==b.vanishing&&qFuzzyCompare(a.horizonY+1,b.horizonY+1)&&a.gridVisible==b.gridVisible&&qFuzzyCompare(a.rayStepDegrees,b.rayStepDegrees)&&a.gridColor==b.gridColor&&
-        a.rayGap==b.rayGap&&a.rayStartOpacity==b.rayStartOpacity&&a.rayEndOpacity==b.rayEndOpacity&&a.rayFadeLength==b.rayFadeLength;
+bool samePersistentState(const DrawingState &a,const DrawingState &b) {
+    return a.image==b.image&&a.vanishing==b.vanishing&&qFuzzyCompare(a.horizonY+1,b.horizonY+1);
 }
 }
 
@@ -110,7 +92,7 @@ bool Project::save(const QString &path,const DrawingHistory &history,QString *er
     QJsonArray labels;for (const auto &label:history.labels) labels.append(label);
     QJsonObject historyJson{{"index",history.index},{"states",states},{"labels",labels}};
     const DrawingState &current=history.states[history.index];
-    QJsonObject metadata{{"format","Drawing"},{"version",2},{"width",size.width()},{"height",size.height()},
+    QJsonObject metadata{{"format","Drawing"},{"version",3},{"width",size.width()},{"height",size.height()},
         {"image","drawing.png"},{"perspective",perspectiveJson(current)},{"history",historyJson}};
 
     QByteArray archive;QBuffer archiveBuffer(&archive);archiveBuffer.open(QIODevice::WriteOnly);
@@ -147,7 +129,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
     QJsonParseError parseError;const auto document=QJsonDocument::fromJson(zip.fileData("project.json"),&parseError);
     if (parseError.error!=QJsonParseError::NoError||!document.isObject()) return fail(error,QStringLiteral("Не удалось прочитать project.json."));
     const auto object=document.object();const double versionValue=object.value("version").toDouble(-1);
-    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2)||object.value("image").toString()!="drawing.png")
+    if (object.value("format").toString()!="Drawing"||(versionValue!=1&&versionValue!=2&&versionValue!=3)||object.value("image").toString()!="drawing.png")
         return fail(error,QStringLiteral("Неизвестный формат или версия DRW."));
     const double width=object.value("width").toDouble(-1),height=object.value("height").toDouble(-1);
     if (width<1||height<1||width>8192||height>8192||width!=std::floor(width)||height!=std::floor(height)||!validSize(QSize(int(width),int(height))))
@@ -188,7 +170,7 @@ bool Project::load(const QString &path,DrawingHistory *history,QString *error) {
         result.labels.append(value.toString());
     }
     result.index=int(indexValue);
-    if (!sameState(result.states[result.index],current)) return fail(error,QStringLiteral("Текущее состояние не совпадает с историей документа."));
+    if (!samePersistentState(result.states[result.index],current)) return fail(error,QStringLiteral("Текущее состояние не совпадает с историей документа."));
     *history=result;return true;
 }
 

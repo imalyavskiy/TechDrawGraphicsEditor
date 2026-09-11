@@ -5,6 +5,13 @@
 #include <QKeyEvent>
 #include <cmath>
 
+namespace {
+void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
+    target->gridVisible=source.gridVisible;target->rayStepDegrees=source.rayStepDegrees;target->gridColor=source.gridColor;
+    target->rayGap=source.rayGap;target->rayStartOpacity=source.rayStartOpacity;target->rayEndOpacity=source.rayEndOpacity;target->rayFadeLength=source.rayFadeLength;
+}
+}
+
 class StateCommand : public QUndoCommand {
 public:
     StateCommand(Canvas *canvas, DrawingState before, DrawingState after, const QString &label)
@@ -70,20 +77,19 @@ DrawingHistory Canvas::history() const {
     return result;
 }
 
-void Canvas::apply(const DrawingState &state) { state_ = state; emit stateChanged(); update(); }
+void Canvas::apply(const DrawingState &state) { DrawingState next=state;copyPerspectiveAppearance(state_,&next);state_=std::move(next);emit stateChanged();update(); }
 void Canvas::commit(const DrawingState &before, const QString &label) { undo_.push(new StateCommand(this, before, state_, label)); }
 void Canvas::setTool(Tool tool) { finish(); if (tool_ != tool) hasPaintAnchor_ = false; tool_ = tool; setCursor(tool == Pan ? Qt::OpenHandCursor : Qt::CrossCursor); update(); }
-void Canvas::setGridVisible(bool visible) { if (state_.gridVisible == visible) return; auto before = state_; state_.gridVisible = visible; commit(before, tr("видимость перспективы")); }
-void Canvas::setRayStep(double degrees) { if (qFuzzyCompare(state_.rayStepDegrees, degrees)) return; auto before = state_; state_.rayStepDegrees = degrees; commit(before, tr("угловой шаг направляющих")); }
-void Canvas::setGridColor(QColor color) { if (!color.isValid() || state_.gridColor == color) return; auto before = state_; state_.gridColor = color; commit(before, tr("цвет направляющих")); }
-void Canvas::setRayGap(int gap) { if (state_.rayGap == gap) return; auto before = state_; state_.rayGap = gap; commit(before, tr("отступ направляющих")); }
-void Canvas::setRayStartOpacity(int opacity) { if (state_.rayStartOpacity == opacity) return; auto before = state_; state_.rayStartOpacity = opacity; commit(before, tr("начальную непрозрачность направляющих")); }
-void Canvas::setRayEndOpacity(int opacity) { if (state_.rayEndOpacity == opacity) return; auto before = state_; state_.rayEndOpacity = opacity; commit(before, tr("конечную непрозрачность направляющих")); }
-void Canvas::setRayFadeLength(int length) { if (state_.rayFadeLength == length) return; auto before = state_; state_.rayFadeLength = length; commit(before, tr("длину нарастания направляющих")); }
+void Canvas::setGridVisible(bool visible) { if (state_.gridVisible == visible) return;state_.gridVisible=visible;emit stateChanged();update(); }
+void Canvas::setRayStep(double degrees) { if (qFuzzyCompare(state_.rayStepDegrees, degrees)) return;state_.rayStepDegrees=degrees;emit stateChanged();update(); }
+void Canvas::setGridColor(QColor color) { if (!color.isValid() || state_.gridColor == color) return;state_.gridColor=color;emit stateChanged();update(); }
+void Canvas::setRayGap(int gap) { if (state_.rayGap == gap) return;state_.rayGap=gap;emit stateChanged();update(); }
+void Canvas::setRayStartOpacity(int opacity) { if (state_.rayStartOpacity == opacity) return;state_.rayStartOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setRayEndOpacity(int opacity) { if (state_.rayEndOpacity == opacity) return;state_.rayEndOpacity=opacity;emit stateChanged();update(); }
+void Canvas::setRayFadeLength(int length) { if (state_.rayFadeLength == length) return;state_.rayFadeLength=length;emit stateChanged();update(); }
 void Canvas::setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength) {
     if (qFuzzyCompare(state_.rayStepDegrees,stepDegrees)&&state_.rayGap==gap&&state_.rayStartOpacity==startOpacity&&state_.rayEndOpacity==endOpacity&&state_.rayFadeLength==fadeLength) return;
-    auto before=state_;state_.rayStepDegrees=stepDegrees;state_.rayGap=gap;state_.rayStartOpacity=startOpacity;state_.rayEndOpacity=endOpacity;state_.rayFadeLength=fadeLength;
-    commit(before,tr("общие настройки направляющих"));
+    state_.rayStepDegrees=stepDegrees;state_.rayGap=gap;state_.rayStartOpacity=startOpacity;state_.rayEndOpacity=endOpacity;state_.rayFadeLength=fadeLength;emit stateChanged();update();
 }
 QPointF Canvas::toImage(QPointF p) const { return (p - QPointF(width()/2.0, height()/2.0) - pan_) / zoom_ + QPointF(state_.image.width()/2.0, state_.image.height()/2.0); }
 QPointF Canvas::toView(QPointF p) const { return (p - QPointF(state_.image.width()/2.0, state_.image.height()/2.0))*zoom_ + QPointF(width()/2.0, height()/2.0) + pan_; }
