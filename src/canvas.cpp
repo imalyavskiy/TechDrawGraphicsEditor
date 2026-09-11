@@ -118,14 +118,19 @@ void Canvas::paintEvent(QPaintEvent *) {
             const double angle = degrees * 3.14159265358979323846 / 180.0;
             const QPointF direction(std::cos(angle), std::sin(angle));
             const QPointF start = vanishing + direction*state_.rayGap;
-            const QPointF end = vanishing + direction*(radius + 2);
-            if (QLineF(vanishing, start).length() >= QLineF(vanishing, end).length()) continue;
-            const QLineF visibleRay(start,end);
+            const QPointF viewportEnd = vanishing + direction*(radius + 2);
+            if (QLineF(vanishing, start).length() >= QLineF(vanishing, viewportEnd).length()) continue;
+            const QLineF visibleRay(start,viewportEnd);
             QPointF intersection;
             bool crossesCanvas = paper.contains(start);
-            for (const QLineF &edge : edges)
-                if (visibleRay.intersects(edge,&intersection)==QLineF::BoundedIntersection) { crossesCanvas=true;break; }
-            if (!crossesCanvas) continue;
+            double exitDistance = -1;
+            for (const QLineF &edge : edges) {
+                if (visibleRay.intersects(edge,&intersection)!=QLineF::BoundedIntersection) continue;
+                crossesCanvas=true;
+                exitDistance=qMax(exitDistance,QPointF::dotProduct(intersection-vanishing,direction));
+            }
+            if (!crossesCanvas||exitDistance<state_.rayGap) continue;
+            const QPointF end = vanishing + direction*exitDistance;
             QColor startColor = state_.gridColor; startColor.setAlphaF(state_.rayStartOpacity/100.0);
             QColor endColor = state_.gridColor; endColor.setAlphaF(state_.rayEndOpacity/100.0);
             QPen ray;
@@ -136,15 +141,15 @@ void Canvas::paintEvent(QPaintEvent *) {
             } else ray = QPen(endColor, 1);
             ray.setCosmetic(true); p.setPen(ray); p.drawLine(start, end);
         }
-        p.save();
-        p.setClipRect(paper);
         const double horizonY = toView(QPointF(0, state_.horizonY)).y();
         QColor horizonColor = state_.gridColor; horizonColor.setAlphaF(state_.rayEndOpacity/100.0);
         QPen horizon(horizonColor, 1); horizon.setCosmetic(true); p.setPen(horizon);
-        p.drawLine(QPointF(paper.left(), horizonY), QPointF(paper.right(), horizonY));
-        p.restore();
+        p.drawLine(QPointF(0, horizonY), QPointF(width(), horizonY));
         p.setPen(QPen(state_.gridColor, 2)); p.setBrush(Qt::white);
         p.drawEllipse(vanishing, 6, 6);
+        if (qFuzzyCompare(state_.vanishing.y()+1,state_.horizonY+1)) {
+            p.setPen(Qt::NoPen);p.setBrush(state_.gridColor);p.drawEllipse(vanishing,2.5,2.5);
+        }
         p.setPen(QColor("#355274"));
         p.drawText(vanishing + QPointF(11, -10), tr("Точка схода"));
     }
@@ -184,9 +189,8 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         if (!state_.gridVisible) return;
         const QPointF vanishing=toView(state_.vanishing);
         const double horizonY=toView(QPointF(0,state_.horizonY)).y();
-        const QRectF paper(toView(QPointF()),QSizeF(state_.image.size())*zoom_);
         if (QLineF(e->localPos(),vanishing).length()<=15) { before_=state_;movingPoint_=dragging_=true;return; }
-        if (e->localPos().x()>=paper.left()&&e->localPos().x()<=paper.right()&&std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;horizonCarriesPoint_=qFuzzyCompare(state_.vanishing.y()+1,state_.horizonY+1);movingHorizon_=dragging_=true;return; }
+        if (std::abs(e->localPos().y()-horizonY)<=8) { before_=state_;horizonCarriesPoint_=qFuzzyCompare(state_.vanishing.y()+1,state_.horizonY+1);movingHorizon_=dragging_=true;return; }
         return;
     }
     QPointF point = toImage(e->localPos());
