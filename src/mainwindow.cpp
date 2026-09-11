@@ -57,6 +57,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     auto *help = menuBar()->addMenu(tr("&Справка"));
     auto *newAction = file->addAction(style()->standardIcon(QStyle::SP_FileIcon),tr("Создать…"),this,&MainWindow::newDocument,QKeySequence::New);
     auto *openAction = file->addAction(style()->standardIcon(QStyle::SP_DirOpenIcon),tr("Открыть…"),this,&MainWindow::openDocument,QKeySequence::Open);
+    recentFilesMenu_=file->addMenu(tr("Недавние файлы"));recentFilesMenu_->setObjectName("recentFilesMenu");
+    recentFiles_=QSettings().value("files/recentFiles").toStringList();while(recentFiles_.size()>5)recentFiles_.removeLast();updateRecentFilesMenu();
+    file->addSeparator();
     auto *saveAction = file->addAction(style()->standardIcon(QStyle::SP_DialogSaveButton),tr("Сохранить проект"),this,[this]{saveDocument();},QKeySequence::Save);saveAction->setObjectName("saveAction");
     file->addAction(tr("Сохранить проект как…"),this,[this]{saveDocument(true);},QKeySequence::SaveAs);
     file->addSeparator();
@@ -122,6 +125,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
 }
 
 void MainWindow::updateColors(){ colorSwatch(frontButton_,front_);colorSwatch(backButton_,back_);canvas_->setFront(front_);canvas_->setBack(back_); }
+void MainWindow::addRecentFile(const QString &path){
+    const QString absolute=QFileInfo(path).absoluteFilePath();
+    for(int i=recentFiles_.size()-1;i>=0;--i)if(QString::compare(recentFiles_[i],absolute,Qt::CaseInsensitive)==0)recentFiles_.removeAt(i);
+    recentFiles_.prepend(absolute);while(recentFiles_.size()>5)recentFiles_.removeLast();
+    QSettings().setValue("files/recentFiles",recentFiles_);updateRecentFilesMenu();
+}
+void MainWindow::updateRecentFilesMenu(){
+    recentFilesMenu_->clear();
+    if(recentFiles_.isEmpty()){auto *empty=recentFilesMenu_->addAction(tr("Нет недавних файлов"));empty->setEnabled(false);return;}
+    for(int i=0;i<recentFiles_.size();++i){
+        const QString path=recentFiles_[i];QString label=path;label.replace("&","&&");
+        auto *action=recentFilesMenu_->addAction(QString("&%1  %2").arg(i+1).arg(label));action->setObjectName(QString("recentFile%1").arg(i));action->setData(path);action->setToolTip(path);
+        connect(action,&QAction::triggered,this,[this,path]{openPath(path);});
+    }
+}
 void MainWindow::updateState(){
     QString name=path_.isEmpty()?tr("Без имени.drw"):QFileInfo(path_).fileName();
     setWindowTitle(name+"[*] — Drawing"); setWindowModified(!canvas_->undoStack()->isClean());
@@ -154,7 +172,7 @@ bool MainWindow::openPath(const QString &path){
     if(!confirmDiscard())return false;
     path_=project?QFileInfo(path).absoluteFilePath():QString();
     if(project)canvas_->setDocument(history,true);else canvas_->setDocument(state,false);
-    rememberDirectory("files/openDirectory",path);canvas_->fit();return true;
+    rememberDirectory("files/openDirectory",path);addRecentFile(path);canvas_->fit();return true;
 }
 bool MainWindow::saveDocument(bool saveAs){
     QString target=path_;
@@ -167,7 +185,7 @@ bool MainWindow::saveDocument(bool saveAs){
         target=suffixed;
     }
     QString error;if(!Project::save(target,canvas_->history(),&error)){showError(error);return false;}
-    path_=QFileInfo(target).absoluteFilePath();rememberDirectory("files/saveDirectory",path_);canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
+    path_=QFileInfo(target).absoluteFilePath();rememberDirectory("files/saveDirectory",path_);addRecentFile(path_);canvas_->undoStack()->setClean();updateState();statusBar()->showMessage(tr("Проект сохранён"),3000);return true;
 }
 void MainWindow::exportImage(){
     QString target=QFileDialog::getSaveFileName(this,tr("Экспортировать рисунок без направляющих"),suggestedFile("files/saveDirectory",tr("Рисунок.png")),tr("PNG (*.png)"));if(target.isEmpty())return;

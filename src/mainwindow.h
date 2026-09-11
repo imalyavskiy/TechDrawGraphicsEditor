@@ -8,6 +8,7 @@ class QDoubleSpinBox;
 class QCheckBox;
 class QPushButton;
 class QDockWidget;
+class QMenu;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -28,6 +29,8 @@ private:
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     QDockWidget *perspectiveDock_;
     QAction *perspectiveAction_;
+    QMenu *recentFilesMenu_;
+    QStringList recentFiles_;
     void newDocument();
     void openDocument();
     bool saveDocument(bool saveAs = false);
@@ -35,5 +38,7 @@ private:
     bool confirmDiscard();
     void updateState();
     void updateColors();
+    void addRecentFile(const QString &path);
+    void updateRecentFilesMenu();
     void showError(const QString &error);
 };
