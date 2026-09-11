@@ -22,6 +22,7 @@ int runSelfTests(const QString &outputDirectory){
         tracePath=out.filePath("trace.txt");{QFile trace(tracePath);trace.open(QIODevice::WriteOnly);}
         QTimer watchdog;watchdog.setSingleShot(true);watchdog.setInterval(12000);QObject::connect(&watchdog,&QTimer::timeout,[]{QFile trace(tracePath);trace.open(QIODevice::Append);trace.write("TIMEOUT\n");for(auto *widget:QApplication::topLevelWidgets()){trace.write(widget->metaObject()->className());trace.write(" ");trace.write(widget->windowTitle().toUtf8());trace.write("\n");}trace.close();std::exit(2);});watchdog.start();
         MainWindow window;window.show();QApplication::processEvents();
+        require(QCoreApplication::applicationName()==QStringLiteral("TechDraw")&&QApplication::applicationDisplayName()==QStringLiteral("TechDraw")&&window.windowTitle().contains(QStringLiteral("TechDraw")),"application branding was not changed to TechDraw");
         Canvas *canvas=window.canvas();
         auto *mainToolbar=window.findChild<QToolBar*>("mainToolbar");auto *toolsToolbar=window.findChild<QToolBar*>("toolsToolbar");
         require(mainToolbar&&toolsToolbar&&mainToolbar->toolButtonStyle()==Qt::ToolButtonIconOnly&&toolsToolbar->toolButtonStyle()==Qt::ToolButtonIconOnly,"toolbars must show icons only");
