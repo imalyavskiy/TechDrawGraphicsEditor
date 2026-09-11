@@ -14,6 +14,7 @@ int main(int argc, char **argv) {
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
     QApplication app(argc,argv);
     app.setApplicationName("Drawing");app.setOrganizationName("DrawingPrototype");
+    app.setWindowIcon(QIcon(":/app/drawing.png"));
     QFont font("Segoe UI",9);app.setFont(font);
     const auto args=app.arguments();
     const int test=args.indexOf("--self-test");

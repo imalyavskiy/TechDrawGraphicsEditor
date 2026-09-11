@@ -52,7 +52,7 @@ QString widthSetting(int tool) {
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
     setObjectName("drawingWindow");
     resize(1200,800); setMinimumSize(720,480);
-    setWindowIcon(toolIcon(0));
+    setWindowIcon(QIcon(":/app/drawing.png"));
     setCentralWidget(canvas_);
     setStyleSheet("QToolBar { spacing: 5px; padding: 5px; border: 0; border-bottom: 1px solid #cdd0d5; background: #f6f6f6; } QDockWidget { font-weight: 500; } QStatusBar { background: #f6f6f6; } QToolButton { padding: 5px; } QToolButton:checked { background: #dceaff; border: 1px solid #8aaedb; border-radius: 3px; } ");
     auto *file = menuBar()->addMenu(tr("&Файл"));
