@@ -59,6 +59,11 @@ int runSelfTests(const QString &outputDirectory){
         QPointF point(100,100);require(QLineF(canvas->toImage(canvas->toView(point)),point).length()<0.001,"view coordinate roundtrip failed");
         canvas->setTool(Canvas::Pan);drag(canvas,QPointF(100,100),QPointF(150,130));require(canvas->state().image==pixels&&canvas->undoStack()->index()==undoIndex,"pan must not edit document");
         canvas->fit();canvas->setGridVisible(true);canvas->setTool(Canvas::Perspective);drag(canvas,QPointF(650,240),QPointF(600,210));require(QLineF(canvas->state().vanishing,QPointF(600,210)).length()<0.01,"perspective point did not move");require(canvas->state().image==pixels,"perspective must not alter pixels");
+        QImage gridView(canvas->size(),QImage::Format_ARGB32_Premultiplied);gridView.fill(Qt::transparent);canvas->render(&gridView);
+        const QRectF paper(canvas->toView(QPointF()),QSizeF(canvas->state().image.size())*canvas->zoom());
+        const QPoint outsideRay(qRound(paper.right()+12),qRound(canvas->toView(canvas->state().vanishing).y()));
+        bool rayOutsideCanvas=false;for(int y=outsideRay.y()-2;y<=outsideRay.y()+2;++y)for(int x=outsideRay.x()-2;x<=outsideRay.x()+2;++x)if(gridView.valid(x,y)&&gridView.pixelColor(x,y)!=QColor("#dce0e5"))rayOutsideCanvas=true;
+        require(outsideRay.x()<canvas->width()&&rayOutsideCanvas,"perspective rays must remain visible outside the canvas");
         canvas->undoStack()->undo();require(canvas->state().vanishing==QPointF(650,240),"perspective undo failed");canvas->undoStack()->redo();
         canvas->undoStack()->undo();require(canvas->undoStack()->canUndo()&&canvas->undoStack()->canRedo(),"history fixture must have undo and redo operations");
         const DrawingHistory savedHistory=canvas->history();

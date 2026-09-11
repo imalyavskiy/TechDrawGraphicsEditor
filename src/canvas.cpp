@@ -98,24 +98,30 @@ void Canvas::paintEvent(QPaintEvent *) {
     p.scale(zoom_, zoom_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, zoom_ < 1);
     p.drawImage(QPointF(), state_.image);
+    p.restore();
     if (state_.gridVisible) {
         p.setRenderHint(QPainter::Antialiasing);
         QColor color = state_.gridColor; color.setAlpha(110);
         QPen grid(color, 1); grid.setCosmetic(true); p.setPen(grid);
-        const double radius = std::hypot(state_.image.width(), state_.image.height()) + std::hypot(state_.vanishing.x(), state_.vanishing.y());
+        const QPointF vanishing = toView(state_.vanishing);
+        double radius = 0;
+        const QPointF corners[] = {paper.topLeft(), paper.topRight(), paper.bottomLeft(), paper.bottomRight(),
+                                   rect().topLeft(), rect().topRight(), rect().bottomLeft(), rect().bottomRight()};
+        for (const QPointF &corner : corners)
+            radius = qMax(radius, QLineF(vanishing, corner).length());
         for (int i=0; i<state_.rays; ++i) {
             double angle = i * 6.283185307179586 / state_.rays;
-            p.drawLine(state_.vanishing, state_.vanishing + QPointF(std::cos(angle), std::sin(angle))*radius*2);
+            p.drawLine(vanishing, vanishing + QPointF(std::cos(angle), std::sin(angle))*(radius + 2));
         }
-        p.drawLine(QPointF(0, state_.vanishing.y()), QPointF(state_.image.width(), state_.vanishing.y()));
-    }
-    p.restore();
-    if (state_.gridVisible) {
-        p.setRenderHint(QPainter::Antialiasing);
+        p.save();
+        p.setClipRect(paper);
+        const double horizonY = toView(QPointF(0, state_.vanishing.y())).y();
+        p.drawLine(QPointF(paper.left(), horizonY), QPointF(paper.right(), horizonY));
+        p.restore();
         p.setPen(QPen(state_.gridColor, 2)); p.setBrush(Qt::white);
-        p.drawEllipse(toView(state_.vanishing), 6, 6);
+        p.drawEllipse(vanishing, 6, 6);
         p.setPen(QColor("#355274"));
-        p.drawText(toView(state_.vanishing) + QPointF(11, -10), tr("Точка схода"));
+        p.drawText(vanishing + QPointF(11, -10), tr("Точка схода"));
     }
     if (isPaintTool() && hasPaintAnchor_ && hasHoverPoint_ && shiftPressed_ && !dragging_) {
         const QPointF endpoint=constrainedPoint(hoverPoint_,controlPressed_);
