@@ -1,16 +1,26 @@
 @echo off
 rem Purpose: build Release and recreate a portable application directory.
-rem Requirements: the environment accepted by common.bat. Parameters: none.
-rem Result: dist\TechDraw with EXE, QM catalog, Qt/MinGW DLLs, plugins and qt.conf.
+rem Requirements: the environment accepted by common.bat.
+rem Parameter 1: x64 (default) or x86. Result: dist\TechDraw for x64 or dist\TechDraw-x86.
 rem Exit codes: 0 on success, 1 when build, validation, cleanup or deployment fails.
 setlocal
 
-rem Build first so a failed compilation cannot erase the previous portable package.
-call "%~dp0configure-build.bat" Release || exit /b 1
-call "%~dp0common.bat" || exit /b 1
+set "ARCHITECTURE=%~1"
+if not defined ARCHITECTURE set "ARCHITECTURE=x64"
 
-set "BUILD_EXE=%PROJECT_ROOT%\build\cmake-release\TechDraw.exe"
-set "DEPLOY_DIR=%PROJECT_ROOT%\dist\TechDraw"
+rem Build first so a failed compilation cannot erase the previous portable package.
+call "%~dp0configure-build.bat" Release "%ARCHITECTURE%" || exit /b 1
+call "%~dp0common.bat" "%ARCHITECTURE%" || exit /b 1
+
+set "BUILD_SUFFIX="
+set "DEPLOY_SUFFIX="
+if /i "%ARCHITECTURE%"=="x86" (
+    set "BUILD_SUFFIX=-x86"
+    set "DEPLOY_SUFFIX=-x86"
+)
+set "BUILD_DIR=%PROJECT_ROOT%\build\cmake-release%BUILD_SUFFIX%"
+set "BUILD_EXE=%BUILD_DIR%\TechDraw.exe"
+set "DEPLOY_DIR=%PROJECT_ROOT%\dist\TechDraw%DEPLOY_SUFFIX%"
 set "DEPLOY_EXE=%DEPLOY_DIR%\TechDraw.exe"
 
 rem PROJECT_ROOT was validated by common.bat; only its fixed dist\TechDraw child is recreated.
@@ -25,18 +35,29 @@ copy /y "%BUILD_EXE%" "%DEPLOY_EXE%" >nul || (
 )
 
 rem Keep the external catalog beside the EXE so QTranslator can replace text without rebuilding it.
-if not exist "%PROJECT_ROOT%\build\cmake-release\translations\techdraw_ru.qm" (
+if not exist "%BUILD_DIR%\translations\techdraw_ru.qm" (
     echo ERROR: Compiled translation catalog is missing.
     exit /b 1
 )
 mkdir "%DEPLOY_DIR%\translations" || exit /b 1
-copy /y "%PROJECT_ROOT%\build\cmake-release\translations\techdraw_ru.qm" "%DEPLOY_DIR%\translations\techdraw_ru.qm" >nul || exit /b 1
+copy /y "%BUILD_DIR%\translations\techdraw_ru.qm" "%DEPLOY_DIR%\translations\techdraw_ru.qm" >nul || exit /b 1
 
 rem Deploy the exact Qt and MinGW runtime that matches the configured compiler.
 for %%F in (Qt5Core.dll Qt5Gui.dll Qt5Widgets.dll) do (
     copy /y "%QT_ROOT%\bin\%%F" "%DEPLOY_DIR%\%%F" >nul || exit /b 1
 )
-for %%F in (libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll) do (
+rem MinGW uses a different libgcc exception runtime on common x64 and x86 toolchains. Copy the
+rem one supplied by the selected compiler together with the architecture-independent runtimes.
+set "LIBGCC_FOUND="
+for %%F in ("%MINGW_ROOT%\bin\libgcc_s_*-1.dll") do if exist "%%~fF" (
+    copy /y "%%~fF" "%DEPLOY_DIR%\%%~nxF" >nul || exit /b 1
+    set "LIBGCC_FOUND=1"
+)
+if not defined LIBGCC_FOUND (
+    echo ERROR: Matching MinGW libgcc runtime was not found in "%MINGW_ROOT%\bin".
+    exit /b 1
+)
+for %%F in (libstdc++-6.dll libwinpthread-1.dll) do (
     copy /y "%MINGW_ROOT%\bin\%%F" "%DEPLOY_DIR%\%%F" >nul || exit /b 1
 )
 
@@ -50,6 +71,14 @@ rem Force Qt to resolve plugins from the portable directory instead of the devel
 >"%DEPLOY_DIR%\qt.conf" echo [Paths]
 >>"%DEPLOY_DIR%\qt.conf" echo Prefix=.
 >>"%DEPLOY_DIR%\qt.conf" echo Plugins=.
+
+rem Refuse a mixed package before it can be tested, signed or wrapped in an installer.
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0verify-package.ps1" ^
+    -PackageDirectory "%DEPLOY_DIR%" -Architecture "%ARCHITECTURE%"
+if errorlevel 1 (
+    echo ERROR: Portable package architecture verification failed.
+    exit /b 1
+)
 
 echo Ready: "%DEPLOY_EXE%"
 exit /b 0
