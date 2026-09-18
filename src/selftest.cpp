@@ -249,13 +249,28 @@ void testLayerPanel() {
                 canvas.state().layers.activeEntry()->name == QStringLiteral("Слой 2"),
             "layers panel did not add and select a raster layer");
     QWidget *activeRow = list->itemWidget(list->currentItem());
-    auto *name = activeRow ? activeRow->findChild<QLineEdit *>("layerName") : nullptr;
+    auto *name = activeRow ? activeRow->findChild<QLabel *>("layerName") : nullptr;
+    auto *nameEditor = activeRow ? activeRow->findChild<QLineEdit *>("layerNameEditor") : nullptr;
+    auto *type = activeRow ? activeRow->findChild<QLabel *>("layerType") : nullptr;
     auto *visible = activeRow ? activeRow->findChild<QToolButton *>("layerVisible") : nullptr;
     auto *locked = activeRow ? activeRow->findChild<QToolButton *>("layerLocked") : nullptr;
-    require(name && visible && locked && !addTransparency->isVisible(),
+    const QMargins rowMargins = activeRow && activeRow->layout() ? activeRow->layout()->contentsMargins() : QMargins();
+    require(name && nameEditor && type && visible && locked && name->isVisible() && !nameEditor->isVisible() &&
+                list->spacing() == 0 && rowMargins == QMargins(0, 0, 0, 0) &&
+                type->alignment().testFlag(Qt::AlignRight) &&
+                std::abs((name->font().pointSizeF() - type->font().pointSizeF()) - 2.0) < 0.01 &&
+                !addTransparency->isVisible(),
             "layer row controls or transparent-layer state are missing");
-    name->setText(QStringLiteral("Штриховка"));
-    QMetaObject::invokeMethod(name, "editingFinished");
+    QMouseEvent nameDoubleClick(QEvent::MouseButtonDblClick,
+                                QPointF(name->rect().center()),
+                                Qt::LeftButton,
+                                Qt::LeftButton,
+                                Qt::NoModifier);
+    QApplication::sendEvent(name, &nameDoubleClick);
+    QApplication::processEvents();
+    require(nameEditor->isVisible(), "layer name editor did not open on double click");
+    nameEditor->setText(QStringLiteral("Штриховка"));
+    QMetaObject::invokeMethod(nameEditor, "editingFinished");
     require(canvas.state().layers.activeEntry()->name == QStringLiteral("Штриховка"),
             "inline layer rename failed");
     visible->click();

@@ -88,7 +88,7 @@ LayerPanel::LayerPanel(Canvas *canvas, QWidget *parent) : QWidget(parent), canva
     list_ = new QListWidget(this);
     list_->setObjectName("layersList");
     list_->setSelectionMode(QAbstractItemView::SingleSelection);
-    list_->setSpacing(2);
+    list_->setSpacing(0);
     layout->addWidget(list_, 1);
 
     auto *buttons = new QHBoxLayout;
@@ -192,22 +192,35 @@ void LayerPanel::updateFromState() {
         auto *row = new QWidget(list_);
         row->setObjectName("layerRow");
         auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(3, 3, 3, 3);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(4);
         auto *preview = new QLabel(row);
         preview->setObjectName("layerThumbnail");
         preview->setPixmap(layerThumbnail(entry, canvas_->state().canvasSize));
         preview->setFixedSize(48, 48);
         auto *text = new QVBoxLayout;
-        auto *name = new QLineEdit(entry.name, row);
+        text->setContentsMargins(0, 0, 0, 0);
+        text->setSpacing(0);
+        auto *nameStack = new QStackedWidget(row);
+        nameStack->setObjectName("layerNameStack");
+        auto *name = new QLabel(entry.name, nameStack);
         name->setObjectName("layerName");
         name->setProperty("layerId", entry.id);
+        name->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        name->installEventFilter(this);
+        auto *nameEditor = new QLineEdit(entry.name, nameStack);
+        nameEditor->setObjectName("layerNameEditor");
+        nameEditor->setProperty("layerId", entry.id);
+        nameStack->addWidget(name);
+        nameStack->addWidget(nameEditor);
+        nameStack->setCurrentWidget(name);
         auto *type = new QLabel(entry.typeId == LayerTypes::raster() ? tr("Растровый слой") : entry.typeId, row);
         type->setObjectName("layerType");
-        QFont typeFont = type->font();
-        typeFont.setPointSizeF(qMax(7.0, typeFont.pointSizeF() - 1));
+        type->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        QFont typeFont = name->font();
+        typeFont.setPointSizeF(qMax(1.0, typeFont.pointSizeF() - 2.0));
         type->setFont(typeFont);
-        text->addWidget(name);
+        text->addWidget(nameStack);
         text->addWidget(type);
         auto *visible = new QToolButton(row);
         visible->setObjectName("layerVisible");
@@ -225,12 +238,14 @@ void LayerPanel::updateFromState() {
         rowLayout->addLayout(text, 1);
         rowLayout->addWidget(visible);
         rowLayout->addWidget(locked);
-        item->setSizeHint(QSize(200, 58));
+        item->setSizeHint(QSize(200, 48));
         list_->setItemWidget(item, row);
         if (entry.id == layers.activeLayerId())
             list_->setCurrentItem(item);
-        connect(name, &QLineEdit::editingFinished, this, [this, name, id = entry.id] {
-            canvas_->renameLayer(id, name->text());
+        connect(nameEditor, &QLineEdit::editingFinished, this, [this, name, nameEditor, nameStack, id = entry.id] {
+            const QString newName = nameEditor->text();
+            nameStack->setCurrentWidget(name);
+            canvas_->renameLayer(id, newName);
         });
         connect(visible, &QToolButton::toggled, this, [this, visible, id = entry.id](bool checked) {
             visible->setIcon(visibilityIcon(checked));
@@ -263,4 +278,20 @@ void LayerPanel::updateFromState() {
     alphaLocked_->setVisible(raster && raster->transparencyAvailable);
     alphaLocked_->setChecked(raster && raster->alphaLocked);
     updating_ = false;
+}
+
+bool LayerPanel::eventFilter(QObject *watched, QEvent *event) {
+    auto *name = qobject_cast<QLabel *>(watched);
+    if (name && name->objectName() == "layerName" && event->type() == QEvent::MouseButtonDblClick) {
+        auto *nameStack = qobject_cast<QStackedWidget *>(name->parentWidget());
+        auto *nameEditor = nameStack ? nameStack->findChild<QLineEdit *>("layerNameEditor") : nullptr;
+        if (nameEditor) {
+            nameEditor->setText(name->text());
+            nameStack->setCurrentWidget(nameEditor);
+            nameEditor->setFocus(Qt::MouseFocusReason);
+            nameEditor->selectAll();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }

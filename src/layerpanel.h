@@ -18,6 +18,9 @@ public:
     /// Создаёт панель для указанного холста и синхронизирует её с текущим стеком.
     explicit LayerPanel(Canvas *canvas, QWidget *parent = nullptr);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
     Canvas *canvas_ = nullptr;
     QListWidget *list_ = nullptr;
