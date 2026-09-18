@@ -98,6 +98,7 @@ Expand-TechDrawTemplate (Join-Path $installerSource 'config\config.xml.in') (Joi
 Copy-Item -LiteralPath (Join-Path $installerSource 'config\controller.qs') -Destination $configDirectory
 Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.ico') -Destination $configDirectory
 Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.png') -Destination $configDirectory
+Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.png') -Destination (Join-Path $configDirectory 'window-icon.png')
 
 $metaSource = Join-Path $installerSource "packages\$($product.componentId)\meta"
 Expand-TechDrawTemplate (Join-Path $metaSource 'package.xml.in') (Join-Path $metaDirectory 'package.xml')

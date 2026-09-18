@@ -155,6 +155,36 @@ Component.prototype.languageChanged = function(index)
     this.retranslatePages();
 };
 
+Component.prototype.retranslateNativePages = function()
+{
+    var ru = selectedRussian();
+    var ready = gui.pageById(QInstaller.ReadyForInstallation);
+    var perform = gui.pageById(QInstaller.PerformInstallation);
+    var finished = gui.pageById(QInstaller.InstallationFinished);
+    if (ready) {
+        ready.title = ru ? "Сводка установки" : "Installation summary";
+        ready.setPageListTitle(ready.title);
+    }
+    if (perform) {
+        perform.title = ru ? "Установка" : "Installing";
+        perform.setPageListTitle(perform.title);
+    }
+    if (finished) {
+        finished.title = ru ? "Завершение установки" : "Finished";
+        finished.setPageListTitle(finished.title);
+    }
+    gui.setWizardPageButtonText(QInstaller.ReadyForInstallation, buttons.CommitButton,
+                                ru ? "Установить" : "Install");
+    gui.setWizardPageButtonText(QInstaller.ReadyForInstallation, buttons.BackButton,
+                                ru ? "Назад" : "Back");
+    gui.setWizardPageButtonText(QInstaller.ReadyForInstallation, buttons.CancelButton,
+                                ru ? "Отмена" : "Cancel");
+    gui.setWizardPageButtonText(QInstaller.PerformInstallation, buttons.CancelButton,
+                                ru ? "Отмена" : "Cancel");
+    gui.setWizardPageButtonText(QInstaller.InstallationFinished, buttons.FinishButton,
+                                ru ? "Готово" : "Finish");
+};
+
 Component.prototype.configureNoticePage = function()
 {
     this.retranslatePages();
@@ -265,6 +295,7 @@ Component.prototype.optionsChanged = function()
 Component.prototype.retranslatePages = function()
 {
     var ru = selectedRussian();
+    this.retranslateNativePages();
     if (noticeWidget) {
         noticeWidget.windowTitle = ru ? "Уведомление о прототипе" : "Prototype notice";
         noticeWidget.titleLabel.text = noticeWidget.windowTitle;
@@ -313,6 +344,7 @@ Component.prototype.retranslateUninstallPage = function()
 
 Component.prototype.readyPageEntered = function()
 {
+    this.updateReadySummary();
     if (existingDecisionChecked)
         return;
     existingDecisionChecked = true;
@@ -350,6 +382,49 @@ Component.prototype.readyPageEntered = function()
     if ((comparison <= 0 || installer.value("TechDrawAllowDowngrade", "false") === "true") &&
             existing.technology === "QtIFW")
         this.prepareExistingIfw(existing.directory);
+};
+
+Component.prototype.updateReadySummary = function()
+{
+    var page = gui.pageById(QInstaller.ReadyForInstallation);
+    if (!page || !page.InstallComponentsTreeview || !page.InstallMsgLabel)
+        return;
+
+    var ru = selectedRussian();
+    var scope = installer.value("TechDrawScope", "CurrentUser");
+    var existing = existingInstallations[scope];
+    var action;
+    if (existing === null) {
+        action = ru ? "Чистая установка" : "Clean installation";
+    } else {
+        var comparison = compareVersions(existing.version, productVersion);
+        if (comparison === 0)
+            action = ru ? "Восстановление версии " + productVersion : "Repair version " + productVersion;
+        else if (comparison < 0)
+            action = ru ? "Обновление до версии " + productVersion : "Upgrade to version " + productVersion;
+        else
+            action = ru ? "Понижение до версии " + productVersion : "Downgrade to version " + productVersion;
+    }
+
+    var yes = ru ? "да" : "yes";
+    var no = ru ? "нет" : "no";
+    var items = [
+        action,
+        (ru ? "Компонент: " : "Component: ") + productDisplayName + " (" + productArchitecture + ")",
+        (ru ? "Каталог: " : "Folder: ") + installer.value("TargetDir"),
+        (ru ? "Область: " : "Scope: ") + (scope === "AllUsers"
+            ? (ru ? "для всех пользователей" : "all users")
+            : (ru ? "только для текущего пользователя" : "current user only")),
+        (ru ? "Ярлык в меню «Пуск»: " : "Start menu shortcut: ") + yes,
+        (ru ? "Ярлык на рабочем столе: " : "Desktop shortcut: ")
+            + (installer.value("TechDrawDesktopShortcut") === "true" ? yes : no),
+        (ru ? "Ассоциация файлов .drw: " : "Associate .drw files: ")
+            + (installer.value("TechDrawAssociateDrw") !== "false" ? yes : no),
+        (ru ? "Запуск после установки: " : "Launch after installation: ")
+            + (installer.value("TechDrawLaunch") !== "false" ? yes : no)
+    ];
+    page.InstallMsgLabel.text = ru ? "Будут применены следующие параметры:" : "The following settings will be applied:";
+    gui.setTextItems(page.InstallComponentsTreeview, items);
 };
 
 Component.prototype.prepareExistingIfw = function(root)
