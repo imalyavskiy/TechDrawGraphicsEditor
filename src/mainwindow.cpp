@@ -440,7 +440,7 @@ void MainWindow::setupMenusAndToolbars() {
     addToolBar(Qt::LeftToolBarArea, toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
-    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Точка схода")};
+    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Перспектива")};
     QStringList shortcuts{"B", "K", "E", "H", "P"};
     for (int i = 0; i < 5; ++i) {
         auto *action = new QAction(toolIcon(i), names[i], this);
@@ -449,12 +449,17 @@ void MainWindow::setupMenusAndToolbars() {
         action->setShortcut(QKeySequence(shortcuts[i]));
         action->setToolTip(tr("%1 (%2)").arg(names[i], shortcuts[i]));
         group->addAction(action);
-        toolsToolbar_->addAction(action);
+        if (i == int(Canvas::Perspective)) {
+            mainToolbar_->addSeparator();
+            mainToolbar_->addAction(action);
+        } else {
+            toolsToolbar_->addAction(action);
+        }
         toolsMenu_->addAction(action);
         if (i == 0)
             action->setChecked(true);
         connect(action, &QAction::triggered, this, [this, i, names] { activateTool(Canvas::Tool(i), names[i]); });
-        if (i == 4)
+        if (i == int(Canvas::Perspective))
             perspectiveAction_ = action;
     }
     toolsMenu_->addSeparator();

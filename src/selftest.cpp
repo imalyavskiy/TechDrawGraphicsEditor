@@ -130,6 +130,10 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         auto *toolAction = window.findChild<QAction *>(QString("tool%1").arg(i));
         require(toolAction && toolsMenu->actions().contains(toolAction), "drawing tool is missing from Tools menu");
     }
+    auto *perspectiveAction = window.findChild<QAction *>("tool4");
+    require(perspectiveAction && perspectiveAction->text() == QStringLiteral("Перспектива") &&
+                mainToolbar->actions().contains(perspectiveAction) && !toolsToolbar->actions().contains(perspectiveAction),
+            "perspective mode must be available from the main toolbar, not the drawing tools toolbar");
     auto *frontButton = window.findChild<QPushButton *>("frontColor");
     auto *backButton = window.findChild<QPushButton *>("backColor");
     require(frontButton && backButton && frontButton->text().isEmpty() && backButton->text().isEmpty() &&
