@@ -64,7 +64,9 @@ public:
     void setGuidesVisible(bool visible);
     /// Возвращает текущее состояние отображения направляющих.
     bool guidesVisible() const { return guidesVisible_; }
+    /// Включает или отключает единый режим прилипания инструментов к направляющим.
     void setSnapToGuides(bool enabled);
+    /// Возвращает состояние единого режима прилипания к направляющим.
     bool snapToGuides() const { return snapToGuides_; }
     /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
     const GuideId &selectedGuideId() const { return selectedGuideId_; }

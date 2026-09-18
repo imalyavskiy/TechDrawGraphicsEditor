@@ -65,6 +65,7 @@ QIcon actualSizeIcon() {
     painter.drawText(image.rect(), Qt::AlignCenter, QCoreApplication::translate("MainWindow", "1:1"));
     return QIcon(image);
 }
+/// Строит пиктограмму общего переключателя прилипания к направляющим.
 QIcon snapIcon() {
     QPixmap image(24, 24);
     image.fill(Qt::transparent);

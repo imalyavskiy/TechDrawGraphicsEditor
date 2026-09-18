@@ -567,6 +567,7 @@ DrawingState initialDrawingState() {
     return initial;
 }
 
+/// Проверяет точное создание и команды вида для обычных направляющих в главном окне.
 void testGuideMenus() {
     MainWindow window;
     window.show();
