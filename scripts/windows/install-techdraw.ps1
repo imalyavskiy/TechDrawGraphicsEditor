@@ -1,3 +1,17 @@
+<#
+.SYNOPSIS
+Installs the portable payload for the current user and optionally creates Windows shell integration.
+.PARAMETER InstallDirectory
+Absolute or relative destination; drive roots are rejected before any cleanup.
+.PARAMETER SkipShellIntegration
+Skips shortcuts and the uninstall registry entry for isolated verification.
+.PARAMETER Quiet
+Suppresses the final success dialog.
+.OUTPUTS
+Application files in InstallDirectory and, unless skipped, user shortcuts and an uninstall entry.
+.NOTES
+The script is embedded in the generated installer. Any exception produces a nonzero exit code.
+#>
 param(
     [string]$InstallDirectory = (Join-Path $env:LOCALAPPDATA 'Programs\Technical Drawing'),
     [switch]$SkipShellIntegration,
@@ -25,6 +39,7 @@ if (-not (Test-Path -LiteralPath $payloadArchive)) {
 }
 
 try {
+    # Expand into a unique staging directory before replacing files in the validated destination.
     New-Item -ItemType Directory -Force -Path $stagingDirectory | Out-Null
     Expand-Archive -LiteralPath $payloadArchive -DestinationPath $stagingDirectory -Force
 
@@ -32,9 +47,11 @@ try {
     Get-ChildItem -LiteralPath $installDirectory -Force | Remove-Item -Recurse -Force
     Copy-Item -Path (Join-Path $stagingDirectory '*') -Destination $installDirectory -Recurse -Force
 
+    # Install a self-contained uninstaller that removes only this user's files and registrations.
     $uninstallScriptPath = Join-Path $installDirectory 'Uninstall-TechDraw.ps1'
     $uninstallScript = @'
 $ErrorActionPreference = 'Stop'
+# The script derives its installation directory from its own fixed location.
 $installDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Technical Drawing.lnk'
 $startMenuDirectory = Join-Path ([Environment]::GetFolderPath('Programs')) 'Technical Drawing'
@@ -46,6 +63,7 @@ $answer = [System.Windows.Forms.MessageBox]::Show(
     [System.Windows.Forms.MessageBoxButtons]::YesNo,
     [System.Windows.Forms.MessageBoxIcon]::Question)
 if ($answer -ne [System.Windows.Forms.DialogResult]::Yes) { exit 0 }
+# Remove shell integration first, then defer deletion of the running script's directory.
 Remove-Item -LiteralPath $desktopShortcut -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $startMenuDirectory -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $registryPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -57,6 +75,7 @@ Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$cleanup`"")
     Set-Content -LiteralPath $uninstallScriptPath -Value $uninstallScript -Encoding utf8
 
     if (-not $SkipShellIntegration) {
+        # Shortcuts use the installation directory as their working directory for portable dependencies.
         New-Item -ItemType Directory -Force -Path $startMenuDirectory | Out-Null
         $shell = New-Object -ComObject WScript.Shell
         foreach ($shortcutPath in @($desktopShortcut, $startMenuShortcut)) {
@@ -72,6 +91,7 @@ Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$cleanup`"")
         $shortcut.WorkingDirectory = $installDirectory
         $shortcut.Save()
 
+        # Register a per-user uninstall entry without requesting administrator rights.
         New-Item -Path $uninstallRegistryPath -Force | Out-Null
         New-ItemProperty -Path $uninstallRegistryPath -Name DisplayName -Value 'Технический рисунок / Technical Draw' -Force |
             Out-Null
@@ -94,5 +114,6 @@ Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$cleanup`"")
             [System.Windows.Forms.MessageBoxIcon]::Information) | Out-Null
     }
 } finally {
+    # Cleanup is best-effort because installation errors must remain the primary failure.
     Remove-Item -LiteralPath $stagingDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }

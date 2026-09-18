@@ -1,9 +1,14 @@
 @echo off
-rem Shared environment initialization for the public Windows command files.
-rem The caller keeps the variables because this helper deliberately does not use setlocal.
+rem Purpose: initialize and validate the shared build environment for other command files.
+rem Requirements: repository layout, environment.bat or QT_ROOT/MINGW_ROOT, CMake and Ninja in PATH.
+rem Parameters: none. Result: exports PROJECT_ROOT, tool paths, PATH and QT_PLUGIN_PATH to the caller.
+rem Exit codes: 0 on success, 1 when the repository or a required tool cannot be found.
+rem This helper deliberately omits setlocal because callers need the variables it defines.
 
+rem Resolve the repository root from this file, independently of the caller's working directory.
 for %%I in ("%~dp0..\..") do set "PROJECT_ROOT=%%~fI"
 
+rem Refuse an unrelated directory before any build or cleanup script uses PROJECT_ROOT.
 for %%D in (src resources docs scripts\windows) do (
     if not exist "%PROJECT_ROOT%\%%D\" (
         echo ERROR: The project root is invalid. Missing directory: "%PROJECT_ROOT%\%%D"
@@ -16,6 +21,7 @@ if not exist "%PROJECT_ROOT%\CMakeLists.txt" (
     exit /b 1
 )
 
+rem Load optional machine-local paths; the file is ignored by Git.
 if exist "%~dp0environment.bat" call "%~dp0environment.bat"
 
 if not defined QT_ROOT (
@@ -38,6 +44,7 @@ if not exist "%MINGW_ROOT%\bin\g++.exe" (
     exit /b 1
 )
 
+rem Resolve command-line tools once and expose their absolute paths to nested scripts.
 for /f "delims=" %%I in ('where cmake.exe 2^>nul') do if not defined CMAKE_EXE set "CMAKE_EXE=%%I"
 if not defined CMAKE_EXE (
     echo ERROR: cmake.exe was not found in PATH.
@@ -49,6 +56,7 @@ if not defined NINJA_EXE (
     exit /b 1
 )
 
+rem Put the matching Qt and MinGW runtime first for configure, build, test and Debug launch.
 set "PATH=%QT_ROOT%\bin;%MINGW_ROOT%\bin;%PATH%"
 set "QT_PLUGIN_PATH=%QT_ROOT%\plugins"
 exit /b 0

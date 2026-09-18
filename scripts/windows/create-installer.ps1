@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+Builds the per-user IExpress installer from the portable Release directory.
+.PARAMETER ProjectRoot
+Validated repository root supplied by build-installer.bat.
+.OUTPUTS
+dist\installer\TechnicalDrawing-Setup.exe; intermediate files remain in build\installer for diagnostics.
+.NOTES
+Requires PowerShell 5, Compress-Archive and the Windows IExpress executable. Any error terminates with a nonzero code.
+#>
 param([Parameter(Mandatory = $true)][string]$ProjectRoot)
 
 $ErrorActionPreference = 'Stop'
@@ -12,10 +22,12 @@ $sedPath = Join-Path $installerBuildDirectory 'TechnicalDrawing.sed'
 $installerPath = Join-Path $installerOutputDirectory 'TechnicalDrawing-Setup.exe'
 $iexpressDirectory = Join-Path $env:TEMP ("TechDraw-iexpress-" + [Guid]::NewGuid().ToString('N'))
 
+# Do not package a partial or stale directory when the expected entry point is absent.
 if (-not (Test-Path -LiteralPath (Join-Path $portableDirectory 'TechDraw.exe'))) {
     throw 'The portable Release package is incomplete.'
 }
 
+# Recreate only fixed installer artifacts below the validated project root.
 New-Item -ItemType Directory -Force -Path $installerBuildDirectory, $installerOutputDirectory | Out-Null
 Remove-Item -LiteralPath $payloadArchive, $installerScript, $sedPath, $installerPath -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $portableDirectory '*') -DestinationPath $payloadArchive -CompressionLevel Optimal
@@ -61,16 +73,19 @@ SourceFiles0=$sourceDirectory
 FILE0="payload.zip"
 FILE1="install-techdraw.ps1"
 "@
+    # Keep a copy of the generated directive in build\installer for repeatable diagnosis.
     Set-Content -LiteralPath $iexpressSedPath -Value $sed -Encoding ascii
     Copy-Item -LiteralPath $iexpressSedPath -Destination $sedPath
 
     $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
+    # Wait for IExpress and verify both its exit code and its expected output file.
     $process = Start-Process -FilePath $iexpress -ArgumentList @('/N', '/Q', $iexpressSedPath) -Wait -PassThru
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $iexpressOutputPath)) {
         throw "IExpress failed with exit code $($process.ExitCode)."
     }
     Copy-Item -LiteralPath $iexpressOutputPath -Destination $installerPath
 } finally {
+    # A unique temporary directory makes cleanup safe even when the project path contains spaces.
     Remove-Item -LiteralPath $iexpressDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
 
