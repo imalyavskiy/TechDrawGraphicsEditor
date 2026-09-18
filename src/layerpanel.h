@@ -19,6 +19,7 @@ public:
     explicit LayerPanel(Canvas *canvas, QWidget *parent = nullptr);
 
 protected:
+    /// Переключает статическое имя слоя в редактор после двойного щелчка пользователя.
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
