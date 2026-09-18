@@ -10,6 +10,7 @@ $payloadArchive = Join-Path $installerBuildDirectory 'payload.zip'
 $installerScript = Join-Path $installerBuildDirectory 'install-techdraw.ps1'
 $sedPath = Join-Path $installerBuildDirectory 'TechnicalDrawing.sed'
 $installerPath = Join-Path $installerOutputDirectory 'TechnicalDrawing-Setup.exe'
+$iexpressDirectory = Join-Path $env:TEMP ("TechDraw-iexpress-" + [Guid]::NewGuid().ToString('N'))
 
 if (-not (Test-Path -LiteralPath (Join-Path $portableDirectory 'TechDraw.exe'))) {
     throw 'The portable Release package is incomplete.'
@@ -20,9 +21,15 @@ Remove-Item -LiteralPath $payloadArchive, $installerScript, $sedPath, $installer
 Compress-Archive -Path (Join-Path $portableDirectory '*') -DestinationPath $payloadArchive -CompressionLevel Optimal
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-techdraw.ps1') -Destination $installerScript
 
-# IExpress reads this directive file and embeds the ZIP plus its PowerShell installer into one EXE.
-$sourceDirectory = $installerBuildDirectory.TrimEnd('\') + '\'
-$sed = @"
+# IExpress cannot reliably consume directive and payload paths containing spaces. Build its cabinet in a
+# GUID-named temporary directory, then copy the resulting EXE back to the documented project output path.
+New-Item -ItemType Directory -Path $iexpressDirectory | Out-Null
+try {
+    Copy-Item -LiteralPath $payloadArchive, $installerScript -Destination $iexpressDirectory
+    $iexpressSedPath = Join-Path $iexpressDirectory 'TechnicalDrawing.sed'
+    $iexpressOutputPath = Join-Path $iexpressDirectory 'TechnicalDrawing-Setup.exe'
+    $sourceDirectory = $iexpressDirectory.TrimEnd('\') + '\'
+    $sed = @"
 [Version]
 Class=IEXPRESS
 SEDVersion=3
@@ -38,7 +45,7 @@ RebootMode=N
 InstallPrompt=
 DisplayLicense=
 FinishMessage=
-TargetName=$installerPath
+TargetName=$iexpressOutputPath
 FriendlyName=Technical Drawing Setup
 AppLaunched=powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File install-techdraw.ps1
 PostInstallCmd=<None>
@@ -54,12 +61,17 @@ SourceFiles0=$sourceDirectory
 FILE0="payload.zip"
 FILE1="install-techdraw.ps1"
 "@
-Set-Content -LiteralPath $sedPath -Value $sed -Encoding ascii
+    Set-Content -LiteralPath $iexpressSedPath -Value $sed -Encoding ascii
+    Copy-Item -LiteralPath $iexpressSedPath -Destination $sedPath
 
-$iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
-$process = Start-Process -FilePath $iexpress -ArgumentList @('/N', '/Q', $sedPath) -Wait -PassThru
-if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $installerPath)) {
-    throw "IExpress failed with exit code $($process.ExitCode)."
+    $iexpress = Join-Path $env:SystemRoot 'System32\iexpress.exe'
+    $process = Start-Process -FilePath $iexpress -ArgumentList @('/N', '/Q', $iexpressSedPath) -Wait -PassThru
+    if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $iexpressOutputPath)) {
+        throw "IExpress failed with exit code $($process.ExitCode)."
+    }
+    Copy-Item -LiteralPath $iexpressOutputPath -Destination $installerPath
+} finally {
+    Remove-Item -LiteralPath $iexpressDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Output "Installer created: $installerPath"
