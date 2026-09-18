@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Removes registrations and owned files left by the stage-6 IExpress installer.
+Migrates an installation created by the stage-6 IExpress installer.
 .DESCRIPTION
-The Qt Installer Framework component invokes this helper after its payload has
-been extracted. Files that belong to both the legacy and the new payload are
-kept when both installations use the same directory. Documents, settings and
-unlisted files are never removed.
+Apply backs up and removes only files and Windows registrations owned by the
+legacy installer. Rollback restores that backup when Qt Installer Framework
+rolls the installation back. Commit removes the backup after a successful
+installation. Documents, settings and unlisted files are never touched.
 #>
 param(
     [Parameter(Mandatory = $true)][ValidateSet('Apply', 'Rollback', 'Commit')][string]$Action,
@@ -26,6 +26,7 @@ $legacyUninstallerName = 'Uninstall-TechDraw.ps1'
 $stateFileName = 'migration-state.json'
 $regExe = Join-Path $env:SystemRoot 'System32\reg.exe'
 
+# Backup cleanup is intentionally limited to a uniquely named child of TEMP.
 function Resolve-SafeBackupDirectory {
     $full = [IO.Path]::GetFullPath($BackupDirectory).TrimEnd('\')
     $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
@@ -39,10 +40,13 @@ function Resolve-SafeBackupDirectory {
 $backupRoot = Resolve-SafeBackupDirectory
 $statePath = Join-Path $backupRoot $stateFileName
 
+# Persists the state before each destructive operation so Apply can recover
+# even when one of the following file or registry operations fails.
 function Write-MigrationState {
     $script:state | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $statePath -Encoding UTF8
 }
 
+# Converts a PowerShell registry-provider path into the native form expected by reg.exe.
 function ConvertTo-NativeRegistryPath {
     param([string]$Path)
     if ($Path.StartsWith('HKCU:\', [StringComparison]::OrdinalIgnoreCase)) {
@@ -88,6 +92,7 @@ function Get-LegacyShortcuts {
     }
 }
 
+# Adds one existing file to the rollback archive before it is removed.
 function Backup-OwnedFile {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
@@ -102,6 +107,7 @@ function Backup-OwnedFile {
     Write-MigrationState
 }
 
+# Exports one complete registry subtree before it is removed.
 function Backup-RegistryKey {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -117,6 +123,7 @@ function Backup-RegistryKey {
     Write-MigrationState
 }
 
+# Restores every saved item. It is safe to call after a partially completed Apply.
 function Restore-Migration {
     if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { return }
     $savedState = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json

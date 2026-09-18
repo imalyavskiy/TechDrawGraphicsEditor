@@ -577,8 +577,8 @@ Component.prototype.createOperations = function()
                                                      migrationScript, "-Action", "Rollback", "-BackupDirectory", legacyMigrationBackup]);
     addOperation(allUsers || existingInstallations.AllUsers !== null, "Execute", migrationArguments);
 
-    // Automated package checks use an isolated root and must not alter the real
-    // user's shortcuts, registry, legacy installation or file associations.
+    // Automated package checks use isolated migration identifiers and paths;
+    // the remaining shell integration is skipped to protect the real profile.
     if (installer.value("TechDrawSkipShellIntegration", "false") === "true")
         return;
 

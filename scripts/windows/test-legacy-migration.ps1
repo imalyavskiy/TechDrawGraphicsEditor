@@ -1,3 +1,10 @@
+<#
+.SYNOPSIS
+Checks reversible migration from the stage-6 installer without touching a real installation.
+.DESCRIPTION
+Creates an isolated legacy payload, shortcuts, uninstall record and file association under
+unique temporary names. The test verifies Apply plus Rollback and then Apply plus Commit.
+#>
 param(
     [Parameter(Mandatory = $true)][string]$ProjectRoot
 )
@@ -23,11 +30,13 @@ $uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$prod
 $extensionKey = "HKCU:\Software\Classes\$extension"
 $progIdKey = "HKCU:\Software\Classes\$progId"
 
+# Throws with a focused message instead of letting a later operation hide the failed assertion.
 function Assert-Condition {
     param([bool]$Condition, [string]$Message)
     if (-not $Condition) { throw $Message }
 }
 
+# Recreates the exact subset of an IExpress installation consumed by the migration helper.
 function New-FakeLegacyInstallation {
     New-Item -ItemType Directory -Force -Path $legacyRoot, (Join-Path $targetRoot '_installer'),
         (Join-Path $programsRoot 'Technical Drawing'), $desktopRoot | Out-Null
