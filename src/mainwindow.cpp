@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "autohidedockwidget.h"
 #include "rolloutsection.h"
 #include "drawingtoolsettings.h"
 #include "toolpropertiespanel.h"
@@ -357,12 +358,26 @@ void MainWindow::setupMenusAndToolbars() {
         qSwap(front_, back_);
         updateColors();
     });
-    toolsToolbar_ = new QToolBar(tr("Инструменты"), this);
+    toolsDock_ = new AutoHideDockWidget(tr("Инструменты"),
+                                        Qt::LeftDockWidgetArea,
+                                        "tools",
+                                        true,
+                                        250,
+                                        this);
+    toolsDock_->setObjectName("toolsDock");
+    addDockWidget(Qt::LeftDockWidgetArea, toolsDock_);
+    auto *toolsPanel = new QWidget(toolsDock_);
+    auto *toolsPanelLayout = new QVBoxLayout(toolsPanel);
+    toolsPanelLayout->setContentsMargins(4, 4, 4, 4);
+    toolsPanelLayout->setSpacing(4);
+    toolsToolbar_ = new QToolBar(tr("Инструменты"), toolsPanel);
     toolsToolbar_->setObjectName("toolsToolbar");
     toolsToolbar_->setMovable(false);
+    toolsToolbar_->setFloatable(false);
+    toolsToolbar_->setOrientation(Qt::Horizontal);
     toolsToolbar_->setIconSize(QSize(24, 24));
     toolsToolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    addToolBar(Qt::LeftToolBarArea, toolsToolbar_);
+    toolsPanelLayout->addWidget(toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
     QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Перспектива")};
@@ -392,9 +407,9 @@ void MainWindow::setupMenusAndToolbars() {
     toolsMenu_->addAction(backColorAction);
     toolsMenu_->addAction(swap);
 
-    toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsToolbar_);
-    toolsToolbar_->addSeparator();
-    toolsToolbar_->addWidget(toolProperties_);
+    toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsPanel);
+    toolsPanelLayout->addWidget(toolProperties_, 1);
+    toolsDock_->setPanelWidget(toolsPanel);
     connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
@@ -407,10 +422,13 @@ void MainWindow::setupMenusAndToolbars() {
 }
 
 void MainWindow::setupPerspectivePanel() {
-    perspectiveDock_ = new QDockWidget(tr("Перспектива"), this);
+    perspectiveDock_ = new AutoHideDockWidget(tr("Перспектива"),
+                                              Qt::RightDockWidgetArea,
+                                              "perspective",
+                                              false,
+                                              330,
+                                              this);
     perspectiveDock_->setObjectName("perspectiveDock");
-    perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-    perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
     auto *panel = new QWidget;
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(14, 14, 14, 14);
@@ -632,9 +650,8 @@ void MainWindow::setupPerspectivePanel() {
     panelScroll->setWidgetResizable(true);
     panelScroll->setFrameShape(QFrame::NoFrame);
     panelScroll->setWidget(panel);
-    perspectiveDock_->setWidget(panelScroll);
+    perspectiveDock_->setPanelWidget(panelScroll);
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);
-    perspectiveDock_->hide();
 }
 
 void MainWindow::connectPerspectiveControls() {
@@ -642,11 +659,11 @@ void MainWindow::connectPerspectiveControls() {
     mainToolbarToggle->setObjectName("mainToolbarToggle");
     mainToolbarToggle->setText(tr("Панель команд"));
     viewMenu_->addAction(mainToolbarToggle);
-    auto *toolsToolbarToggle = toolsToolbar_->toggleViewAction();
+    auto *toolsToolbarToggle = toolsDock_->visibilityAction();
     toolsToolbarToggle->setObjectName("toolsToolbarToggle");
     toolsToolbarToggle->setText(tr("Панель инструментов"));
     viewMenu_->addAction(toolsToolbarToggle);
-    auto *perspectivePanelToggle = perspectiveDock_->toggleViewAction();
+    auto *perspectivePanelToggle = perspectiveDock_->visibilityAction();
     perspectivePanelToggle->setObjectName("perspectivePanelToggle");
     perspectivePanelToggle->setText(tr("Панель перспективы"));
     viewMenu_->addAction(perspectivePanelToggle);
@@ -899,7 +916,7 @@ void MainWindow::activateTool(Canvas::Tool tool, const QString &name) {
     if (paints)
         canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
     if (tool == Canvas::Perspective) {
-        perspectiveDock_->show();
+        perspectiveDock_->reveal();
         canvas_->setGridVisible(true);
     }
     canvas_->setFocus();

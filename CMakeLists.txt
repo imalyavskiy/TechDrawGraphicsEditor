@@ -51,6 +51,8 @@ endif()
 add_executable(TechDraw WIN32
     resources/techdraw.qrc
     ${TECHDRAW_WINDOWS_RESOURCE}
+    src/autohidedockwidget.cpp
+    src/autohidedockwidget.h
     src/canvas.cpp
     src/canvas.h
     src/drawingtoolsettings.cpp

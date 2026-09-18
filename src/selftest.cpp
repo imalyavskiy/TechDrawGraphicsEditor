@@ -1,4 +1,5 @@
 #include "selftest.h"
+#include "autohidedockwidget.h"
 #include "mainwindow.h"
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
@@ -89,13 +90,15 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     Canvas *canvas = window.canvas();
     auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
     auto *toolsToolbar = window.findChild<QToolBar *>("toolsToolbar");
+    auto *toolsDock = window.findChild<AutoHideDockWidget *>("toolsDock");
     auto *fileMenu = window.findChild<QMenu *>("fileMenu");
     auto *editMenu = window.findChild<QMenu *>("editMenu");
     auto *viewMenu = window.findChild<QMenu *>("viewMenu");
     auto *toolsMenu = window.findChild<QMenu *>("toolsMenu");
-    require(mainToolbar && toolsToolbar && mainToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
-                toolsToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly,
-            "toolbars must show icons only");
+    require(mainToolbar && toolsToolbar && toolsDock && mainToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
+                toolsToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
+                toolsToolbar->orientation() == Qt::Horizontal,
+            "toolbars must show icons only and drawing tools must be horizontal");
     auto *mainToolbarToggle = window.findChild<QAction *>("mainToolbarToggle");
     auto *toolsToolbarToggle = window.findChild<QAction *>("toolsToolbarToggle");
     require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle &&
@@ -110,6 +113,41 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(!toolsToolbar->isVisible(), "tools toolbar could not be hidden through View menu");
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
+    auto *toolsPin = window.findChild<QToolButton *>("toolsPanelPin");
+    auto *toolsTab = window.findChild<QToolButton *>("toolsAutoHideTab");
+    auto *toolsOverlay = window.findChild<QWidget *>("toolsAutoHideOverlay");
+    require(toolsPin && toolsTab && toolsOverlay && toolsDock->isPinned(),
+            "left panel pin or auto-hide controls are missing");
+    toolsPin->click();
+    QApplication::processEvents();
+    require(!toolsDock->isPinned(), "left panel did not switch to auto-hide mode");
+    require(!toolsToolbar->isVisible(), "unpinning the left panel did not remove it from the layout");
+    require(toolsTab->isVisible(), "unpinning the left panel did not reveal its edge tab");
+    require(toolsToolbarToggle->isChecked(), "unpinning the left panel changed its View menu state");
+    toolsToolbarToggle->trigger();
+    QApplication::processEvents();
+    require(!toolsTab->isVisible(), "the View menu did not hide the unpinned left panel and its tab");
+    toolsToolbarToggle->trigger();
+    QApplication::processEvents();
+    require(toolsTab->isVisible(), "the View menu did not restore the unpinned left panel tab");
+    toolsTab->click();
+    QApplication::processEvents();
+    require(toolsOverlay->isVisible() && toolsToolbar->isVisible(),
+            "the left edge tab must reveal the drawing panel over the workspace");
+    QMouseEvent outsideTools(QEvent::MouseButtonPress,
+                             QPointF(2, 2),
+                             Qt::LeftButton,
+                             Qt::LeftButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(mainToolbar, &outsideTools);
+    QApplication::processEvents();
+    require(!toolsOverlay->isVisible() && toolsTab->isVisible(),
+            "clicking outside an unpinned panel must hide it without hiding its tab");
+    toolsTab->click();
+    toolsPin->click();
+    QApplication::processEvents();
+    require(toolsDock->isPinned() && toolsToolbar->isVisible() && !toolsTab->isVisible(),
+            "pinning the open left panel must restore it to the window layout");
     auto *newMenuAction = window.findChild<QAction *>("newAction");
     auto *openMenuAction = window.findChild<QAction *>("openAction");
     auto *saveMenuAction = window.findChild<QAction *>("saveAction");
@@ -142,7 +180,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *strengthControl = window.findChild<QSpinBox *>("eraserStrength");
     auto *strokePreview = window.findChild<QWidget *>("strokePreview");
     require(toolProperties && toolPropertiesTitle && widthControl && opacityControl && hardnessControl &&
-                spacingControl && strengthControl && strokePreview && toolsToolbar->isAncestorOf(toolProperties) &&
+                spacingControl && strengthControl && strokePreview && toolsDock->isAncestorOf(toolProperties) &&
                 toolPropertiesTitle->text() == QStringLiteral("Карандаш"),
             "the shared drawing tool properties panel is missing from below the tool selector");
     auto *frontButton = window.findChild<QPushButton *>("frontColor");
@@ -224,7 +262,11 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 perspectiveLayout->indexOf(verticalSettings) < perspectiveLayout->indexOf(vanishingPointSettings) &&
                 perspectiveLayout->indexOf(vanishingPointSettings) < perspectiveLayout->indexOf(vanishingPointsList),
             "perspective blocks must be ordered as horizon, main vertical, point settings, and point list");
-    auto *perspectiveDock = window.findChild<QDockWidget *>("perspectiveDock");
+    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
+    auto *perspectivePanelToggle = window.findChild<QAction *>("perspectivePanelToggle");
+    auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
+    auto *perspectiveTab = window.findChild<QToolButton *>("perspectiveAutoHideTab");
+    auto *perspectiveOverlay = window.findChild<QWidget *>("perspectiveAutoHideOverlay");
     auto *horizonToggle = window.findChild<QToolButton *>("horizonSettingsToggle");
     auto *horizonContent = window.findChild<QWidget *>("horizonSettingsContent");
     auto *verticalToggle = window.findChild<QToolButton *>("mainVerticalSettingsToggle");
@@ -236,7 +278,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *commonFrame = qobject_cast<QFrame *>(vanishingPointSettings);
     auto *pointsFrame = qobject_cast<QFrame *>(vanishingPointsList);
     auto *selectedPointFrame = qobject_cast<QFrame *>(selectedPointSettings);
-    require(perspectiveDock && perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
+    require(perspectiveDock && perspectivePanelToggle && viewMenu->actions().contains(perspectivePanelToggle) &&
+                perspectivePin && perspectiveTab && perspectiveOverlay &&
+                perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
                 horizonContent && verticalToggle && commonToggle && pointsToggle && selectedPointToggle &&
                 horizonFrame && verticalFrame && commonFrame && pointsFrame && selectedPointFrame &&
                 horizonFrame->frameShape() == QFrame::StyledPanel &&
@@ -245,6 +289,30 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 selectedPointFrame->frameShape() == QFrame::StyledPanel &&
                 horizonToggle->arrowType() == Qt::DownArrow && horizonSettings->property("expanded").toBool(),
             "perspective rollout headers, borders, or panel title are invalid");
+    perspectivePanelToggle->setChecked(true);
+    QApplication::processEvents();
+    perspectivePin->click();
+    QApplication::processEvents();
+    require(!perspectiveDock->isPinned() && perspectiveTab->isVisible() && perspectivePanelToggle->isChecked(),
+            "unpinning the perspective panel must leave its checked edge tab visible");
+    perspectiveTab->click();
+    QApplication::processEvents();
+    require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
+    QMouseEvent outsidePerspective(QEvent::MouseButtonPress,
+                                   QPointF(2, 2),
+                                   Qt::LeftButton,
+                                   Qt::LeftButton,
+                                   Qt::NoModifier);
+    QApplication::sendEvent(mainToolbar, &outsidePerspective);
+    QApplication::processEvents();
+    require(!perspectiveOverlay->isVisible() && perspectiveTab->isVisible(),
+            "clicking outside the perspective panel must return it to its edge tab");
+    perspectiveTab->click();
+    perspectivePin->click();
+    perspectivePanelToggle->setChecked(false);
+    QApplication::processEvents();
+    require(perspectiveDock->isPinned() && !perspectiveDock->isVisible() && !perspectiveTab->isVisible(),
+            "the View menu must completely hide a pinned perspective panel");
     horizonToggle->click();
     QApplication::processEvents();
     require(horizonContent->isHidden() && horizonToggle->arrowType() == Qt::RightArrow &&

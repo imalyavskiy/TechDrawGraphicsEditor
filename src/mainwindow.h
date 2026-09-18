@@ -12,6 +12,7 @@ class QMenu;
 class QListWidget;
 class QComboBox;
 class QToolBar;
+class AutoHideDockWidget;
 class DrawingToolSettingsModel;
 class ToolPropertiesPanel;
 
@@ -80,7 +81,8 @@ private:
     QComboBox *rayPattern_ = nullptr;
     QColor front_ = QColor("#2c3441");
     QColor back_ = Qt::white;
-    QDockWidget *perspectiveDock_ = nullptr;
+    AutoHideDockWidget *perspectiveDock_ = nullptr;
+    AutoHideDockWidget *toolsDock_ = nullptr;
     QAction *perspectiveAction_ = nullptr;
     QMenu *viewMenu_ = nullptr;
     QMenu *toolsMenu_ = nullptr;

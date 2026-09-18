@@ -5,6 +5,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE_FILES = (
+    "src/autohidedockwidget.cpp",
     "src/canvas.cpp",
     "src/drawingtoolsettings.cpp",
     "src/main.cpp",

@@ -1235,6 +1235,17 @@ Technical Draw</translation>
         <message><source>Цветом Back</source><translation>Цветом Back</translation></message>
     </context>
     <context>
+        <name>AutoHideDockWidget</name>
+        <message>
+            <source>Открепить панель</source>
+            <translation>Открепить панель</translation>
+        </message>
+        <message>
+            <source>Закрепить панель</source>
+            <translation>Закрепить панель</translation>
+        </message>
+    </context>
+    <context>
         <name>TranslationProbe</name>
         <message>
             <location filename="../src/selftest.cpp" line="59" />
