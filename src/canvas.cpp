@@ -798,34 +798,8 @@ void Canvas::drawRulers(QPainter &p) {
     QPen guide(QColor(49, 83, 130, 170), 1, Qt::DashLine);
     guide.setCosmetic(true);
     p.setPen(guide);
-    p.drawLine(cursorView_, QPointF(cursorView_.x(), viewport.top()));
-    p.drawLine(cursorView_, QPointF(cursorView_.x(), viewport.bottom()));
-    p.drawLine(cursorView_, QPointF(viewport.left(), cursorView_.y()));
-    p.drawLine(cursorView_, QPointF(viewport.right(), cursorView_.y()));
-    const QPointF image = toImage(cursorView_);
-    const QString suffix = rulerPercent_ ? tr("%") : tr(" px");
-    const QString xLabel = coordinateLabel((image.x() - state_.image.width() / 2.0) / horizontalUnitPixels) + suffix;
-    const QString yLabel = coordinateLabel((state_.image.height() / 2.0 - image.y()) / verticalUnitPixels) + suffix;
-    p.setPen(QColor("#23405f"));
-    p.setBrush(QColor("#fff4b5"));
-    const int xWidth = qMax(44, p.fontMetrics().horizontalAdvance(xLabel) + 8),
-              yWidth = qMax(44, p.fontMetrics().horizontalAdvance(yLabel) + 8);
-    QRectF topBox(cursorView_.x() - xWidth / 2.0, 2, xWidth, rulerSize - 5),
-        bottomBox(cursorView_.x() - xWidth / 2.0, height() - rulerSize + 3, xWidth, rulerSize - 5);
-    p.drawRect(topBox);
-    p.drawRect(bottomBox);
-    p.drawText(topBox, Qt::AlignCenter, xLabel);
-    p.drawText(bottomBox, Qt::AlignCenter, xLabel);
-    p.save();
-    p.setClipRect(QRectF(0, rulerSize, rulerSize, height() - 2 * rulerSize));
-    p.drawRect(QRectF(1, cursorView_.y() - 9, yWidth, 18));
-    p.drawText(QRectF(2, cursorView_.y() - 9, yWidth - 2, 18), Qt::AlignCenter, yLabel);
-    p.restore();
-    p.save();
-    p.setClipRect(QRectF(width() - rulerSize, rulerSize, rulerSize, height() - 2 * rulerSize));
-    p.drawRect(QRectF(width() - yWidth - 1, cursorView_.y() - 9, yWidth, 18));
-    p.drawText(QRectF(width() - yWidth, cursorView_.y() - 9, yWidth - 2, 18), Qt::AlignCenter, yLabel);
-    p.restore();
+    p.drawLine(QPointF(cursorView_.x(), 0), QPointF(cursorView_.x(), height()));
+    p.drawLine(QPointF(0, cursorView_.y()), QPointF(width(), cursorView_.y()));
 }
 
 void Canvas::stroke(QPointF start, QPointF end) {

@@ -729,15 +729,31 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
     QImage cursorProjection(rulerCanvas.size(), QImage::Format_ARGB32_Premultiplied);
     cursorProjection.fill(Qt::transparent);
     rulerCanvas.render(&cursorProjection);
-    int changedPixels = 0;
+    int changedPixels = 0, topProjection = 0, bottomProjection = 0, leftProjection = 0, rightProjection = 0,
+        cursorLabels = 0;
     for (int y = 0; y < cursorProjection.height(); ++y)
-        if (cursorProjection.pixelColor(250, y) != rulersOnly.pixelColor(250, y))
+        if (cursorProjection.pixelColor(250, y) != rulersOnly.pixelColor(250, y)) {
             ++changedPixels;
+            if (y < 28)
+                ++topProjection;
+            if (y >= cursorProjection.height() - 28)
+                ++bottomProjection;
+        }
     for (int x = 0; x < cursorProjection.width(); ++x)
-        if (cursorProjection.pixelColor(x, 200) != rulersOnly.pixelColor(x, 200))
+        if (cursorProjection.pixelColor(x, 200) != rulersOnly.pixelColor(x, 200)) {
             ++changedPixels;
-    require(changedPixels > 20 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
-            "cursor projection must reach all rulers without editing the document");
+            if (x < 28)
+                ++leftProjection;
+            if (x >= cursorProjection.width() - 28)
+                ++rightProjection;
+        }
+    for (int y = 0; y < cursorProjection.height(); ++y)
+        for (int x = 0; x < cursorProjection.width(); ++x)
+            if (cursorProjection.pixelColor(x, y) == QColor("#fff4b5"))
+                ++cursorLabels;
+    require(changedPixels > 20 && topProjection && bottomProjection && leftProjection && rightProjection &&
+                cursorLabels == 0 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
+            "dashed cursor projections must cross all rulers without numeric badges or document edits");
     DrawingState lockState = initial;
     lockState.gridVisible = true;
     lockState.vanishingPoints[0].attachmentTargetIds = QStringList{PerspectiveTarget::horizon()};
