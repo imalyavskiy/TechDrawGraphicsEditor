@@ -59,7 +59,7 @@ protected:
         painter.drawLine(width() / 2, 0, width() / 2, height());
     }
 
-    /// Начинает жест и запоминает исходные координату указателя и ширину панели.
+    /// Начинает жест и запоминает неизменную экранную координату указателя и исходную ширину панели.
     void mousePressEvent(QMouseEvent *event) override {
         if (event->button() != Qt::LeftButton)
             return;
@@ -70,7 +70,7 @@ protected:
         event->accept();
     }
 
-    /// Преобразует горизонтальное смещение указателя в требуемую ширину с учётом стороны панели.
+    /// Преобразует экранное смещение указателя в требуемую ширину с учётом стороны панели.
     void mouseMoveEvent(QMouseEvent *event) override {
         if (!dragging_ || !(event->buttons() & Qt::LeftButton))
             return;
