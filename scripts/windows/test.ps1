@@ -1,7 +1,10 @@
 param([ValidateSet('windows','offscreen')][string]$Platform='windows')
 $ErrorActionPreference='Stop'
-$exe=Join-Path $PSScriptRoot 'dist\TechDraw\TechDraw.exe'
-$outputPath=Join-Path $PSScriptRoot "build\$Platform-results"
+# Resolve every project path from this script so tests do not depend on the caller's working directory.
+$projectRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$exe=Join-Path $projectRoot 'dist\TechDraw\TechDraw.exe'
+$outputPath=Join-Path $projectRoot "build\$Platform-results"
+if (-not (Test-Path -LiteralPath $exe)) { throw 'Release package was not found. Run build-release.bat first.' }
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 $started=[DateTime]::UtcNow
 $arguments=@('-platform',$Platform,'--self-test',('"'+$outputPath+'"'))

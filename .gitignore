@@ -2,3 +2,4 @@
 build/
 dist/
 *.user
+scripts/windows/environment.bat
