@@ -111,7 +111,7 @@ void Canvas::setDocument(const DrawingState &state, bool clean) {
 }
 
 void Canvas::setDocument(const DrawingHistory &history, bool clean) {
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = false;
     movingPointIndex_ = movingSymmetricPointIndex_ = -1;
     straightStroke_ = shiftPressed_ = controlPressed_ = false;
     hasPaintAnchor_ = hasHoverPoint_ = false;
@@ -544,14 +544,6 @@ QVector<int> Canvas::attachedPointIndices(const QString &targetId) const {
             result.append(i);
     }
     return result;
-}
-void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
-    if (selectedPointIndex_ < 0 || selectedPointIndex_ >= state_.vanishingPoints.size())
-        return;
-    const bool onVertical = state_.vanishingPoints[selectedPointIndex_].isAttachedTo(PerspectiveTarget::vertical());
-    setSelectedPointAttachment(attached
-                                   ? (onVertical ? PerspectiveTarget::intersection() : PerspectiveTarget::horizon())
-                                   : (onVertical ? PerspectiveTarget::vertical() : QString()));
 }
 void Canvas::setSelectedPointAttachment(const QString &targetId) {
     if (selectedPointIndex_ < 0 || selectedPointIndex_ >= state_.vanishingPoints.size())
@@ -1035,8 +1027,7 @@ void Canvas::finish() {
         hasPaintAnchor_ = true;
     }
     before_ = DrawingState();
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = straightStroke_ =
-        false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = straightStroke_ = false;
     movingPointIndex_ = movingSymmetricPointIndex_ = -1;
     setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
 }
@@ -1064,7 +1055,7 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
     } else if (e->key() == Qt::Key_Escape && dragging_) {
         if (!panning_)
             state_ = before_;
-        dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = horizonCarriesPoint_ = false;
+        dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = false;
         movingPointIndex_ = -1;
         before_ = DrawingState();
         update();

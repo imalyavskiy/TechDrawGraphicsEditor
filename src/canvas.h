@@ -73,7 +73,6 @@ public:
     void setSelectedPointName(const QString &name);
     void setSelectedPointVisible(bool visible);
     void setSelectedPointPosition(QPointF position);
-    void setSelectedPointAttachedToHorizon(bool attached);
     void setSelectedPointAttachment(const QString &targetId);
     void setSelectedPointLocked(bool locked);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
@@ -102,22 +101,34 @@ protected:
     void leaveEvent(QEvent *) override;
 
 private:
-    DrawingState state_, before_;
+    DrawingState state_;
+    DrawingState before_;
     QUndoStack undo_;
     Tool tool_ = Pencil;
-    QColor front_ = QColor("#2c3441"), back_ = Qt::white;
+    QColor front_ = QColor("#2c3441");
+    QColor back_ = Qt::white;
     int width_ = 3;
     double zoom_ = 1.0;
-    QPointF pan_, last_, paintAnchor_, hoverPoint_;
-    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, movingVertical_ = false,
-         space_ = false;
+    QPointF pan_;
+    QPointF last_;
+    QPointF paintAnchor_;
+    QPointF hoverPoint_;
+    bool dragging_ = false;
+    bool panning_ = false;
+    bool movingPoint_ = false;
+    bool movingHorizon_ = false;
+    bool movingVertical_ = false;
+    bool space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
     int movingSymmetricPointIndex_ = -1;
-    bool horizonCarriesPoint_ = false;
-    bool straightStroke_ = false, shiftPressed_ = false, controlPressed_ = false;
-    bool hasPaintAnchor_ = false, hasHoverPoint_ = false;
-    bool rulerPercent_ = false, cursorInViewport_ = false;
+    bool straightStroke_ = false;
+    bool shiftPressed_ = false;
+    bool controlPressed_ = false;
+    bool hasPaintAnchor_ = false;
+    bool hasHoverPoint_ = false;
+    bool rulerPercent_ = false;
+    bool cursorInViewport_ = false;
     QPointF cursorView_;
     void stroke(QPointF a, QPointF b);
     void commit(const DrawingState &before, const QString &label);
