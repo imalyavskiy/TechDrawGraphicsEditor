@@ -165,8 +165,8 @@
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="286" />
-            <source>Экспортировать PNG…</source>
-            <translation>Экспортировать PNG…</translation>
+            <source>Экспортировать изображение…</source>
+            <translation>Экспортировать изображение…</translation>
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="288" />
@@ -958,18 +958,32 @@ Technical Draw</translation>
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="1434" />
-            <source>PNG (*.png)</source>
-            <translation>PNG (*.png)</translation>
+            <source>PNG — без потерь (*.png)</source>
+            <translation>PNG — без потерь (*.png)</translation>
         </message>
         <message>
-            <location filename="../src/mainwindow.cpp" line="1439" />
-            <source>Заменить существующий PNG?</source>
-            <translation>Заменить существующий PNG?</translation>
+            <source>JPEG — фотография (*.jpg *.jpeg)</source>
+            <translation>JPEG — фотография (*.jpg *.jpeg)</translation>
         </message>
         <message>
-            <location filename="../src/mainwindow.cpp" line="1446" />
-            <source>PNG экспортирован; проект сохраняется отдельно</source>
-            <translation>PNG экспортирован; проект сохраняется отдельно</translation>
+            <source>BMP — без сжатия (*.bmp)</source>
+            <translation>BMP — без сжатия (*.bmp)</translation>
+        </message>
+        <message>
+            <source>Заменить существующее изображение?</source>
+            <translation>Заменить существующее изображение?</translation>
+        </message>
+        <message>
+            <source>Качество JPEG</source>
+            <translation>Качество JPEG</translation>
+        </message>
+        <message>
+            <source>Качество изображения</source>
+            <translation>Качество изображения</translation>
+        </message>
+        <message>
+            <source>Изображение экспортировано; проект сохраняется отдельно</source>
+            <translation>Изображение экспортировано; проект сохраняется отдельно</translation>
         </message>
     </context>
     <context>
@@ -1173,8 +1187,12 @@ Technical Draw</translation>
         </message>
         <message>
             <location filename="../src/project.cpp" line="446" />
-            <source>Не удалось записать PNG.</source>
-            <translation>Не удалось записать PNG.</translation>
+            <source>Неподдерживаемый формат экспорта.</source>
+            <translation>Неподдерживаемый формат экспорта.</translation>
+        </message>
+        <message>
+            <source>Не удалось записать изображение: %1</source>
+            <translation>Не удалось записать изображение: %1</translation>
         </message>
     </context>
     <context>

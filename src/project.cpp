@@ -4,12 +4,14 @@
 #include <QFile>
 #include <QHash>
 #include <QImageReader>
+#include <QImageWriter>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSet>
+#include <QPainter>
 #include <private/qzipreader_p.h>
 #include <private/qzipwriter_p.h>
 #include <cmath>
@@ -449,12 +451,33 @@ bool Project::loadPng(const QString &path, QImage *image, QString *error) {
 }
 
 bool Project::exportPng(const QString &path, const QImage &image, QString *error) {
+    return exportImage(path, image, QByteArrayLiteral("PNG"), -1, error);
+}
+
+bool Project::exportImage(
+    const QString &path, const QImage &image, const QByteArray &format, int quality, QString *error) {
+    const QByteArray normalized = format.toUpper();
+    if (normalized != QByteArrayLiteral("PNG") && normalized != QByteArrayLiteral("JPEG") &&
+        normalized != QByteArrayLiteral("BMP"))
+        return fail(error, QCoreApplication::translate("Project", "Неподдерживаемый формат экспорта."));
+    QImage output = image;
+    if (normalized != QByteArrayLiteral("PNG") && image.hasAlphaChannel()) {
+        output = QImage(image.size(), QImage::Format_RGB32);
+        output.fill(Qt::white);
+        QPainter painter(&output);
+        painter.drawImage(QPoint(), image);
+    }
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly))
         return fail(error, file.errorString());
-    if (!image.save(&file, "PNG")) {
+    QImageWriter writer(&file, normalized);
+    if (quality >= 0)
+        writer.setQuality(qBound(0, quality, 100));
+    if (!writer.write(output)) {
         file.cancelWriting();
-        return fail(error, QCoreApplication::translate("Project", "Не удалось записать PNG."));
+        return fail(error,
+                    QCoreApplication::translate("Project", "Не удалось записать изображение: %1")
+                        .arg(writer.errorString()));
     }
     if (!file.commit())
         return fail(error, file.errorString());

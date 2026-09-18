@@ -300,7 +300,7 @@ void MainWindow::setupMenusAndToolbars() {
     saveAction->setObjectName("saveAction");
     file->addAction(tr("Сохранить проект как…"), this, [this] { saveDocument(true); }, QKeySequence::SaveAs);
     file->addSeparator();
-    file->addAction(tr("Экспортировать PNG…"), this, &MainWindow::exportImage, QKeySequence("Ctrl+Shift+E"));
+    file->addAction(tr("Экспортировать изображение…"), this, &MainWindow::exportImage, QKeySequence("Ctrl+Shift+E"));
     file->addSeparator();
     file->addAction(tr("Выход"), this, &QWidget::close, QKeySequence("Alt+F4"));
     auto *undoAction = canvas_->undoStack()->createUndoAction(this, tr("Отменить"));
@@ -1385,22 +1385,74 @@ bool MainWindow::saveDocument(bool saveAs) {
     return true;
 }
 void MainWindow::exportImage() {
+    const QString pngFilter = tr("PNG — без потерь (*.png)"), jpegFilter = tr("JPEG — фотография (*.jpg *.jpeg)"),
+                  bmpFilter = tr("BMP — без сжатия (*.bmp)"), filters = pngFilter + ";;" + jpegFilter + ";;" + bmpFilter;
+    QSettings settings;
+    QString selectedFilter = settings.value("export/filter", pngFilter).toString();
+    if (selectedFilter != pngFilter && selectedFilter != jpegFilter && selectedFilter != bmpFilter)
+        selectedFilter = pngFilter;
     QString target = QFileDialog::getSaveFileName(this,
                                                   tr("Экспортировать рисунок без направляющих"),
-                                                  suggestedFile("files/saveDirectory", tr("Рисунок.png")),
-                                                  tr("PNG (*.png)"));
+                                                  suggestedFile("files/exportDirectory", tr("Рисунок.png")),
+                                                  filters,
+                                                  &selectedFilter);
     if (target.isEmpty())
         return;
-    QString suffixed = withSuffix(target, ".png");
-    if (suffixed != target && QFileInfo::exists(suffixed) &&
-        QMessageBox::question(this, tr("Заменить файл?"), tr("Заменить существующий PNG?")) != QMessageBox::Yes)
+
+    QByteArray format;
+    QString suffix;
+    const QString enteredSuffix = QFileInfo(target).suffix().toLower();
+    if (enteredSuffix == "jpg" || enteredSuffix == "jpeg") {
+        format = "JPEG";
+        suffix = ".jpg";
+        selectedFilter = jpegFilter;
+    } else if (enteredSuffix == "bmp") {
+        format = "BMP";
+        suffix = ".bmp";
+        selectedFilter = bmpFilter;
+    } else if (enteredSuffix == "png") {
+        format = "PNG";
+        suffix = ".png";
+        selectedFilter = pngFilter;
+    } else if (selectedFilter == jpegFilter) {
+        format = "JPEG";
+        suffix = ".jpg";
+    } else if (selectedFilter == bmpFilter) {
+        format = "BMP";
+        suffix = ".bmp";
+    } else {
+        format = "PNG";
+        suffix = ".png";
+    }
+    if (enteredSuffix != "png" && enteredSuffix != "jpg" && enteredSuffix != "jpeg" && enteredSuffix != "bmp")
+        target += suffix;
+    if (QFileInfo::exists(target) &&
+        QMessageBox::question(this, tr("Заменить файл?"), tr("Заменить существующее изображение?")) !=
+            QMessageBox::Yes)
         return;
+
+    int quality = -1;
+    if (format == QByteArrayLiteral("JPEG")) {
+        bool accepted = false;
+        quality = QInputDialog::getInt(this,
+                                       tr("Качество JPEG"),
+                                       tr("Качество изображения"),
+                                       qBound(1, settings.value("export/jpegQuality", 90).toInt(), 100),
+                                       1,
+                                       100,
+                                       1,
+                                       &accepted);
+        if (!accepted)
+            return;
+        settings.setValue("export/jpegQuality", quality);
+    }
     QString error;
-    if (!Project::exportPng(suffixed, canvas_->state().image, &error))
+    if (!Project::exportImage(target, canvas_->state().image, format, quality, &error))
         showError(error);
     else {
-        rememberDirectory("files/saveDirectory", suffixed);
-        statusBar()->showMessage(tr("PNG экспортирован; проект сохраняется отдельно"), 4000);
+        rememberDirectory("files/exportDirectory", target);
+        settings.setValue("export/filter", selectedFilter);
+        statusBar()->showMessage(tr("Изображение экспортировано; проект сохраняется отдельно"), 4000);
     }
 }
 void MainWindow::closeEvent(QCloseEvent *event) {

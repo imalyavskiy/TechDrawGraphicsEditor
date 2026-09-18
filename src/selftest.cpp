@@ -1241,6 +1241,18 @@ void testExportValidationAndScreenshots(
     QImage png;
     require(Project::loadPng(out.filePath("export.png"), &png, &error), qPrintable(error));
     require(png == pixels, "grid leaked into exported PNG");
+    QImage alphaExport(32, 24, QImage::Format_ARGB32_Premultiplied);
+    alphaExport.fill(Qt::transparent);
+    alphaExport.setPixelColor(16, 12, QColor(40, 80, 120, 128));
+    require(Project::exportImage(out.filePath("export.jpg"), alphaExport, "JPEG", 87, &error), qPrintable(error));
+    require(Project::exportImage(out.filePath("export.bmp"), alphaExport, "BMP", -1, &error), qPrintable(error));
+    const QImage jpeg(out.filePath("export.jpg")), bmp(out.filePath("export.bmp"));
+    require(!jpeg.isNull() && !bmp.isNull() && jpeg.size() == alphaExport.size() && bmp.size() == alphaExport.size() &&
+                !jpeg.hasAlphaChannel() && !bmp.hasAlphaChannel() && jpeg.pixelColor(0, 0).lightness() > 240 &&
+                bmp.pixelColor(0, 0) == QColor(Qt::white),
+            "JPEG and BMP export must flatten transparency onto white and remain readable");
+    require(!Project::exportImage(out.filePath("export.invalid"), alphaExport, "GIF", -1, &error),
+            "an unsupported export format must be rejected");
     DrawingState transparent = loaded;
     transparent.image.fill(Qt::transparent);
     transparent.image.setPixelColor(7, 8, QColor(40, 80, 120, 128));

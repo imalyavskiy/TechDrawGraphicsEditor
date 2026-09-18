@@ -1,4 +1,5 @@
 #pragma once
+#include <QByteArray>
 #include <QImage>
 #include <QPointF>
 #include <QColor>
@@ -120,4 +121,6 @@ bool load(const QString &path, DrawingHistory *history, QString *error);
 bool loadPng(const QString &path, QImage *image, QString *error);
 /// Атомарно записывает только растр документа в PNG без служебной оснастки.
 bool exportPng(const QString &path, const QImage &image, QString *error);
+/// Атомарно экспортирует растр в PNG, JPEG или BMP с заданным качеством кодирования.
+bool exportImage(const QString &path, const QImage &image, const QByteArray &format, int quality, QString *error);
 } // namespace Project
