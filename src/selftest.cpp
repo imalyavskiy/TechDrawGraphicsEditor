@@ -1,5 +1,7 @@
 #include "selftest.h"
 #include "autohidedockwidget.h"
+#include "layermodel.h"
+#include "layerpanel.h"
 #include "mainwindow.h"
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
@@ -51,11 +53,422 @@ struct ProjectFixture {
     QString projectPath;
 };
 
+/// Возвращает итоговые пиксели снимка независимо от внутреннего числа и типов слоёв.
+QImage pixels(const DrawingState &state) {
+    return state.flattenedImage();
+}
+
+/// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
+QImage *editablePixels(DrawingState *state) {
+    LayerEntry *entry = state->layers.activeEntry();
+    LayerContent *content = state->layers.editableActiveContent(LayerCapability::RasterPainting);
+    const LayerType *type = entry ? LayerTypeRegistry::instance().type(entry->typeId) : nullptr;
+    return content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
+}
+
+/// Возвращает устойчивый идентификатор нерастрового типа, существующего только в самопроверке.
+QString testShapeTypeId() {
+    return QStringLiteral("selftest-shape");
+}
+
+/// Хранит прямоугольник и цвет без QImage для доказательства полиморфной модели содержимого.
+class TestShapeContent final : public LayerContent {
+public:
+    QRectF rect;
+    QColor color;
+
+    /// Возвращает тестовый строковый тип.
+    QString typeId() const override { return testShapeTypeId(); }
+    /// Создаёт отделённую копию параметрического содержимого.
+    std::shared_ptr<LayerContent> clone() const override { return std::make_shared<TestShapeContent>(*this); }
+    /// Сравнивает геометрию и цвет двух тестовых фигур.
+    bool equals(const LayerContent &other) const override {
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&other);
+        return shape && shape->rect == rect && shape->color == color;
+    }
+    /// Возвращает постоянную оценку памяти небольшого параметрического объекта.
+    qint64 estimatedBytes() const override { return sizeof(TestShapeContent); }
+};
+
+/// Рисует параметрическую тестовую фигуру напрямую через общий QPainter-конвейер.
+class TestShapeRenderer final : public LayerRenderer {
+public:
+    /// Применяет общий контекст, свойства записи и выводит прямоугольник без промежуточного растра.
+    void render(QPainter &painter,
+                const LayerEntry &entry,
+                const LayerContent &content,
+                const LayerRenderContext &context) const override {
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&content);
+        if (!shape)
+            return;
+        painter.save();
+        painter.resetTransform();
+        painter.setClipRect(context.deviceClip);
+        painter.setTransform(context.documentToDevice);
+        painter.setOpacity(entry.opacity / 100.0);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(shape->color);
+        painter.drawRect(shape->rect.translated(entry.offset));
+        painter.restore();
+    }
+};
+
+/// Сохраняет тестовую фигуру только в JSON, подтверждая необязательность PNG для типа слоя.
+class TestShapeCodec final : public LayerCodec {
+public:
+    /// Записывает геометрию и цвет в манифест без двоичных ресурсов.
+    bool encode(const LayerContent &content,
+                const QString &resourceRoot,
+                QJsonObject *manifest,
+                QHash<QString, QByteArray> *resources,
+                QString *error) const override {
+        Q_UNUSED(resourceRoot)
+        Q_UNUSED(resources)
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&content);
+        if (!shape) {
+            if (error)
+                *error = QStringLiteral("invalid self-test shape");
+            return false;
+        }
+        *manifest = QJsonObject{{"x", shape->rect.x()},
+                                {"y", shape->rect.y()},
+                                {"width", shape->rect.width()},
+                                {"height", shape->rect.height()},
+                                {"color", shape->color.name(QColor::HexArgb)}};
+        return true;
+    }
+
+    /// Проверяет JSON и восстанавливает параметрическое содержимое.
+    std::shared_ptr<LayerContent> decode(const QJsonObject &manifest,
+                                         const LayerResourceReader &resourceReader,
+                                         QSize canvasSize,
+                                         QString *error) const override {
+        Q_UNUSED(resourceReader)
+        Q_UNUSED(canvasSize)
+        auto shape = std::make_shared<TestShapeContent>();
+        shape->rect = QRectF(manifest.value("x").toDouble(qQNaN()),
+                             manifest.value("y").toDouble(qQNaN()),
+                             manifest.value("width").toDouble(qQNaN()),
+                             manifest.value("height").toDouble(qQNaN()));
+        shape->color = QColor(manifest.value("color").toString());
+        if (!std::isfinite(shape->rect.x()) || !std::isfinite(shape->rect.y()) ||
+            !std::isfinite(shape->rect.width()) || !std::isfinite(shape->rect.height()) || !shape->rect.isValid() ||
+            !shape->color.isValid()) {
+            if (error)
+                *error = QStringLiteral("invalid self-test shape manifest");
+            return {};
+        }
+        return shape;
+    }
+};
+
+/// Проверяет реестр типов, copy-on-write, композицию, миниатюру и кодек растрового слоя.
+void testLayerArchitecture() {
+    QImage source(24, 16, QImage::Format_ARGB32_Premultiplied);
+    source.fill(QColor("#b94c42"));
+    LayerStack layers = LayerStack::singleRaster(source, QStringLiteral("Background"), false, true);
+    require(layers.entries().size() == 1 && layers.activeEntry() &&
+                layers.activeEntry()->typeId == LayerTypes::raster(),
+            "single raster layer stack was not created");
+    const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
+    require(type && type->renderer && type->codec && type->rasterEditor &&
+                type->capabilities.testFlag(LayerCapability::RasterPainting),
+            "raster layer type is not fully registered");
+
+    LayerStack snapshot = layers;
+    LayerContent *editable = layers.editableActiveContent(LayerCapability::RasterPainting);
+    QImage *pixels = editable ? type->rasterEditor(*editable) : nullptr;
+    require(pixels, "raster layer did not provide an editable target");
+    pixels->setPixelColor(3, 4, QColor("#234f8c"));
+    const auto *snapshotRaster = dynamic_cast<const RasterLayerContent *>(snapshot.activeEntry()->content.get());
+    require(snapshotRaster && snapshotRaster->image.pixelColor(3, 4) == QColor("#b94c42"),
+            "editing a layer changed a shared history snapshot");
+
+    QImage composition = LayerCompositor::compose(layers, source.size());
+    require(composition.pixelColor(3, 4) == QColor("#234f8c"),
+            "layer compositor did not render edited raster content");
+    QImage thumbnail = LayerCompositor::thumbnail(layers, source.size(), QSize(48, 48));
+    require(thumbnail.size() == QSize(48, 48) && !thumbnail.isNull(), "layer compositor did not create a thumbnail");
+
+    QJsonObject manifest;
+    QHash<QString, QByteArray> resources;
+    QString error;
+    require(type->codec->encode(*layers.activeEntry()->content,
+                                QStringLiteral("layers/test"),
+                                &manifest,
+                                &resources,
+                                &error),
+            qPrintable(error));
+    auto decoded = type->codec->decode(
+        manifest, [&resources](const QString &path) { return resources.value(path); }, source.size(), &error);
+    require(decoded && decoded->equals(*layers.activeEntry()->content), "raster layer codec roundtrip failed");
+
+    const QString addedId = layers.addRaster(source.size(), QStringLiteral("Paint"));
+    require(!addedId.isEmpty() && layers.entries().size() == 2 && layers.activeLayerId() == addedId &&
+                layers.activeEntry()->content->typeId() == LayerTypes::raster(),
+            "transparent raster layer was not added or selected");
+    const auto *addedRaster = dynamic_cast<const RasterLayerContent *>(layers.activeEntry()->content.get());
+    require(addedRaster && addedRaster->transparencyAvailable && !addedRaster->alphaLocked &&
+                addedRaster->image.pixelColor(0, 0).alpha() == 0,
+            "new raster layer must be transparent and alpha-editable");
+    const QString duplicateId = layers.duplicateActive(QStringLiteral("Paint copy"));
+    require(!duplicateId.isEmpty() && layers.entries().size() == 3 && layers.activeLayerId() == duplicateId &&
+                layers.entries()[1].content == layers.entries()[2].content,
+            "layer duplication must share unchanged content and select the copy");
+    require(!layers.moveActive(1) && layers.moveActive(-1) && layers.entries()[1].id == duplicateId,
+            "active layer order change failed");
+    require(layers.removeActive() && layers.entries().size() == 2 && layers.activeEntry(),
+            "active layer removal failed");
+    require(layers.removeActive() && layers.entries().size() == 1 && !layers.removeActive(),
+            "last document layer must not be removable");
+}
+
+/// Проверяет виджет слоёв, структурные операции, свойства и их участие в Undo/Redo.
+void testLayerPanel() {
+    Canvas canvas;
+    LayerPanel panel(&canvas);
+    panel.resize(330, 420);
+    panel.show();
+    QApplication::processEvents();
+    auto *list = panel.findChild<QListWidget *>("layersList");
+    auto *add = panel.findChild<QToolButton *>("addLayer");
+    auto *remove = panel.findChild<QToolButton *>("removeLayer");
+    auto *duplicate = panel.findChild<QToolButton *>("duplicateLayer");
+    auto *up = panel.findChild<QToolButton *>("raiseLayer");
+    auto *down = panel.findChild<QToolButton *>("lowerLayer");
+    auto *opacity = panel.findChild<QSpinBox *>("layerOpacity");
+    auto *offsetX = panel.findChild<QDoubleSpinBox *>("layerOffsetX");
+    auto *offsetY = panel.findChild<QDoubleSpinBox *>("layerOffsetY");
+    auto *addTransparency = panel.findChild<QPushButton *>("addLayerTransparency");
+    require(list && add && remove && duplicate && up && down && opacity && offsetX && offsetY && addTransparency &&
+                list->count() == 1 && !remove->isEnabled(),
+            "layers panel or its initial layer is incomplete");
+    add->click();
+    QApplication::processEvents();
+    require(list->count() == 2 && canvas.state().layers.entries().size() == 2 && remove->isEnabled() &&
+                canvas.state().layers.activeEntry()->name == QStringLiteral("Слой 2"),
+            "layers panel did not add and select a raster layer");
+    QWidget *activeRow = list->itemWidget(list->currentItem());
+    auto *name = activeRow ? activeRow->findChild<QLabel *>("layerName") : nullptr;
+    auto *nameEditor = activeRow ? activeRow->findChild<QLineEdit *>("layerNameEditor") : nullptr;
+    auto *type = activeRow ? activeRow->findChild<QLabel *>("layerType") : nullptr;
+    auto *visible = activeRow ? activeRow->findChild<QToolButton *>("layerVisible") : nullptr;
+    auto *locked = activeRow ? activeRow->findChild<QToolButton *>("layerLocked") : nullptr;
+    const QMargins rowMargins = activeRow && activeRow->layout() ? activeRow->layout()->contentsMargins() : QMargins();
+    require(name && nameEditor && type && visible && locked && name->isVisible() && !nameEditor->isVisible() &&
+                list->spacing() == 0 && rowMargins == QMargins(0, 0, 0, 0) &&
+                type->alignment().testFlag(Qt::AlignRight) &&
+                std::abs((name->font().pointSizeF() - type->font().pointSizeF()) - 2.0) < 0.01 &&
+                !addTransparency->isVisible(),
+            "layer row controls or transparent-layer state are missing");
+    QMouseEvent nameDoubleClick(QEvent::MouseButtonDblClick,
+                                QPointF(name->rect().center()),
+                                Qt::LeftButton,
+                                Qt::LeftButton,
+                                Qt::NoModifier);
+    QApplication::sendEvent(name, &nameDoubleClick);
+    QApplication::processEvents();
+    require(nameEditor->isVisible(), "layer name editor did not open on double click");
+    nameEditor->setText(QStringLiteral("Штриховка"));
+    QMetaObject::invokeMethod(nameEditor, "editingFinished");
+    require(canvas.state().layers.activeEntry()->name == QStringLiteral("Штриховка"),
+            "inline layer rename failed");
+    visible->click();
+    require(!canvas.state().layers.activeEntry()->visible, "layer visibility button failed");
+    activeRow = list->itemWidget(list->currentItem());
+    locked = activeRow ? activeRow->findChild<QToolButton *>("layerLocked") : nullptr;
+    require(locked, "layer lock button disappeared after refresh");
+    locked->click();
+    require(canvas.state().layers.activeEntry()->locked, "layer lock button failed");
+    opacity->setValue(63);
+    QMetaObject::invokeMethod(opacity, "editingFinished");
+    require(canvas.state().layers.activeEntry()->opacity == 63, "layer opacity control failed");
+    offsetX->setValue(12.5);
+    offsetY->setValue(-8);
+    QMetaObject::invokeMethod(offsetY, "editingFinished");
+    require(canvas.state().layers.activeEntry()->offset == QPointF(12.5, -8), "layer offset controls failed");
+    duplicate->click();
+    require(canvas.state().layers.entries().size() == 3 && down->isEnabled(), "layer duplication failed in panel");
+    down->click();
+    up->click();
+    remove->click();
+    require(canvas.state().layers.entries().size() == 2, "layer order or removal controls failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().layers.entries().size() == 3, "layer removal must be undoable");
+
+    const QString backgroundId = canvas.state().layers.entries().first().id;
+    canvas.selectLayer(backgroundId);
+    QApplication::processEvents();
+    require(addTransparency->isVisible(), "opaque raster layer must offer adding transparency");
+    addTransparency->click();
+    QApplication::processEvents();
+    auto *alphaLocked = panel.findChild<QCheckBox *>("layerAlphaLocked");
+    const auto *raster = dynamic_cast<const RasterLayerContent *>(canvas.state().layers.activeEntry()->content.get());
+    require(alphaLocked && alphaLocked->isVisible() && raster && raster->transparencyAvailable &&
+                !raster->alphaLocked,
+            "adding layer transparency failed");
+    alphaLocked->click();
+    raster = dynamic_cast<const RasterLayerContent *>(canvas.state().layers.activeEntry()->content.get());
+    require(raster && raster->alphaLocked, "alpha lock control failed");
+    panel.close();
+}
+
+/// Проверяет контекстное стирание цветом Back или до прозрачности и запрет рисования по слою.
+void testLayerAwareEraser() {
+    Canvas canvas;
+    canvas.resize(700, 500);
+    canvas.fit();
+    canvas.setTool(Canvas::Eraser);
+    canvas.setBack(QColor("#c84b73"));
+    DrawingToolSettings settings;
+    settings.width = 11;
+    settings.hardness = 100;
+    settings.strength = 100;
+    canvas.setStrokeSettings(settings);
+    const QString layerId = canvas.state().layers.activeLayerId();
+    click(&canvas, QPointF(100, 100));
+    require(pixels(canvas.state()).pixelColor(100, 100) == QColor("#c84b73"),
+            "eraser must use Back on a layer without transparency");
+    canvas.addLayerTransparency(layerId);
+    click(&canvas, QPointF(130, 100));
+    require(pixels(canvas.state()).pixelColor(130, 100).alpha() == 0,
+            "eraser must remove alpha on an alpha-editable layer");
+    canvas.setLayerAlphaLocked(layerId, true);
+    click(&canvas, QPointF(160, 100));
+    require(pixels(canvas.state()).pixelColor(160, 100) == QColor("#c84b73"),
+            "eraser must use Back when alpha is locked");
+    canvas.setLayerLocked(layerId, true);
+    const QImage beforeLocked = pixels(canvas.state());
+    click(&canvas, QPointF(190, 100));
+    require(pixels(canvas.state()) == beforeLocked, "locked active layer must reject painting");
+    canvas.setLayerLocked(layerId, false);
+    canvas.setLayerVisible(layerId, false);
+    const QImage beforeHidden = pixels(canvas.state());
+    click(&canvas, QPointF(220, 100));
+    require(pixels(canvas.state()) == beforeHidden, "hidden active layer must reject painting");
+}
+
+/// Проверяет DRW 9, историю стеков, дедупликацию ресурсов и отказ на неизвестном типе слоя.
+void testMultiLayerProject(const QDir &out) {
+    DrawingState base;
+    QImage background(40, 30, QImage::Format_ARGB32_Premultiplied);
+    background.fill(QColor("#f2eee4"));
+    base.setSingleRasterImage(background, QStringLiteral("Background"));
+    base.horizonY = 15;
+    base.verticalX = 20;
+    base.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(30, 15), QString(), QString()});
+    DrawingState layered = base;
+    const QString paintId = layered.layers.addRaster(layered.canvasSize, QStringLiteral("Paint"));
+    LayerContent *content = layered.layers.editableActiveContent(LayerCapability::RasterPainting);
+    const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
+    QImage *paint = content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
+    require(paint, "multilayer fixture did not expose raster content");
+    paint->setPixelColor(8, 9, QColor("#d64040"));
+    LayerEntry *active = layered.layers.activeEntry();
+    active->opacity = 65;
+    active->offset = QPointF(2, 3);
+    active->locked = true;
+    DrawingHistory history;
+    history.states = {base, layered};
+    history.labels = QStringList{QStringLiteral("layer operation")};
+    history.index = 1;
+    QString error;
+    const QString path = out.filePath("multilayer-v9.drw");
+    require(Project::save(path, history, &error), qPrintable(error));
+    DrawingHistory loaded;
+    require(Project::load(path, &loaded, &error), qPrintable(error));
+    require(loaded.states.size() == 2 && loaded.index == 1 && loaded.labels == history.labels &&
+                loaded.states[1].layers == layered.layers && loaded.states[0].layers == base.layers &&
+                loaded.states[1].layers.activeLayerId() == paintId && pixels(loaded.states[1]) == pixels(layered),
+            "version 9 multilayer stack or history did not roundtrip");
+
+    QZipReader archive(path);
+    const QJsonObject metadata = QJsonDocument::fromJson(archive.fileData("project.json")).object();
+    int resourceCount = 0;
+    for (const auto &entry : archive.fileInfoList())
+        if (entry.isFile && entry.filePath.startsWith("resources/"))
+            ++resourceCount;
+    require(metadata.value("version").toInt() == 9 &&
+                metadata.value("layers").toObject().value("entries").toArray().size() == 2 && resourceCount == 2,
+            "version 9 manifest or content resource deduplication is invalid");
+
+    QJsonObject unknownMetadata = metadata;
+    QJsonObject unknownLayers = unknownMetadata.value("layers").toObject();
+    QJsonArray unknownEntries = unknownLayers.value("entries").toArray();
+    QJsonObject unknownEntry = unknownEntries.first().toObject();
+    unknownEntry["type"] = QStringLiteral("unregistered-test-type");
+    unknownEntries[0] = unknownEntry;
+    unknownLayers["entries"] = unknownEntries;
+    unknownMetadata["layers"] = unknownLayers;
+    const QString unknownPath = out.filePath("unknown-layer.drw");
+    QZipWriter unknownArchive(unknownPath);
+    for (const auto &entry : archive.fileInfoList()) {
+        if (!entry.isFile)
+            continue;
+        unknownArchive.addFile(entry.filePath,
+                               entry.filePath == QStringLiteral("project.json")
+                                   ? QJsonDocument(unknownMetadata).toJson()
+                                   : archive.fileData(entry.filePath));
+    }
+    unknownArchive.close();
+    DrawingState rejected;
+    require(!Project::load(unknownPath, &rejected, &error) && error.contains(QStringLiteral("unregistered-test-type")),
+            "unknown layer type must be rejected without flattening");
+}
+
+/// Доказывает общий рендеринг, миниатюру и сохранение зарегистрированного нерастрового типа.
+void testRegisteredNonRasterLayer(const QDir &out) {
+    LayerType shapeType;
+    shapeType.id = testShapeTypeId();
+    shapeType.capabilities = LayerCapability::Thumbnail;
+    shapeType.factory = [] { return std::make_shared<TestShapeContent>(); };
+    shapeType.renderer = std::make_shared<TestShapeRenderer>();
+    shapeType.codec = std::make_shared<TestShapeCodec>();
+    require(LayerTypeRegistry::instance().registerType(shapeType), "self-test layer type was not registered");
+
+    DrawingState state;
+    QImage background(64, 48, QImage::Format_ARGB32_Premultiplied);
+    background.fill(Qt::white);
+    state.setSingleRasterImage(background, QStringLiteral("Background"));
+    state.horizonY = 24;
+    state.verticalX = 32;
+    state.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(48, 24), QString(), QString()});
+    LayerEntry shapeEntry;
+    shapeEntry.id = QStringLiteral("shape-1");
+    shapeEntry.typeId = testShapeTypeId();
+    shapeEntry.name = QStringLiteral("Test shape");
+    shapeEntry.opacity = 80;
+    shapeEntry.offset = QPointF(3, 2);
+    auto shape = std::make_shared<TestShapeContent>();
+    shape->rect = QRectF(10, 8, 20, 14);
+    shape->color = QColor("#2868c7");
+    shapeEntry.content = shape;
+    state.layers.entries().append(shapeEntry);
+    require(state.layers.setActiveLayerId(shapeEntry.id), "self-test layer was not selected");
+    const QImage composition = state.flattenedImage();
+    require(composition.pixelColor(18, 15) != QColor(Qt::white),
+            "registered non-raster renderer did not enter the common composition");
+    const QImage thumbnail = LayerCompositor::thumbnail(state.layers, state.canvasSize, QSize(96, 72));
+    require(!thumbnail.isNull() && thumbnail.size() == QSize(96, 72),
+            "registered non-raster renderer did not create a thumbnail");
+
+    QString error;
+    const QString path = out.filePath("registered-layer.drw");
+    require(Project::save(path, state, &error), qPrintable(error));
+    DrawingState loaded;
+    require(Project::load(path, &loaded, &error), qPrintable(error));
+    const LayerEntry *loadedShape = loaded.layers.entry(shapeEntry.id);
+    require(loaded.layers.entries().size() == 2 && loadedShape && loadedShape->typeId == testShapeTypeId() &&
+                loadedShape->content->equals(*shape) && loaded.flattenedImage() == composition,
+            "registered non-raster codec did not roundtrip through common project code");
+}
+
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
-    initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
-    initial.image.fill(Qt::white);
+    QImage image(1000, 620, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    initial.setSingleRasterImage(image, QStringLiteral("Background"));
     initial.horizonY = 240;
     initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(650, 240), QString(), QString()});
@@ -91,6 +504,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
     auto *toolsToolbar = window.findChild<QToolBar *>("toolsToolbar");
     auto *toolsDock = window.findChild<AutoHideDockWidget *>("toolsDock");
+    auto *layersDock = window.findChild<AutoHideDockWidget *>("layersDock");
+    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
+    auto *layersPanel = window.findChild<LayerPanel *>("layerPanel");
     auto *fileMenu = window.findChild<QMenu *>("fileMenu");
     auto *editMenu = window.findChild<QMenu *>("editMenu");
     auto *viewMenu = window.findChild<QMenu *>("viewMenu");
@@ -101,9 +517,76 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "toolbars must show icons only and drawing tools must be horizontal");
     auto *mainToolbarToggle = window.findChild<QAction *>("mainToolbarToggle");
     auto *toolsToolbarToggle = window.findChild<QAction *>("toolsToolbarToggle");
-    require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle &&
-                viewMenu->actions().contains(mainToolbarToggle) && viewMenu->actions().contains(toolsToolbarToggle),
+    auto *layersPanelToggle = window.findChild<QAction *>("layersPanelToggle");
+    require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle && layersDock &&
+                perspectiveDock && layersPanel && layersPanelToggle && viewMenu->actions().contains(mainToolbarToggle) &&
+                viewMenu->actions().contains(toolsToolbarToggle) && viewMenu->actions().contains(layersPanelToggle) &&
+                window.dockWidgetArea(layersDock) == Qt::RightDockWidgetArea,
             "menus or toolbar visibility actions are missing");
+    require(toolsDock->minimumWidth() == 250 && layersDock->minimumWidth() == 330 &&
+                perspectiveDock->minimumWidth() == 330,
+            "dock panels did not preserve their configured minimum widths");
+    auto *toolsResizeHandle = window.findChild<QWidget *>("toolsResizeHandle");
+    auto *layersResizeHandle = window.findChild<QWidget *>("layersResizeHandle");
+    require(toolsResizeHandle && layersResizeHandle && toolsResizeHandle->cursor().shape() == Qt::SizeHorCursor &&
+                layersResizeHandle->cursor().shape() == Qt::SizeHorCursor,
+            "dock panels do not expose horizontal mouse resize handles");
+    const int toolsWidth = toolsDock->width();
+    const QPointF toolsScreenPosition = toolsResizeHandle->mapToGlobal(QPoint(3, 10));
+    QMouseEvent toolsResizePress(QEvent::MouseButtonPress,
+                                 QPointF(3, 10),
+                                 QPointF(3, 10),
+                                 toolsScreenPosition,
+                                 Qt::LeftButton,
+                                 Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizePress);
+    QMouseEvent toolsResizeMove(QEvent::MouseMove,
+                                QPointF(3, 10),
+                                QPointF(3, 10),
+                                toolsScreenPosition + QPointF(60, 0),
+                                Qt::NoButton,
+                                Qt::LeftButton,
+                                Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizeMove);
+    QMouseEvent toolsResizeRelease(QEvent::MouseButtonRelease,
+                                   QPointF(3, 10),
+                                   QPointF(3, 10),
+                                   toolsScreenPosition + QPointF(60, 0),
+                                   Qt::LeftButton,
+                                   Qt::NoButton,
+                                   Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizeRelease);
+    QApplication::processEvents();
+    require(toolsDock->width() > toolsWidth, "left panel width could not be increased with its mouse handle");
+    const int layersWidth = layersDock->width();
+    const QPointF layersScreenPosition = layersResizeHandle->mapToGlobal(QPoint(3, 10));
+    QMouseEvent layersResizePress(QEvent::MouseButtonPress,
+                                  QPointF(3, 10),
+                                  QPointF(3, 10),
+                                  layersScreenPosition,
+                                  Qt::LeftButton,
+                                  Qt::LeftButton,
+                                  Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizePress);
+    QMouseEvent layersResizeMove(QEvent::MouseMove,
+                                 QPointF(3, 10),
+                                 QPointF(3, 10),
+                                 layersScreenPosition - QPointF(60, 0),
+                                 Qt::NoButton,
+                                 Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizeMove);
+    QMouseEvent layersResizeRelease(QEvent::MouseButtonRelease,
+                                    QPointF(3, 10),
+                                    QPointF(3, 10),
+                                    layersScreenPosition - QPointF(60, 0),
+                                    Qt::LeftButton,
+                                    Qt::NoButton,
+                                    Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizeRelease);
+    QApplication::processEvents();
+    require(layersDock->width() > layersWidth, "right panel width could not be increased with its mouse handle");
     mainToolbarToggle->trigger();
     QApplication::processEvents();
     require(!mainToolbar->isVisible(), "main toolbar could not be hidden through View menu");
@@ -115,7 +598,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     QApplication::processEvents();
     auto *toolsPin = window.findChild<QToolButton *>("toolsPanelPin");
     auto *toolsTitle = window.findChild<QLabel *>("toolsPanelTitle");
-    auto *toolsStrip = window.findChild<QDockWidget *>("toolsAutoHideStrip");
+    auto *toolsStrip = window.findChild<QToolBar *>("leftAutoHideStrip");
     auto *toolsTab = window.findChild<QToolButton *>("toolsAutoHideTab");
     auto *toolsOverlay = window.findChild<QWidget *>("toolsAutoHideOverlay");
     require(toolsPin && toolsTitle && toolsStrip && toolsTab && toolsOverlay && toolsDock->isPinned() &&
@@ -273,11 +756,11 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 perspectiveLayout->indexOf(verticalSettings) < perspectiveLayout->indexOf(vanishingPointSettings) &&
                 perspectiveLayout->indexOf(vanishingPointSettings) < perspectiveLayout->indexOf(vanishingPointsList),
             "perspective blocks must be ordered as horizon, main vertical, point settings, and point list");
-    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
     auto *perspectivePanelToggle = window.findChild<QAction *>("perspectivePanelToggle");
+    auto *perspectiveScroll = window.findChild<QScrollArea *>("perspectiveScroll");
     auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
     auto *perspectiveTitle = window.findChild<QLabel *>("perspectivePanelTitle");
-    auto *perspectiveStrip = window.findChild<QDockWidget *>("perspectiveAutoHideStrip");
+    auto *perspectiveStrip = window.findChild<QToolBar *>("rightAutoHideStrip");
     auto *perspectiveTab = window.findChild<QToolButton *>("perspectiveAutoHideTab");
     auto *perspectiveOverlay = window.findChild<QWidget *>("perspectiveAutoHideOverlay");
     auto *horizonToggle = window.findChild<QToolButton *>("horizonSettingsToggle");
@@ -291,10 +774,17 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *commonFrame = qobject_cast<QFrame *>(vanishingPointSettings);
     auto *pointsFrame = qobject_cast<QFrame *>(vanishingPointsList);
     auto *selectedPointFrame = qobject_cast<QFrame *>(selectedPointSettings);
-    require(perspectiveDock && perspectivePanelToggle && viewMenu->actions().contains(perspectivePanelToggle) &&
+    require(perspectiveDock && perspectivePanelToggle && perspectiveScroll &&
+                perspectiveScroll->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
+                viewMenu->actions().contains(perspectivePanelToggle) &&
                 perspectivePin && perspectiveTitle && perspectiveStrip && perspectiveTab && perspectiveOverlay &&
-                perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x() &&
-                perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
+                perspectiveDock->windowTitle() == QStringLiteral("Перспектива"),
+            "perspective panel title, scroll area, edge tab, or View command is invalid");
+    perspectivePanelToggle->setChecked(true);
+    QApplication::processEvents();
+    require(perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x(),
+            "perspective panel pin must face the center of the window");
+    require(horizonToggle &&
                 horizonContent && verticalToggle && commonToggle && pointsToggle && selectedPointToggle &&
                 horizonFrame && verticalFrame && commonFrame && pointsFrame && selectedPointFrame &&
                 horizonFrame->frameShape() == QFrame::StyledPanel &&
@@ -302,9 +792,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 commonFrame->frameShape() == QFrame::StyledPanel && pointsFrame->frameShape() == QFrame::StyledPanel &&
                 selectedPointFrame->frameShape() == QFrame::StyledPanel &&
                 horizonToggle->arrowType() == Qt::DownArrow && horizonSettings->property("expanded").toBool(),
-            "perspective rollout headers, borders, or panel title are invalid");
-    perspectivePanelToggle->setChecked(true);
-    QApplication::processEvents();
+            "perspective rollout headers or borders are invalid");
     perspectivePin->click();
     QApplication::processEvents();
     require(!perspectiveDock->isPinned() && perspectiveStrip->isVisible() && perspectiveTab->isVisible() &&
@@ -318,7 +806,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "the right auto-hide tab must leave a small gap after the ruler");
     perspectiveTab->click();
     QApplication::processEvents();
-    require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
+    require(perspectiveOverlay->isVisible() &&
+                perspectiveOverlay->geometry().contains(layersDock->geometry().center()),
+            "the right edge tab must reveal the perspective panel over pinned panels in its column");
     QMouseEvent outsidePerspective(QEvent::MouseButtonPress,
                                    QPointF(2, 2),
                                    Qt::LeftButton,
@@ -481,7 +971,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         }
     });
     newAction->trigger();
-    require(window.canvas()->state().image.size() == QSize(640, 480) &&
+    require(window.canvas()->state().canvasSize == QSize(640, 480) &&
                 QSettings().value("canvas/newWidth").toInt() == 640 &&
                 QSettings().value("canvas/newHeight").toInt() == 480,
             "new canvas size was not remembered after creation");
@@ -585,6 +1075,45 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 !QSettings().contains("perspective/common/rayStepDegrees") && !saveSavedDefaults->isEnabled(),
             "reset common perspective settings did not restore factory values outside project history");
     defaultsWindow.close();
+    auto *collapsePanels = window.findChild<QToolButton *>("collapsePanelsButton");
+    auto *layersTab = window.findChild<QToolButton *>("layersAutoHideTab");
+    auto *layersOverlay = window.findChild<QWidget *>("layersAutoHideOverlay");
+    auto *zoomPercent = window.findChild<QDoubleSpinBox *>("zoomPercent");
+    require(collapsePanels && layersTab && layersOverlay && zoomPercent && !collapsePanels->toolTip().isEmpty() &&
+                collapsePanels->mapTo(&window, QPoint()).x() > zoomPercent->mapTo(&window, QPoint()).x(),
+            "bottom-right collapse-panels button is missing or misplaced");
+    toolsToolbarToggle->setChecked(true);
+    perspectivePanelToggle->setChecked(true);
+    layersPanelToggle->setChecked(true);
+    QApplication::processEvents();
+    const int canvasWidthBeforeCollapse = canvas->width();
+    canvas->setZoom(16);
+    collapsePanels->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    require(!toolsDock->isPinned() && !perspectiveDock->isPinned() && !layersDock->isPinned() &&
+                toolsToolbarToggle->isChecked() && perspectivePanelToggle->isChecked() &&
+                layersPanelToggle->isChecked() && toolsTab->isVisible() && perspectiveTab->isVisible() &&
+                layersTab->isVisible(),
+            "collapse-panels button did not move every open panel to its edge tab");
+    require(canvas->width() > canvasWidthBeforeCollapse && canvas->zoom() < 16,
+            "collapse-panels button did not refit the canvas in the released workspace");
+    require(perspectiveStrip->geometry().right() == window.rect().right(),
+            "right auto-hide tabs must occupy the outermost edge of the window");
+    require(toolsStrip->geometry().left() == window.rect().left(),
+            "left auto-hide tabs must occupy the outermost edge of the window");
+    require(perspectiveTab->mapTo(perspectiveStrip, QPoint()).y() <
+                    layersTab->mapTo(perspectiveStrip, QPoint()).y() &&
+                layersTab->mapTo(perspectiveStrip, QPoint()).y() ==
+                    perspectiveTab->mapTo(perspectiveStrip, QPoint()).y() + perspectiveTab->height(),
+            "right auto-hide tabs must form one contiguous column in panel order");
+    layersTab->click();
+    QApplication::processEvents();
+    require(layersOverlay->isVisible() &&
+                layersOverlay->geometry().top() == window.centralWidget()->geometry().top(),
+            "an auto-hidden panel must open from the top of the available workspace");
+    collapsePanels->click();
+    QApplication::processEvents();
     QSettings().remove("perspective/view");
 }
 
@@ -813,7 +1342,7 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
     }
     require(topRuler > 250 && bottomRuler > 250 && leftRuler > 170 && rightRuler > 170,
             "four fixed viewport rulers were not rendered");
-    const QImage rulerPixels = rulerCanvas.state().image;
+    const QImage rulerPixels = pixels(rulerCanvas.state());
     mouse(&rulerCanvas, QEvent::MouseMove, QPointF(250, 200), Qt::NoButton, Qt::NoButton);
     QImage cursorProjection(rulerCanvas.size(), QImage::Format_ARGB32_Premultiplied);
     cursorProjection.fill(Qt::transparent);
@@ -841,7 +1370,7 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
             if (cursorProjection.pixelColor(x, y) == QColor("#fff4b5"))
                 ++cursorLabels;
     require(changedPixels > 20 && topProjection && bottomProjection && leftProjection && rightProjection &&
-                cursorLabels == 0 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
+                cursorLabels == 0 && pixels(rulerCanvas.state()) == rulerPixels && rulerCanvas.undoStack()->isClean(),
             "dashed cursor projections must cross all rulers without numeric badges or document edits");
     DrawingState lockState = initial;
     lockState.gridVisible = true;
@@ -895,17 +1424,17 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeWidth(9);
     canvas->setFront(QColor("#26364a"));
     drag(canvas, QPointF(120, 100), QPointF(280, 100));
-    require(canvas->state().image.pixelColor(200, 100) == QColor("#26364a"), "pencil stroke did not reach image");
+    require(pixels(canvas->state()).pixelColor(200, 100) == QColor("#26364a"), "pencil stroke did not reach image");
     require(!canvas->undoStack()->isClean(), "stroke must make document dirty");
     canvas->undoStack()->undo();
-    require(canvas->state().image == initial.image, "undo must restore pixels");
+    require(pixels(canvas->state()) == pixels(initial), "undo must restore pixels");
     require(canvas->undoStack()->isClean(), "undo back to saved image must be clean");
     canvas->undoStack()->redo();
-    require(canvas->state().image != initial.image, "redo must restore stroke");
+    require(pixels(canvas->state()) != pixels(initial), "redo must restore stroke");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
     drag(canvas, QPointF(190, 95), QPointF(190, 105));
-    require(canvas->state().image.pixelColor(190, 100) == QColor("#e8cf9b"), "eraser must use Back");
+    require(pixels(canvas->state()).pixelColor(190, 100) == QColor("#e8cf9b"), "eraser must use Back");
     canvas->setDocument(initial);
     canvas->setTool(Canvas::Pencil);
     canvas->setFront(QColor("#26364a"));
@@ -913,23 +1442,23 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     click(canvas, {100, 200});
     click(canvas, {200, 200}, Qt::ShiftModifier);
     click(canvas, {200, 260}, Qt::ShiftModifier);
-    require(canvas->state().image.pixelColor(150, 200) == QColor("#26364a") &&
-                canvas->state().image.pixelColor(200, 230) == QColor("#26364a"),
+    require(pixels(canvas->state()).pixelColor(150, 200) == QColor("#26364a") &&
+                pixels(canvas->state()).pixelColor(200, 230) == QColor("#26364a"),
             "shift clicks must create connected segments");
     canvas->undoStack()->undo();
-    require(canvas->state().image.pixelColor(150, 200) == QColor("#26364a") &&
-                canvas->state().image.pixelColor(200, 230) == QColor(Qt::white),
+    require(pixels(canvas->state()).pixelColor(150, 200) == QColor("#26364a") &&
+                pixels(canvas->state()).pixelColor(200, 230) == QColor(Qt::white),
             "each connected segment must be separately undoable");
     canvas->undoStack()->redo();
     click(canvas, {300, 300});
     click(canvas, {390, 310}, Qt::ShiftModifier | Qt::ControlModifier);
-    require(canvas->state().image.pixelColor(350, 300) == QColor("#26364a"), "ctrl shift must constrain segment angle");
+    require(pixels(canvas->state()).pixelColor(350, 300) == QColor("#26364a"), "ctrl shift must constrain segment angle");
     canvas->setDocument(initial);
     canvas->setTool(Canvas::Brush);
     canvas->setFront(QColor("#6c3f88"));
     canvas->setStrokeWidth(11);
     drag(canvas, {110, 180}, {210, 180});
-    require(canvas->state().image.pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
+    require(pixels(canvas->state()).pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
     DrawingToolSettings softBrush;
     softBrush.width = 20;
     softBrush.opacity = 50;
@@ -937,8 +1466,8 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     softBrush.spacing = 50;
     canvas->setStrokeSettings(softBrush);
     click(canvas, {260, 180});
-    const QColor softCenter = canvas->state().image.pixelColor(260, 180);
-    const QColor softEdge = canvas->state().image.pixelColor(269, 180);
+    const QColor softCenter = pixels(canvas->state()).pixelColor(260, 180);
+    const QColor softEdge = pixels(canvas->state()).pixelColor(269, 180);
     require(softCenter != QColor(Qt::white) && softCenter != QColor("#6c3f88") && softEdge != softCenter,
             "brush opacity and soft hardness must affect the round stamp");
     softBrush.opacity = 100;
@@ -946,7 +1475,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     softBrush.spacing = 50;
     canvas->setStrokeSettings(softBrush);
     drag(canvas, {260, 220}, {360, 220});
-    require(canvas->state().image.pixelColor(310, 220) == QColor("#6c3f88"),
+    require(pixels(canvas->state()).pixelColor(310, 220) == QColor("#6c3f88"),
             "stamp interpolation must keep a fast brush stroke continuous");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
@@ -957,24 +1486,25 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeSettings(eraserSettings);
     click(canvas, {110, 180});
     click(canvas, {210, 180}, Qt::ShiftModifier);
-    require(canvas->state().image.pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
+    require(pixels(canvas->state()).pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
     const int undoIndex = canvas->undoStack()->index();
-    const QImage pixels = canvas->state().image;
+    const QImage renderedPixels = pixels(canvas->state());
     canvas->setZoom(1.7, QPointF(100, 150));
-    require(canvas->state().image == pixels && canvas->undoStack()->index() == undoIndex,
+    require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
             "zoom must not edit document");
     QPointF point(100, 100);
     require(QLineF(canvas->toImage(canvas->toView(point)), point).length() < 0.001, "view coordinate roundtrip failed");
     canvas->setTool(Canvas::Pan);
     drag(canvas, QPointF(100, 100), QPointF(150, 130));
-    require(canvas->state().image == pixels && canvas->undoStack()->index() == undoIndex, "pan must not edit document");
+    require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
+            "pan must not edit document");
     canvas->fit();
     canvas->setGridVisible(true);
     canvas->setTool(Canvas::Perspective);
     drag(canvas, QPointF(650, 240), QPointF(600, 210));
     require(QLineF(canvas->state().vanishingPoints[0].position, QPointF(600, 210)).length() < 0.01,
             "perspective point must move freely away from the horizon");
-    require(canvas->state().image == pixels, "perspective must not alter pixels");
+    require(pixels(canvas->state()) == renderedPixels, "perspective must not alter pixels");
     QApplication::sendEvent(canvas, &leave);
     QImage freePointView(canvas->size(), QImage::Format_ARGB32_Premultiplied);
     freePointView.fill(Qt::transparent);
@@ -986,7 +1516,8 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     require(canvas->state().vanishingPoints[0].position == QPointF(550, 240),
             "perspective point must snap near the horizon");
     drag(canvas, QPointF(100, 240), QPointF(100, 300));
-    require(canvas->state().horizonY == 300 && canvas->state().vanishingPoints[0].position == QPointF(550, 300),
+    require(std::abs(canvas->state().horizonY - 300) < 0.001 &&
+                QLineF(canvas->state().vanishingPoints[0].position, QPointF(550, 300)).length() < 0.001,
             "moving the horizon must carry a snapped vanishing point vertically");
     QApplication::sendEvent(canvas, &leave);
     QImage gridView(canvas->size(), QImage::Format_ARGB32_Premultiplied);
@@ -996,7 +1527,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     require(gridView.pixelColor(qRound(snappedPoint.x()), qRound(snappedPoint.y())) ==
                 canvas->state().vanishingPoints[0].color,
             "snapped vanishing point must show its colored center");
-    const QRectF paper(canvas->toView(QPointF()), QSizeF(canvas->state().image.size()) * canvas->zoom());
+    const QRectF paper(canvas->toView(QPointF()), QSizeF(pixels(canvas->state()).size()) * canvas->zoom());
     const QPoint outsideHorizon(qRound(paper.right() + 12),
                                 qRound(canvas->toView(QPointF(0, canvas->state().horizonY)).y()));
     bool horizonOutsideCanvas = false;
@@ -1037,15 +1568,15 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     restored.undoStack()->undo();
     require(restored.state().vanishingPoints != restoredCurrent.vanishingPoints ||
                 restored.state().gridVisible != restoredCurrent.gridVisible ||
-                restored.state().image != restoredCurrent.image,
+                pixels(restored.state()) != pixels(restoredCurrent),
             "restored undo did not change state");
     restored.undoStack()->redo();
-    require(restored.state().image == restoredCurrent.image &&
+    require(pixels(restored.state()) == pixels(restoredCurrent) &&
                 restored.state().vanishingPoints == restoredCurrent.vanishingPoints && restored.undoStack()->isClean(),
             "restored redo did not return to saved state");
     DrawingState loaded;
     require(Project::load(projectPath, &loaded, &error), qPrintable(error));
-    require(loaded.image == canvas->state().image && loaded.vanishingPoints == canvas->state().vanishingPoints &&
+    require(pixels(loaded) == pixels(canvas->state()) && loaded.vanishingPoints == canvas->state().vanishingPoints &&
                 loaded.horizonY == canvas->state().horizonY && loaded.verticalX == canvas->state().verticalX &&
                 !loaded.gridVisible,
             "DRW geometry roundtrip mismatch");
@@ -1119,6 +1650,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     QJsonArray version6States = version6History.value("states").toArray();
     for (int index = 0; index < version6States.size(); ++index) {
         QJsonObject state = version6States[index].toObject();
+        state["image"] = QStringLiteral("drawing.png");
         state["perspective"] = downgradeToVersion6(state.value("perspective").toObject());
         version6States[index] = state;
     }
@@ -1134,8 +1666,9 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
                 version6State.vanishingPoints.first().isAttachedTo(PerspectiveTarget::horizon()),
             "version 6 projects must receive default point names and restore their single attachment");
     Canvas styledCanvas;
-    styled.image = QImage(200, 200, QImage::Format_ARGB32_Premultiplied);
-    styled.image.fill(Qt::white);
+    QImage styledImage(200, 200, QImage::Format_ARGB32_Premultiplied);
+    styledImage.fill(Qt::white);
+    styled.setSingleRasterImage(styledImage, QStringLiteral("Background"));
     styled.vanishingPoints[0].position = QPointF(100, 100);
     styled.vanishingPoints[0].attachmentTargetIds.clear();
     styled.horizonY = 100;
@@ -1157,7 +1690,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     auto darkness = [](const QColor &color) { return 765 - color.red() - color.green() - color.blue(); };
     require(gapPixel == QColor(Qt::white) && darkness(endPixel) > darkness(startPixel),
             "perspective ray gap or opacity ramp was not rendered");
-    const QRectF styledPaper(styledCanvas.toView(QPointF()), QSizeF(styled.image.size()) * styledCanvas.zoom());
+    const QRectF styledPaper(styledCanvas.toView(QPointF()), QSizeF(styled.canvasSize) * styledCanvas.zoom());
     const QColor independentHorizon = styledView.pixelColor(
         qRound(styledPaper.right() + 20), qRound(styledCanvas.toView(QPointF(0, styled.horizonY)).y()));
     require(independentHorizon == styled.horizonColor, "horizon must use its own color, opacity, and line width");
@@ -1239,7 +1772,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
             "recent files did not persist between windows");
     recentWindow.close();
     persistedRecentWindow.close();
-    return {pixels, loaded, projectPath};
+    return {renderedPixels, loaded, projectPath};
 }
 
 /// Проверяет единую панель и независимое сохранение параметров карандаша, кисти и ластика.
@@ -1277,6 +1810,19 @@ void testToolWidthPersistence() {
                 opacityControl->isHidden() && !hardnessControl->isHidden() && !strengthControl->isHidden() &&
                 eraserMode->text() == QStringLiteral("Цветом Back"),
             "eraser must expose hardness and strength and report the current Back-color behavior");
+    const QString targetLayerId = widthsWindow.canvas()->state().layers.activeLayerId();
+    widthsWindow.canvas()->addLayerTransparency(targetLayerId);
+    QApplication::processEvents();
+    require(eraserMode->text() == QStringLiteral("До прозрачности"),
+            "eraser panel must report alpha removal on an alpha-editable layer");
+    widthsWindow.canvas()->setLayerAlphaLocked(targetLayerId, true);
+    QApplication::processEvents();
+    require(eraserMode->text() == QStringLiteral("Цветом Back"),
+            "eraser panel must report Back behavior when alpha is locked");
+    widthsWindow.canvas()->setLayerLocked(targetLayerId, true);
+    QApplication::processEvents();
+    require(!widthControl->isEnabled(), "drawing properties must be disabled for a locked active layer");
+    widthsWindow.canvas()->setLayerLocked(targetLayerId, false);
     widthControl->setValue(17);
     hardnessControl->setValue(25);
     spacingControl->setValue(30);
@@ -1296,6 +1842,7 @@ void testToolWidthPersistence() {
     panAction->trigger();
     require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
             "drawing controls must be disabled for a non-paint mode");
+    widthsWindow.canvas()->undoStack()->setClean();
     widthsWindow.close();
     MainWindow persistedWidthsWindow;
     widthControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeWidth");
@@ -1324,12 +1871,12 @@ void testExportValidationAndScreenshots(
     QString error;
     DrawingState loaded = fixture.loadedState;
     DrawingHistory loadedHistory;
-    const QImage &pixels = fixture.renderedPixels;
+    const QImage &expectedPixels = fixture.renderedPixels;
     const QString &projectPath = fixture.projectPath;
-    require(Project::exportPng(out.filePath("export.png"), canvas->state().image, &error), qPrintable(error));
+    require(Project::exportPng(out.filePath("export.png"), pixels(canvas->state()), &error), qPrintable(error));
     QImage png;
     require(Project::loadPng(out.filePath("export.png"), &png, &error), qPrintable(error));
-    require(png == pixels, "grid leaked into exported PNG");
+    require(png == expectedPixels, "grid leaked into exported PNG");
     QImage alphaExport(32, 24, QImage::Format_ARGB32_Premultiplied);
     alphaExport.fill(Qt::transparent);
     alphaExport.setPixelColor(16, 12, QColor(40, 80, 120, 128));
@@ -1343,18 +1890,20 @@ void testExportValidationAndScreenshots(
     require(!Project::exportImage(out.filePath("export.invalid"), alphaExport, "GIF", -1, &error),
             "an unsupported export format must be rejected");
     DrawingState transparent = loaded;
-    transparent.image.fill(Qt::transparent);
-    transparent.image.setPixelColor(7, 8, QColor(40, 80, 120, 128));
+    QImage *transparentPixels = editablePixels(&transparent);
+    require(transparentPixels, "transparent test layer is not editable");
+    transparentPixels->fill(Qt::transparent);
+    transparentPixels->setPixelColor(7, 8, QColor(40, 80, 120, 128));
     require(Project::save(out.filePath("alpha.drw"), transparent, &error), qPrintable(error));
     require(Project::load(out.filePath("alpha.drw"), &loaded, &error), qPrintable(error));
-    require(loaded.image == transparent.image, "alpha roundtrip failed");
+    require(pixels(loaded) == pixels(transparent), "alpha roundtrip failed");
     QFile bad(out.filePath("bad.drw"));
     bad.open(QIODevice::WriteOnly);
     bad.write("not a zip");
     bad.close();
     DrawingState unchanged = loaded;
     require(!Project::load(bad.fileName(), &loaded, &error), "bad project accepted");
-    require(loaded.image == unchanged.image, "failed load modified destination");
+    require(pixels(loaded) == pixels(unchanged), "failed load modified destination");
     require(!Project::save(out.filePath("missing/fail.drw"), loaded, &error), "save to missing directory should fail");
     QZipWriter invalid(out.filePath("version.drw"));
     invalid.addFile("drawing.png", QByteArray("bad"));
@@ -1364,7 +1913,7 @@ void testExportValidationAndScreenshots(
     QByteArray legacyPng;
     QBuffer legacyBuffer(&legacyPng);
     legacyBuffer.open(QIODevice::WriteOnly);
-    require(initial.image.save(&legacyBuffer, "PNG"), "legacy PNG encoding failed");
+    require(pixels(initial).save(&legacyBuffer, "PNG"), "legacy PNG encoding failed");
     QJsonObject legacyPerspective{
         {"visible", false}, {"x", 650.0}, {"y", 240.0}, {"rays", 16}, {"color", QStringLiteral("#ff628ed1")}};
     QJsonObject legacyMetadata{{"format", "Drawing"},
@@ -1406,13 +1955,13 @@ void testExportValidationAndScreenshots(
                 "opening saved project did not restore history");
         canvas->setTool(Canvas::Pencil);
         drag(canvas, {40, 40}, {90, 40});
-        const QImage beforeFailedOpen = canvas->state().image;
+        const QImage beforeFailedOpen = pixels(canvas->state());
         QTimer::singleShot(0, &window, [] {
             auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
             if (box)
                 box->accept();
         });
-        require(!window.openPath(bad.fileName()) && canvas->state().image == beforeFailedOpen &&
+        require(!window.openPath(bad.fileName()) && pixels(canvas->state()) == beforeFailedOpen &&
                     !canvas->undoStack()->isClean(),
                 "failed open must preserve dirty document");
         bool saveClicked = false;
@@ -1429,7 +1978,7 @@ void testExportValidationAndScreenshots(
             }
         });
         require(window.close() && saveClicked, "save before closing failed");
-        require(Project::load(projectPath, &loaded, &error) && loaded.image == beforeFailedOpen,
+        require(Project::load(projectPath, &loaded, &error) && pixels(loaded) == beforeFailedOpen,
                 "save on close lost changes");
         require(Project::load(projectPath, &loadedHistory, &error) &&
                     loadedHistory.index == loadedHistory.labels.size() && loadedHistory.labels.size() > 1,
@@ -1516,6 +2065,12 @@ int runSelfTests(const QString &outputDirectory) {
             std::exit(2);
         });
         watchdog.start();
+
+        testLayerArchitecture();
+        testLayerPanel();
+        testLayerAwareEraser();
+        testMultiLayerProject(out);
+        testRegisteredNonRasterLayer(out);
 
         MainWindow window;
         testMainWindowUi(window, out);

@@ -1,7 +1,9 @@
 #include "project.h"
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QImageReader>
 #include <QImageWriter>
@@ -14,6 +16,7 @@
 #include <QPainter>
 #include <private/qzipreader_p.h>
 #include <private/qzipwriter_p.h>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -63,7 +66,7 @@ QJsonObject perspectiveJson(const DrawingState &state) {
                        {"vertical", QJsonObject{{"x", state.verticalX}, {"locked", state.verticalLocked}}},
                        {"points", points}};
 }
-/// Читает геометрию перспективы с миграцией схем версий 1–8 в актуальную модель.
+/// Читает геометрию перспективы с миграцией схем версий 1–9 в актуальную модель.
 bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     if (!value.isObject())
         return fail(error, QCoreApplication::translate("Project", "Отсутствуют параметры перспективы."));
@@ -78,7 +81,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                         QCoreApplication::translate("Project", "Положение горизонта вне допустимого диапазона."));
         if (formatVersion >= 5 && !horizon.value("locked").isBool())
             return fail(error, QCoreApplication::translate("Project", "Некорректное состояние фиксации горизонта."));
-        double verticalX = state->image.width() / 2.0;
+        double verticalX = state->canvasSize.width() / 2.0;
         bool verticalLocked = false;
         if (formatVersion >= 6) {
             if (!perspective.value("vertical").isObject())
@@ -124,7 +127,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                             QCoreApplication::translate("Project", "Некорректное состояние фиксации точки схода."));
             point.locked = formatVersion >= 5 && object.value("locked").toBool();
             ids.insert(point.id);
-            if (formatVersion >= Project::CurrentFormatVersion) {
+            if (formatVersion >= 8) {
                 const auto attachments = object.value("attachments");
                 if (!attachments.isArray())
                     return fail(error, QCoreApplication::translate("Project", "Некорректные привязки точки схода."));
@@ -185,16 +188,27 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
     if (qFuzzyCompare(y + 1, horizonY + 1))
         point.attachmentTargetIds.append(PerspectiveTarget::horizon());
     state->horizonY = horizonY;
-    state->verticalX = state->image.width() / 2.0;
+    state->verticalX = state->canvasSize.width() / 2.0;
     state->vanishingPoints = {point};
     return true;
 }
 /// Проверяет полный снимок перед сохранением, включая пределы геометрии и оформления.
 bool validState(const DrawingState &state) {
-    if (!Project::validSize(state.image.size()) || state.image.isNull() || !std::isfinite(state.horizonY) ||
+    if (!Project::validSize(state.canvasSize) || state.layers.entries().isEmpty() ||
+        state.layers.entries().size() > 128 ||
+        state.layers.activeEntry() == nullptr || !std::isfinite(state.horizonY) ||
         std::abs(state.horizonY) > 1000000 || !std::isfinite(state.verticalX) || std::abs(state.verticalX) > 1000000 ||
         state.vanishingPoints.size() > 32)
         return false;
+    QSet<QString> layerIds;
+    for (const auto &layer : state.layers.entries()) {
+        if (layer.id.isEmpty() || layerIds.contains(layer.id) || layer.name.size() > 120 || layer.opacity < 0 ||
+            layer.opacity > 100 || !std::isfinite(layer.offset.x()) || !std::isfinite(layer.offset.y()) ||
+            !layer.content || layer.content->typeId() != layer.typeId ||
+            !LayerTypeRegistry::instance().type(layer.typeId))
+            return false;
+        layerIds.insert(layer.id);
+    }
     QSet<QString> ids;
     for (const auto &point : state.vanishingPoints) {
         if (point.id.isEmpty() || point.id.size() > 80 || point.name.size() > 120 || ids.contains(point.id) ||
@@ -222,9 +236,12 @@ bool validState(const DrawingState &state) {
            state.verticalOpacity >= 0 && state.verticalOpacity <= 100 && std::isfinite(state.verticalWidth) &&
            state.verticalWidth >= 0.1 && state.verticalWidth <= 20;
 }
-/// Сравнивает только данные проекта, которые должны влиять на сериализованную историю.
-bool samePersistentState(const DrawingState &a, const DrawingState &b) {
-    if (a.image != b.image || !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) || a.horizonLocked != b.horizonLocked ||
+/// Сравнивает сохраняемые данные, учитывая наличие полноценного стека только в новой схеме.
+bool samePersistentState(const DrawingState &a, const DrawingState &b, bool layersStored) {
+    if (a.canvasSize != b.canvasSize || (layersStored ? a.layers != b.layers
+                                                     : a.flattenedImage() != b.flattenedImage()) ||
+        !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) ||
+        a.horizonLocked != b.horizonLocked ||
         !qFuzzyCompare(a.verticalX + 1, b.verticalX + 1) || a.verticalLocked != b.verticalLocked ||
         a.vanishingPoints.size() != b.vanishingPoints.size())
         return false;
@@ -234,6 +251,120 @@ bool samePersistentState(const DrawingState &a, const DrawingState &b) {
             x.attachmentTargetIds != y.attachmentTargetIds || x.locked != y.locked)
             return false;
     }
+    return true;
+}
+
+/// Рекурсивно заменяет временные ссылки кодека каноническими путями ресурсов архива.
+QJsonValue replaceResourcePaths(const QJsonValue &value, const QHash<QString, QString> &paths) {
+    if (value.isString())
+        return paths.value(value.toString(), value.toString());
+    if (value.isArray()) {
+        QJsonArray result;
+        for (const auto &item : value.toArray())
+            result.append(replaceResourcePaths(item, paths));
+        return result;
+    }
+    if (value.isObject()) {
+        QJsonObject result;
+        const auto object = value.toObject();
+        for (auto iterator = object.constBegin(); iterator != object.constEnd(); ++iterator)
+            result.insert(iterator.key(), replaceResourcePaths(iterator.value(), paths));
+        return result;
+    }
+    return value;
+}
+
+/// Сериализует общие свойства стека и дедуплицирует ресурсы кодеков по SHA-256.
+bool serializeLayers(const LayerStack &layers,
+                     int stateIndex,
+                     QJsonObject *result,
+                     QHash<QString, QByteArray> *resources,
+                     QString *error) {
+    QJsonArray entries;
+    for (int layerIndex = 0; layerIndex < layers.entries().size(); ++layerIndex) {
+        const LayerEntry &entry = layers.entries()[layerIndex];
+        const LayerType *type = LayerTypeRegistry::instance().type(entry.typeId);
+        if (!type || !type->codec || !entry.content)
+            return fail(error, QCoreApplication::translate("Project", "Неизвестный тип слоя: %1").arg(entry.typeId));
+        QJsonObject contentManifest;
+        QHash<QString, QByteArray> localResources;
+        const QString temporaryRoot = QStringLiteral("state-%1/layer-%2").arg(stateIndex).arg(layerIndex);
+        if (!type->codec->encode(*entry.content, temporaryRoot, &contentManifest, &localResources, error))
+            return false;
+        QHash<QString, QString> canonicalPaths;
+        for (auto iterator = localResources.constBegin(); iterator != localResources.constEnd(); ++iterator) {
+            QString suffix = QFileInfo(iterator.key()).suffix().toLower();
+            if (suffix.isEmpty() || suffix.size() > 8)
+                suffix = QStringLiteral("bin");
+            const QByteArray digest = QCryptographicHash::hash(iterator.value(), QCryptographicHash::Sha256).toHex();
+            const QString canonical = QStringLiteral("resources/%1.%2").arg(QString::fromLatin1(digest), suffix);
+            if (resources->contains(canonical) && resources->value(canonical) != iterator.value())
+                return fail(error, QCoreApplication::translate("Project", "Конфликт ресурсов содержимого слоя."));
+            resources->insert(canonical, iterator.value());
+            canonicalPaths.insert(iterator.key(), canonical);
+        }
+        contentManifest = replaceResourcePaths(contentManifest, canonicalPaths).toObject();
+        entries.append(QJsonObject{{"id", entry.id},
+                                   {"type", entry.typeId},
+                                   {"name", entry.name},
+                                   {"visible", entry.visible},
+                                   {"locked", entry.locked},
+                                   {"opacity", entry.opacity},
+                                   {"offset", QJsonObject{{"x", entry.offset.x()}, {"y", entry.offset.y()}}},
+                                   {"content", contentManifest}});
+    }
+    *result = QJsonObject{{"activeLayerId", layers.activeLayerId()}, {"entries", entries}};
+    return true;
+}
+
+/// Проверяет манифест стека и делегирует чтение содержимого кодеку зарегистрированного типа.
+bool deserializeLayers(const QJsonValue &value,
+                       QSize canvasSize,
+                       const LayerResourceReader &resourceReader,
+                       LayerStack *result,
+                       QString *error) {
+    if (!value.isObject())
+        return fail(error, QCoreApplication::translate("Project", "Отсутствует стек слоёв."));
+    const QJsonObject object = value.toObject();
+    const QJsonArray entries = object.value("entries").toArray();
+    const QString activeId = object.value("activeLayerId").toString();
+    if (entries.isEmpty() || entries.size() > 128 || activeId.isEmpty())
+        return fail(error, QCoreApplication::translate("Project", "Некорректный стек слоёв."));
+    LayerStack stack;
+    QSet<QString> ids;
+    for (const auto &value : entries) {
+        if (!value.isObject())
+            return fail(error, QCoreApplication::translate("Project", "Некорректная запись слоя."));
+        const QJsonObject object = value.toObject();
+        LayerEntry entry;
+        entry.id = object.value("id").toString();
+        entry.typeId = object.value("type").toString();
+        entry.name = object.value("name").toString();
+        const QJsonObject offset = object.value("offset").toObject();
+        entry.offset = QPointF(offset.value("x").toDouble(qQNaN()), offset.value("y").toDouble(qQNaN()));
+        const double opacity = object.value("opacity").toDouble(-1);
+        if (entry.id.isEmpty() || entry.id.size() > 120 || ids.contains(entry.id) || entry.typeId.isEmpty() ||
+            entry.typeId.size() > 80 || entry.name.size() > 120 || !object.value("visible").isBool() ||
+            !object.value("locked").isBool() || opacity < 0 || opacity > 100 || opacity != std::floor(opacity) ||
+            !offset.contains("x") || !offset.contains("y") || !std::isfinite(entry.offset.x()) ||
+            !std::isfinite(entry.offset.y()) || std::abs(entry.offset.x()) > 1000000 ||
+            std::abs(entry.offset.y()) > 1000000 || !object.value("content").isObject())
+            return fail(error, QCoreApplication::translate("Project", "Некорректные свойства слоя."));
+        const LayerType *type = LayerTypeRegistry::instance().type(entry.typeId);
+        if (!type || !type->codec)
+            return fail(error, QCoreApplication::translate("Project", "Неизвестный тип слоя: %1").arg(entry.typeId));
+        entry.visible = object.value("visible").toBool();
+        entry.locked = object.value("locked").toBool();
+        entry.opacity = int(opacity);
+        entry.content = type->codec->decode(object.value("content").toObject(), resourceReader, canvasSize, error);
+        if (!entry.content || entry.content->typeId() != entry.typeId)
+            return false;
+        ids.insert(entry.id);
+        stack.entries().append(entry);
+    }
+    if (!stack.setActiveLayerId(activeId))
+        return fail(error, QCoreApplication::translate("Project", "Активный слой отсутствует в стеке."));
+    *result = std::move(stack);
     return true;
 }
 } // namespace
@@ -252,34 +383,22 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
     if (history.states.isEmpty() || history.states.size() > 31 || history.labels.size() != history.states.size() - 1 ||
         history.index < 0 || history.index >= history.states.size())
         return fail(error, QCoreApplication::translate("Project", "Некорректная история документа."));
-    const QSize size = history.states[history.index].image.size();
+    const QSize size = history.states[history.index].canvasSize;
     for (const auto &state : history.states)
-        if (!validState(state) || state.image.size() != size)
+        if (!validState(state) || state.canvasSize != size)
             return fail(error,
                         QCoreApplication::translate("Project", "История содержит недопустимое состояние документа."));
 
     QByteArray currentPng;
-    if (!encode(history.states[history.index].image, &currentPng, error))
+    if (!encode(history.states[history.index].flattenedImage(), &currentPng, error))
         return false;
-    QVector<QPair<QString, QByteArray>> historyImages;
+    QHash<QString, QByteArray> resources;
     QJsonArray states;
-    QString previousImage;
-    // Геометрические команды не меняют растр: соседние равные изображения ссылаются на один PNG в архиве.
     for (int i = 0; i < history.states.size(); ++i) {
-        QString imagePath;
-        if (i == history.index)
-            imagePath = QStringLiteral("drawing.png");
-        else if (i > 0 && history.states[i].image == history.states[i - 1].image)
-            imagePath = previousImage;
-        else {
-            imagePath = QStringLiteral("history/state-%1.png").arg(i, 4, 10, QChar('0'));
-            QByteArray png;
-            if (!encode(history.states[i].image, &png, error))
-                return false;
-            historyImages.append(qMakePair(imagePath, png));
-        }
-        previousImage = imagePath;
-        states.append(QJsonObject{{"image", imagePath}, {"perspective", perspectiveJson(history.states[i])}});
+        QJsonObject layers;
+        if (!serializeLayers(history.states[i].layers, i, &layers, &resources, error))
+            return false;
+        states.append(QJsonObject{{"layers", layers}, {"perspective", perspectiveJson(history.states[i])}});
     }
     QJsonArray labels;
     for (const auto &label : history.labels)
@@ -291,6 +410,7 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
                          {"width", size.width()},
                          {"height", size.height()},
                          {"image", "drawing.png"},
+                         {"layers", states[history.index].toObject().value("layers")},
                          {"perspective", perspectiveJson(current)},
                          {"history", historyJson}};
 
@@ -301,8 +421,10 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
         QZipWriter zip(&archiveBuffer);
         zip.setCompressionPolicy(QZipWriter::NeverCompress);
         zip.addFile("drawing.png", currentPng);
-        for (const auto &item : historyImages)
-            zip.addFile(item.first, item.second);
+        QStringList resourcePaths = resources.keys();
+        std::sort(resourcePaths.begin(), resourcePaths.end());
+        for (const auto &resourcePath : resourcePaths)
+            zip.addFile(resourcePath, resources.value(resourcePath));
         zip.addFile("project.json", QJsonDocument(metadata).toJson());
         zip.close();
         if (zip.status() != QZipWriter::NoError)
@@ -362,9 +484,8 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         return fail(error, QCoreApplication::translate("Project", "Не удалось прочитать project.json."));
     const auto object = document.object();
     const double versionValue = object.value("version").toDouble(-1);
-    if (object.value("format").toString() != "Drawing" ||
-        (versionValue != 1 && versionValue != 2 && versionValue != 3 && versionValue != 4 && versionValue != 5 &&
-         versionValue != 6 && versionValue != 7 && versionValue != Project::CurrentFormatVersion) ||
+    if (object.value("format").toString() != "Drawing" || versionValue < 1 ||
+        versionValue > Project::CurrentFormatVersion || versionValue != std::floor(versionValue) ||
         object.value("image").toString() != "drawing.png")
         return fail(error, QCoreApplication::translate("Project", "Неизвестный формат или версия DRW."));
     const double width = object.value("width").toDouble(-1), height = object.value("height").toDouble(-1);
@@ -398,9 +519,33 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         return true;
     };
 
+    bool resourceReadFailed = false;
+    auto readResource = [&](const QString &resourcePath) -> QByteArray {
+        static const QRegularExpression resourceName(
+            QStringLiteral("^resources/[0-9a-f]{64}\\.[a-z0-9]{1,8}$"));
+        if (!resourceName.match(resourcePath).hasMatch() || counts.value(resourcePath) != 1 ||
+            sizes.value(resourcePath) < 1 || sizes.value(resourcePath) > 80000000) {
+            resourceReadFailed = true;
+            fail(error, QCoreApplication::translate("Project", "Отсутствует или повреждён ресурс слоя."));
+            return {};
+        }
+        return zip.fileData(resourcePath);
+    };
+
     DrawingState current;
-    if (!loadImage("drawing.png", &current.image) ||
-        !parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
+    current.canvasSize = expectedSize;
+    if (versionValue >= 9) {
+        if (!deserializeLayers(object.value("layers"), expectedSize, readResource, &current.layers, error) ||
+            resourceReadFailed)
+            return false;
+    } else {
+        QImage currentImage;
+        if (!loadImage("drawing.png", &currentImage))
+            return false;
+        current.setSingleRasterImage(
+            currentImage, QCoreApplication::translate("Project", "Фон"), currentImage.hasAlphaChannel(), true);
+    }
+    if (!parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
         return false;
     DrawingHistory result;
     // Версия 1 предшествует сохраняемой истории и поэтому разворачивается в единственный снимок.
@@ -425,8 +570,20 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
             return fail(error, QCoreApplication::translate("Project", "Некорректное состояние истории."));
         const auto stateObject = value.toObject();
         DrawingState state;
-        if (!loadImage(stateObject.value("image").toString(), &state.image) ||
-            !parsePerspective(stateObject.value("perspective"), &state, error, int(versionValue)))
+        state.canvasSize = expectedSize;
+        if (versionValue >= 9) {
+            resourceReadFailed = false;
+            if (!deserializeLayers(stateObject.value("layers"), expectedSize, readResource, &state.layers, error) ||
+                resourceReadFailed)
+                return false;
+        } else {
+            QImage stateImage;
+            if (!loadImage(stateObject.value("image").toString(), &stateImage))
+                return false;
+            state.setSingleRasterImage(
+                stateImage, QCoreApplication::translate("Project", "Фон"), stateImage.hasAlphaChannel(), true);
+        }
+        if (!parsePerspective(stateObject.value("perspective"), &state, error, int(versionValue)))
             return false;
         result.states.append(state);
     }
@@ -436,7 +593,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         result.labels.append(value.toString());
     }
     result.index = int(indexValue);
-    if (!samePersistentState(result.states[result.index], current))
+    if (!samePersistentState(result.states[result.index], current, versionValue >= 9))
         return fail(error,
                     QCoreApplication::translate("Project", "Текущее состояние не совпадает с историей документа."));
     *history = result;

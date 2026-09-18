@@ -2,6 +2,7 @@
 #include "autohidedockwidget.h"
 #include "rolloutsection.h"
 #include "drawingtoolsettings.h"
+#include "layerpanel.h"
 #include "toolpropertiespanel.h"
 #include <QtWidgets>
 
@@ -234,6 +235,7 @@ MainWindow::MainWindow(QWidget *parent)
     initializeWindow();
     setupMenusAndToolbars();
     setupPerspectivePanel();
+    setupLayersPanel();
     connectPerspectiveControls();
     setupViewAndStatusBar();
 }
@@ -410,6 +412,7 @@ void MainWindow::setupMenusAndToolbars() {
     toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsPanel);
     toolsPanelLayout->addWidget(toolProperties_, 1);
     toolsDock_->setPanelWidget(toolsPanel);
+    toolsDock_->attachEdgeTab();
     connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
@@ -649,9 +652,22 @@ void MainWindow::setupPerspectivePanel() {
     panelScroll->setObjectName("perspectiveScroll");
     panelScroll->setWidgetResizable(true);
     panelScroll->setFrameShape(QFrame::NoFrame);
+    panelScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     panelScroll->setWidget(panel);
     perspectiveDock_->setPanelWidget(panelScroll);
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);
+}
+
+void MainWindow::setupLayersPanel() {
+    layersDock_ = new AutoHideDockWidget(tr("Слои"), Qt::RightDockWidgetArea, "layers", true, 330, this, 1);
+    layersDock_->setObjectName("layersDock");
+    layerPanel_ = new LayerPanel(canvas_, layersDock_);
+    layersDock_->setPanelWidget(layerPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, layersDock_);
+    splitDockWidget(perspectiveDock_, layersDock_, Qt::Vertical);
+    resizeDocks({perspectiveDock_, layersDock_}, {440, 260}, Qt::Vertical);
+    perspectiveDock_->attachEdgeTab();
+    layersDock_->attachEdgeTab();
 }
 
 void MainWindow::connectPerspectiveControls() {
@@ -667,6 +683,10 @@ void MainWindow::connectPerspectiveControls() {
     perspectivePanelToggle->setObjectName("perspectivePanelToggle");
     perspectivePanelToggle->setText(tr("Панель перспективы"));
     viewMenu_->addAction(perspectivePanelToggle);
+    auto *layersPanelToggle = layersDock_->visibilityAction();
+    layersPanelToggle->setObjectName("layersPanelToggle");
+    layersPanelToggle->setText(tr("Панель слоёв"));
+    viewMenu_->addAction(layersPanelToggle);
     viewMenu_->addSeparator();
     connect(gridVisible_, &QCheckBox::toggled, canvas_, &Canvas::setGridVisible);
     connect(axesVisible_, &QCheckBox::toggled, this, [this](bool value) {
@@ -879,6 +899,18 @@ void MainWindow::setupViewAndStatusBar() {
     zoom_->setSuffix(tr(" %"));
     zoom_->setKeyboardTracking(false);
     statusBar()->addPermanentWidget(zoom_);
+    auto *collapsePanels = new QToolButton;
+    collapsePanels->setObjectName("collapsePanelsButton");
+    collapsePanels->setIcon(style()->standardIcon(QStyle::SP_TitleBarUnshadeButton));
+    collapsePanels->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    collapsePanels->setToolTip(tr("Открепить все открытые панели и вписать холст"));
+    statusBar()->addPermanentWidget(collapsePanels);
+    connect(collapsePanels, &QToolButton::clicked, this, [this] {
+        toolsDock_->collapseToTab();
+        perspectiveDock_->collapseToTab();
+        layersDock_->collapseToTab();
+        QTimer::singleShot(0, canvas_, &Canvas::fit);
+    });
     connect(zoom_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
         canvas_->setZoom(value / 100.0);
     });
@@ -887,10 +919,10 @@ void MainWindow::setupViewAndStatusBar() {
         zoom_->setValue(canvas_->zoom() * 100);
     });
     connect(canvas_, &Canvas::positionChanged, this, [this](QPointF position) {
-        const double xPixels = position.x() - canvas_->state().image.width() / 2.0,
-                     yPixels = canvas_->state().image.height() / 2.0 - position.y();
-        const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().image.width() : xPixels,
-                     y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().image.height() : yPixels;
+        const double xPixels = position.x() - canvas_->state().canvasSize.width() / 2.0,
+                     yPixels = canvas_->state().canvasSize.height() / 2.0 - position.y();
+        const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().canvasSize.width() : xPixels,
+                     y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().canvasSize.height() : yPixels;
         const QString suffix = rulerPercent_ ? tr("%") : tr(" px");
         positionLabel_->setText(tr("X: %1%3   Y: %2%3")
                                     .arg(x, 0, 'f', rulerPercent_ ? 1 : 0)
@@ -961,7 +993,30 @@ void MainWindow::updateState() {
     QString name = path_.isEmpty() ? tr("Без имени.drw") : QFileInfo(path_).fileName();
     setWindowTitle(tr("%1[*] — %2").arg(name, productName()));
     setWindowModified(!canvas_->undoStack()->isClean());
-    sizeLabel_->setText(tr("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
+    sizeLabel_->setText(
+        tr("%1 × %2 px").arg(canvas_->state().canvasSize.width()).arg(canvas_->state().canvasSize.height()));
+    DrawingTargetContext target;
+    const LayerEntry *activeLayer = canvas_->state().layers.activeEntry();
+    const LayerType *activeType = activeLayer ? LayerTypeRegistry::instance().type(activeLayer->typeId) : nullptr;
+    const auto *activeRaster = activeLayer && activeLayer->content
+                                   ? dynamic_cast<const RasterLayerContent *>(activeLayer->content.get())
+                                   : nullptr;
+    target.editable = activeLayer && activeType &&
+                      activeType->capabilities.testFlag(LayerCapability::RasterPainting) && activeLayer->visible &&
+                      !activeLayer->locked;
+    target.supportsTransparency =
+        activeType && activeType->capabilities.testFlag(LayerCapability::Transparency) && activeRaster &&
+        activeRaster->transparencyAvailable;
+    target.alphaLocked = !activeRaster || activeRaster->alphaLocked;
+    if (!activeLayer)
+        target.unavailableReason = tr("Нет активного слоя");
+    else if (!activeType || !activeType->capabilities.testFlag(LayerCapability::RasterPainting))
+        target.unavailableReason = tr("Активный слой не поддерживает растровое рисование");
+    else if (!activeLayer->visible)
+        target.unavailableReason = tr("Активный слой скрыт");
+    else if (activeLayer->locked)
+        target.unavailableReason = tr("Активный слой зафиксирован");
+    toolSettings_->setTargetContext(target);
     // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
@@ -1145,20 +1200,20 @@ void MainWindow::updateState() {
     colorSwatch(verticalColorButton_, canvas_->state().verticalColor);
 }
 double MainWindow::displayedX(double imageCoordinate) const {
-    const double pixels = imageCoordinate - canvas_->state().image.width() / 2.0;
-    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().image.width() : pixels;
+    const double pixels = imageCoordinate - canvas_->state().canvasSize.width() / 2.0;
+    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().canvasSize.width() : pixels;
 }
 double MainWindow::displayedY(double imageCoordinate) const {
-    const double pixels = canvas_->state().image.height() / 2.0 - imageCoordinate;
-    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().image.height() : pixels;
+    const double pixels = canvas_->state().canvasSize.height() / 2.0 - imageCoordinate;
+    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().canvasSize.height() : pixels;
 }
 double MainWindow::imageX(double displayed) const {
-    return canvas_->state().image.width() / 2.0 +
-           (coordinatePercent_ ? displayed * canvas_->state().image.width() / 100.0 : displayed);
+    return canvas_->state().canvasSize.width() / 2.0 +
+           (coordinatePercent_ ? displayed * canvas_->state().canvasSize.width() / 100.0 : displayed);
 }
 double MainWindow::imageY(double displayed) const {
-    return canvas_->state().image.height() / 2.0 -
-           (coordinatePercent_ ? displayed * canvas_->state().image.height() / 100.0 : displayed);
+    return canvas_->state().canvasSize.height() / 2.0 -
+           (coordinatePercent_ ? displayed * canvas_->state().canvasSize.height() / 100.0 : displayed);
 }
 void MainWindow::setCoordinateUnits(bool percent) {
     if (coordinatePercent_ == percent) {
@@ -1295,12 +1350,13 @@ void MainWindow::newDocument() {
         return;
     }
     DrawingState state;
-    state.image = QImage(w.value(), h.value(), QImage::Format_ARGB32_Premultiplied);
-    if (state.image.isNull()) {
+    QImage image(w.value(), h.value(), QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull()) {
         showError(tr("Не удалось выделить память для холста."));
         return;
     }
-    state.image.fill(back_);
+    image.fill(back_);
+    state.setSingleRasterImage(image, tr("Фон"));
     state.horizonY = h.value() / 2.0;
     state.verticalX = w.value() / 2.0;
     state.vanishingPoints.append({QStringLiteral("vp-1"),
@@ -1344,14 +1400,16 @@ bool MainWindow::openPath(const QString &path) {
             applySavedPointAppearance(&historyState);
         }
     } else {
-        if (!Project::loadPng(path, &state.image, &error)) {
+        QImage image;
+        if (!Project::loadPng(path, &image, &error)) {
             showError(error);
             return false;
         }
-        state.horizonY = state.image.height() / 2.0;
-        state.verticalX = state.image.width() / 2.0;
+        state.setSingleRasterImage(image, tr("Импорт PNG"), image.hasAlphaChannel(), false);
+        state.horizonY = state.canvasSize.height() / 2.0;
+        state.verticalX = state.canvasSize.width() / 2.0;
         state.vanishingPoints.append({QStringLiteral("vp-1"),
-                                      QPointF(state.image.width() / 2.0, state.image.height() / 2.0),
+                                      QPointF(state.canvasSize.width() / 2.0, state.canvasSize.height() / 2.0),
                                       PerspectiveTarget::constructionType(),
                                       PerspectiveTarget::horizon()});
         state.vanishingPoints.last().name = tr("Точка схода 1");
@@ -1464,7 +1522,7 @@ void MainWindow::exportImage() {
         settings.setValue("export/jpegQuality", quality);
     }
     QString error;
-    if (!Project::exportImage(target, canvas_->state().image, format, quality, &error))
+    if (!Project::exportImage(target, canvas_->state().flattenedImage(), format, quality, &error))
         showError(error);
     else {
         rememberDirectory("files/exportDirectory", target);

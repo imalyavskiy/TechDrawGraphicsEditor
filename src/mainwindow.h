@@ -15,6 +15,7 @@ class QToolBar;
 class AutoHideDockWidget;
 class DrawingToolSettingsModel;
 class ToolPropertiesPanel;
+class LayerPanel;
 
 /// Главное окно связывает пользовательские команды, Canvas, файлы проекта и постоянные настройки.
 class MainWindow : public QMainWindow {
@@ -83,6 +84,8 @@ private:
     QColor back_ = Qt::white;
     AutoHideDockWidget *perspectiveDock_ = nullptr;
     AutoHideDockWidget *toolsDock_ = nullptr;
+    AutoHideDockWidget *layersDock_ = nullptr;
+    LayerPanel *layerPanel_ = nullptr;
     QAction *perspectiveAction_ = nullptr;
     QMenu *viewMenu_ = nullptr;
     QMenu *toolsMenu_ = nullptr;
@@ -101,6 +104,8 @@ private:
     void setupMenusAndToolbars();
     /// Создаёт dock-панель перспективы и её сворачиваемые секции.
     void setupPerspectivePanel();
+    /// Создаёт правую dock-панель слоёв и размещает её под панелью перспективы.
+    void setupLayersPanel();
     /// Связывает элементы панели перспективы с моделью Canvas и настройками.
     void connectPerspectiveControls();
     /// Создаёт команды масштаба, строку состояния и отображение координат курсора.

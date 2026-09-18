@@ -1,4 +1,5 @@
 #pragma once
+#include "layermodel.h"
 #include <QByteArray>
 #include <QImage>
 #include <QPointF>
@@ -66,9 +67,10 @@ struct VanishingPoint {
     }
 };
 
-/// Содержит полный снимок документа: растр, геометрию перспективы и её текущее оформление.
+/// Содержит полный снимок документа: размер холста, стек слоёв, геометрию перспективы и её оформление.
 struct DrawingState {
-    QImage image;
+    QSize canvasSize;
+    LayerStack layers;
     QVector<VanishingPoint> vanishingPoints;
     double horizonY = 0;
     bool horizonLocked = false;
@@ -95,6 +97,17 @@ struct DrawingState {
     bool markersVisible = true;
     bool horizonSymmetry = false;
     bool verticalSymmetry = false;
+
+    /// Заменяет содержимое снимка одним растровым слоем для новых документов и старых форматов проекта.
+    void setSingleRasterImage(const QImage &image,
+                              const QString &name,
+                              bool transparencyAvailable = false,
+                              bool alphaLocked = true) {
+        canvasSize = image.size();
+        layers = LayerStack::singleRaster(image, name, transparencyAvailable, alphaLocked);
+    }
+    /// Собирает видимые слои в изображение размера холста для экспорта и совместимого сохранения.
+    QImage flattenedImage() const { return LayerCompositor::compose(layers, canvasSize); }
 };
 
 /// Представляет сериализуемую историю снимков и позицию активного состояния.
@@ -105,7 +118,7 @@ struct DrawingHistory {
 };
 
 namespace Project {
-inline constexpr int CurrentFormatVersion = 8;
+inline constexpr int CurrentFormatVersion = 9;
 
 /// Проверяет размер растра по ограничениям стороны и общего числа пикселей.
 bool validSize(QSize size);
