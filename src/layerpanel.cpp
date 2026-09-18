@@ -4,6 +4,7 @@
 #include <QtWidgets>
 
 namespace {
+/// Строит пиктограмму открытого глаза либо скрытого слоя без зависимости от темы ОС.
 QIcon visibilityIcon(bool visible) {
     QPixmap image(20, 20);
     image.fill(Qt::transparent);
@@ -25,6 +26,7 @@ QIcon visibilityIcon(bool visible) {
     return QIcon(image);
 }
 
+/// Строит пиктограмму открытого либо закрытого замка слоя.
 QIcon lockIcon(bool locked) {
     QPixmap image(20, 20);
     image.fill(Qt::transparent);
@@ -43,6 +45,7 @@ QIcon lockIcon(bool locked) {
     return QIcon(image);
 }
 
+/// Рисует одну запись через зарегистрированный рендерер на фоне прозрачности.
 QPixmap layerThumbnail(const LayerEntry &entry, QSize canvasSize) {
     const QSize target(48, 48);
     QImage image(target, QImage::Format_ARGB32_Premultiplied);

@@ -151,6 +151,7 @@ struct LayerType {
     std::shared_ptr<const LayerCodec> codec;
     /// Даёт инструментам доступ только для чтения к растру типа, если он его предоставляет.
     std::function<const QImage *(const LayerContent &)> rasterReader;
+    /// Даёт инструментам изменяемый растр после copy-on-write-отделения содержимого.
     std::function<QImage *(LayerContent &)> rasterEditor;
 };
 

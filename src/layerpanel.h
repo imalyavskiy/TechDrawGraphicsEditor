@@ -9,10 +9,12 @@ class QPushButton;
 class QSpinBox;
 class QToolButton;
 
+/// Показывает стек слоёв и передаёт пользовательские операции модели документа Canvas.
 class LayerPanel final : public QWidget {
     Q_OBJECT
 
 public:
+    /// Создаёт панель для указанного холста и синхронизирует её с текущим стеком.
     explicit LayerPanel(Canvas *canvas, QWidget *parent = nullptr);
 
 private:
@@ -28,5 +30,6 @@ private:
     QToolButton *down_ = nullptr;
     bool updating_ = false;
 
+    /// Полностью обновляет строки и свойства активного слоя после изменения модели или истории.
     void updateFromState();
 };

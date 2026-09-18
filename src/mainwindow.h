@@ -104,6 +104,7 @@ private:
     void setupMenusAndToolbars();
     /// Создаёт dock-панель перспективы и её сворачиваемые секции.
     void setupPerspectivePanel();
+    /// Создаёт правую dock-панель слоёв и размещает её под панелью перспективы.
     void setupLayersPanel();
     /// Связывает элементы панели перспективы с моделью Canvas и настройками.
     void connectPerspectiveControls();

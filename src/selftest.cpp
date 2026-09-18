@@ -127,6 +127,7 @@ void testLayerArchitecture() {
             "last document layer must not be removable");
 }
 
+/// Проверяет виджет слоёв, структурные операции, свойства и их участие в Undo/Redo.
 void testLayerPanel() {
     Canvas canvas;
     LayerPanel panel(&canvas);
