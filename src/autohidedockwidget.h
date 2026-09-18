@@ -46,6 +46,7 @@ private:
     QToolButton *pinButton_ = nullptr;
     QFrame *overlay_ = nullptr;
     QVBoxLayout *overlayLayout_ = nullptr;
+    QDockWidget *tabDock_ = nullptr;
     QToolButton *edgeTab_ = nullptr;
     QAction *visibilityAction_ = nullptr;
 

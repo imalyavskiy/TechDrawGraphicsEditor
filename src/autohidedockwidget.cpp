@@ -14,7 +14,7 @@ public:
     }
 
     QSize sizeHint() const override {
-        return QSize(28, qMax(96, fontMetrics().horizontalAdvance(text_) + 30));
+        return QSize(fontMetrics().height() + 6, fontMetrics().horizontalAdvance(text_) + 8);
     }
 
 protected:
@@ -90,16 +90,23 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     auto *headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(7, 4, 4, 4);
     auto *titleLabel = new QLabel(title, header);
+    titleLabel->setObjectName(settingsKey_ + "PanelTitle");
     QFont titleFont = titleLabel->font();
     titleFont.setBold(true);
     titleLabel->setFont(titleFont);
-    headerLayout->addWidget(titleLabel);
-    headerLayout->addStretch();
     pinButton_ = new QToolButton(header);
     pinButton_->setObjectName(settingsKey_ + "PanelPin");
     pinButton_->setCheckable(true);
     pinButton_->setAutoRaise(true);
-    headerLayout->addWidget(pinButton_);
+    if (area_ == Qt::LeftDockWidgetArea) {
+        headerLayout->addWidget(titleLabel);
+        headerLayout->addStretch();
+        headerLayout->addWidget(pinButton_);
+    } else {
+        headerLayout->addWidget(pinButton_);
+        headerLayout->addWidget(titleLabel);
+        headerLayout->addStretch();
+    }
     panelLayout_->addWidget(header);
     pinnedLayout_->addWidget(panelFrame_);
 
@@ -112,9 +119,25 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     overlayLayout_->setContentsMargins(0, 0, 0, 0);
     overlay_->hide();
 
-    edgeTab_ = new EdgeTabButton(title, area_, owner_);
+    tabDock_ = new QDockWidget(owner_);
+    tabDock_->setObjectName(settingsKey_ + "AutoHideStrip");
+    tabDock_->setAllowedAreas(area_);
+    tabDock_->setFeatures(QDockWidget::NoDockWidgetFeatures);
+    auto *emptyTabTitleBar = new QWidget(tabDock_);
+    emptyTabTitleBar->setFixedHeight(0);
+    tabDock_->setTitleBarWidget(emptyTabTitleBar);
+    auto *tabHost = new QWidget(tabDock_);
+    auto *tabLayout = new QVBoxLayout(tabHost);
+    tabLayout->setContentsMargins(0, 2, 0, 0);
+    tabLayout->setSpacing(0);
+    edgeTab_ = new EdgeTabButton(title, area_, tabHost);
     edgeTab_->setObjectName(settingsKey_ + "AutoHideTab");
-    edgeTab_->hide();
+    tabLayout->addWidget(edgeTab_);
+    tabLayout->addStretch();
+    tabDock_->setWidget(tabHost);
+    tabDock_->setFixedWidth(edgeTab_->sizeHint().width() + 2);
+    owner_->addDockWidget(area_, tabDock_);
+    tabDock_->hide();
 
     visibilityAction_ = new QAction(title, owner_);
     visibilityAction_->setCheckable(true);
@@ -202,16 +225,14 @@ void AutoHideDockWidget::applyVisibility() {
     const bool enabled = visibilityAction_->isChecked();
     if (pinned_) {
         overlay_->hide();
-        edgeTab_->hide();
+        tabDock_->hide();
         QDockWidget::setVisible(enabled);
     } else {
         QDockWidget::hide();
         overlay_->hide();
-        edgeTab_->setVisible(enabled);
-        if (enabled)
-            edgeTab_->raise();
+        tabDock_->setVisible(enabled);
     }
-    updateFloatingGeometry();
+    QTimer::singleShot(0, this, &AutoHideDockWidget::updateFloatingGeometry);
 }
 
 void AutoHideDockWidget::movePanelTo(QWidget *host, QVBoxLayout *layout) {
@@ -244,11 +265,6 @@ void AutoHideDockWidget::updateFloatingGeometry() {
     const int width = qBound(220, preferredWidth_, qMax(220, central.width() - 48));
     const int overlayX = area_ == Qt::LeftDockWidgetArea ? central.left() : central.right() - width + 1;
     overlay_->setGeometry(overlayX, central.top(), width, central.height());
-    const QSize tabSize = edgeTab_->sizeHint();
-    const int tabX = area_ == Qt::LeftDockWidgetArea ? central.left() : central.right() - tabSize.width() + 1;
-    edgeTab_->setGeometry(tabX, central.top() + 12, tabSize.width(), qMin(tabSize.height(), central.height() - 24));
-    if (edgeTab_->isVisible())
-        edgeTab_->raise();
     if (overlay_->isVisible())
         overlay_->raise();
 }

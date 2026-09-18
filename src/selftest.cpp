@@ -114,22 +114,29 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
     auto *toolsPin = window.findChild<QToolButton *>("toolsPanelPin");
+    auto *toolsTitle = window.findChild<QLabel *>("toolsPanelTitle");
+    auto *toolsStrip = window.findChild<QDockWidget *>("toolsAutoHideStrip");
     auto *toolsTab = window.findChild<QToolButton *>("toolsAutoHideTab");
     auto *toolsOverlay = window.findChild<QWidget *>("toolsAutoHideOverlay");
-    require(toolsPin && toolsTab && toolsOverlay && toolsDock->isPinned(),
+    require(toolsPin && toolsTitle && toolsStrip && toolsTab && toolsOverlay && toolsDock->isPinned() &&
+                toolsPin->mapTo(&window, QPoint()).x() > toolsTitle->mapTo(&window, QPoint()).x(),
             "left panel pin or auto-hide controls are missing");
     toolsPin->click();
     QApplication::processEvents();
     require(!toolsDock->isPinned(), "left panel did not switch to auto-hide mode");
     require(!toolsToolbar->isVisible(), "unpinning the left panel did not remove it from the layout");
-    require(toolsTab->isVisible(), "unpinning the left panel did not reveal its edge tab");
+    require(toolsStrip->isVisible() && toolsTab->isVisible(),
+            "unpinning the left panel did not reveal its edge tab");
+    require(toolsStrip->geometry().right() < canvas->geometry().left(),
+            "the left auto-hide tab must occupy a strip outside the canvas and its rulers");
     require(toolsToolbarToggle->isChecked(), "unpinning the left panel changed its View menu state");
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
-    require(!toolsTab->isVisible(), "the View menu did not hide the unpinned left panel and its tab");
+    require(!toolsStrip->isVisible(), "the View menu did not hide the unpinned left panel and its tab");
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
-    require(toolsTab->isVisible(), "the View menu did not restore the unpinned left panel tab");
+    require(toolsStrip->isVisible() && toolsTab->isVisible(),
+            "the View menu did not restore the unpinned left panel tab");
     toolsTab->click();
     QApplication::processEvents();
     require(toolsOverlay->isVisible() && toolsToolbar->isVisible(),
@@ -265,6 +272,8 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
     auto *perspectivePanelToggle = window.findChild<QAction *>("perspectivePanelToggle");
     auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
+    auto *perspectiveTitle = window.findChild<QLabel *>("perspectivePanelTitle");
+    auto *perspectiveStrip = window.findChild<QDockWidget *>("perspectiveAutoHideStrip");
     auto *perspectiveTab = window.findChild<QToolButton *>("perspectiveAutoHideTab");
     auto *perspectiveOverlay = window.findChild<QWidget *>("perspectiveAutoHideOverlay");
     auto *horizonToggle = window.findChild<QToolButton *>("horizonSettingsToggle");
@@ -279,7 +288,8 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *pointsFrame = qobject_cast<QFrame *>(vanishingPointsList);
     auto *selectedPointFrame = qobject_cast<QFrame *>(selectedPointSettings);
     require(perspectiveDock && perspectivePanelToggle && viewMenu->actions().contains(perspectivePanelToggle) &&
-                perspectivePin && perspectiveTab && perspectiveOverlay &&
+                perspectivePin && perspectiveTitle && perspectiveStrip && perspectiveTab && perspectiveOverlay &&
+                perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x() &&
                 perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
                 horizonContent && verticalToggle && commonToggle && pointsToggle && selectedPointToggle &&
                 horizonFrame && verticalFrame && commonFrame && pointsFrame && selectedPointFrame &&
@@ -293,8 +303,11 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     QApplication::processEvents();
     perspectivePin->click();
     QApplication::processEvents();
-    require(!perspectiveDock->isPinned() && perspectiveTab->isVisible() && perspectivePanelToggle->isChecked(),
+    require(!perspectiveDock->isPinned() && perspectiveStrip->isVisible() && perspectiveTab->isVisible() &&
+                perspectivePanelToggle->isChecked(),
             "unpinning the perspective panel must leave its checked edge tab visible");
+    require(perspectiveStrip->geometry().left() > canvas->geometry().right(),
+            "the right auto-hide tab must occupy a strip outside the canvas and its rulers");
     perspectiveTab->click();
     QApplication::processEvents();
     require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
