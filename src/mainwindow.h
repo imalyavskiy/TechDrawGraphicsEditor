@@ -16,18 +16,26 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget *parent = nullptr);
-    Canvas *canvas() const { return canvas_; }
+    Canvas *canvas() const {
+        return canvas_;
+    }
     bool openPath(const QString &path);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
+
 private:
     Canvas *canvas_;
     QString path_;
     QLabel *toolLabel_, *sizeLabel_, *positionLabel_;
-    QDoubleSpinBox *zoom_, *rayStep_, *rayAngleOffset_, *rayWidth_, *horizonWidth_, *horizonPosition_, *verticalWidth_, *verticalPosition_, *pointX_, *pointY_;
-    QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_, *horizonOpacity_, *verticalOpacity_;
-    QCheckBox *gridVisible_, *selectedPointVisible_, *selectedPointLocked_, *horizonVisible_, *horizonLocked_, *horizonSymmetry_, *verticalVisible_, *verticalLocked_, *verticalSymmetry_, *axesVisible_, *markersVisible_;
-    QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *verticalColorButton_, *savePerspectiveDefaultsButton_, *removePointButton_;
+    QDoubleSpinBox *zoom_, *rayStep_, *rayAngleOffset_, *rayWidth_, *horizonWidth_, *horizonPosition_, *verticalWidth_,
+        *verticalPosition_, *pointX_, *pointY_;
+    QSpinBox *strokeWidth_, *rayGap_, *rayStartOpacity_, *rayEndOpacity_, *rayFadeLength_, *horizonOpacity_,
+        *verticalOpacity_;
+    QCheckBox *gridVisible_, *selectedPointVisible_, *selectedPointLocked_, *horizonVisible_, *horizonLocked_,
+        *horizonSymmetry_, *verticalVisible_, *verticalLocked_, *verticalSymmetry_, *axesVisible_, *markersVisible_;
+    QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *verticalColorButton_,
+        *savePerspectiveDefaultsButton_, *removePointButton_;
     QListWidget *vanishingPointsList_;
     QComboBox *horizonUnits_, *verticalUnits_, *pointUnits_, *pointAttachment_, *rayPattern_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
@@ -35,7 +43,7 @@ private:
     QAction *perspectiveAction_;
     QMenu *recentFilesMenu_;
     QStringList recentFiles_;
-    QVector<int> toolWidths_{3,3,3};
+    QVector<int> toolWidths_{3, 3, 3};
     bool coordinatePercent_ = true, rulerPercent_ = false;
     void newDocument();
     void openDocument();
@@ -44,7 +52,7 @@ private:
     bool confirmDiscard();
     void updateState();
     void updateColors();
-    void activateTool(Canvas::Tool tool,const QString &name);
+    void activateTool(Canvas::Tool tool, const QString &name);
     void addRecentFile(const QString &path);
     void updateRecentFilesMenu();
     int vanishingPointIndex(const QString &id) const;

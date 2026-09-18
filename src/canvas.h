@@ -10,16 +10,28 @@ class Canvas : public QWidget {
 public:
     enum Tool { Pencil, Brush, Eraser, Pan, Perspective };
     explicit Canvas(QWidget *parent = nullptr);
-    const DrawingState &state() const { return state_; }
-    QUndoStack *undoStack() { return &undo_; }
+    const DrawingState &state() const {
+        return state_;
+    }
+    QUndoStack *undoStack() {
+        return &undo_;
+    }
     void setDocument(const DrawingState &state, bool clean = true);
     void setDocument(const DrawingHistory &history, bool clean = true);
     DrawingHistory history() const;
     void setTool(Tool tool);
-    Tool tool() const { return tool_; }
-    void setFront(QColor color) { front_ = color; }
-    void setBack(QColor color) { back_ = color; }
-    void setStrokeWidth(int width) { width_ = width; }
+    Tool tool() const {
+        return tool_;
+    }
+    void setFront(QColor color) {
+        front_ = color;
+    }
+    void setBack(QColor color) {
+        back_ = color;
+    }
+    void setStrokeWidth(int width) {
+        width_ = width;
+    }
     void setGridVisible(bool visible);
     void setRayStep(double degrees);
     void setRayAngleOffset(double degrees);
@@ -29,7 +41,8 @@ public:
     void setRayStartOpacity(int opacity);
     void setRayEndOpacity(int opacity);
     void setRayFadeLength(int length);
-    void setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength, int pattern = 0);
+    void
+    setRayAppearance(double stepDegrees, int gap, int startOpacity, int endOpacity, int fadeLength, int pattern = 0);
     void setHorizonColor(QColor color);
     void setHorizonOpacity(int opacity);
     void setHorizonWidth(double width);
@@ -47,8 +60,12 @@ public:
     void setHorizonSymmetry(bool enabled);
     void setVerticalSymmetry(bool enabled);
     void setRulerPercent(bool percent);
-    bool rulerPercent() const { return rulerPercent_; }
-    int selectedPointIndex() const { return selectedPointIndex_; }
+    bool rulerPercent() const {
+        return rulerPercent_;
+    }
+    int selectedPointIndex() const {
+        return selectedPointIndex_;
+    }
     void selectPoint(int index);
     void addVanishingPoint();
     void removeSelectedVanishingPoint();
@@ -60,7 +77,9 @@ public:
     void setSelectedPointAttachment(const QString &targetId);
     void setSelectedPointLocked(bool locked);
     void setZoom(double zoom, QPointF anchor = QPointF(-1, -1));
-    double zoom() const { return zoom_; }
+    double zoom() const {
+        return zoom_;
+    }
     void fit();
     QPointF toImage(QPointF point) const;
     QPointF toView(QPointF point) const;
@@ -70,6 +89,7 @@ signals:
     void viewChanged();
     void positionChanged(QPointF position);
     void selectedPointChanged(int index);
+
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *) override;
@@ -80,6 +100,7 @@ protected:
     void keyReleaseEvent(QKeyEvent *) override;
     void focusOutEvent(QFocusEvent *) override;
     void leaveEvent(QEvent *) override;
+
 private:
     DrawingState state_, before_;
     QUndoStack undo_;
@@ -88,7 +109,8 @@ private:
     int width_ = 3;
     double zoom_ = 1.0;
     QPointF pan_, last_, paintAnchor_, hoverPoint_;
-    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, movingVertical_ = false, space_ = false;
+    bool dragging_ = false, panning_ = false, movingPoint_ = false, movingHorizon_ = false, movingVertical_ = false,
+         space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
     int movingSymmetricPointIndex_ = -1;

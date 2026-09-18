@@ -7,8 +7,14 @@
 
 struct VanishingPoint {
     VanishingPoint() = default;
-    VanishingPoint(const QString &pointId,QPointF pointPosition,const QString &type=QString(),const QString &targetId=QString())
-        : id(pointId),position(pointPosition) { if(type==QStringLiteral("construction")&&!targetId.isEmpty())attachmentTargetIds.append(targetId); }
+    VanishingPoint(const QString &pointId,
+                   QPointF pointPosition,
+                   const QString &type = QString(),
+                   const QString &targetId = QString())
+        : id(pointId), position(pointPosition) {
+        if (type == QStringLiteral("construction") && !targetId.isEmpty())
+            attachmentTargetIds.append(targetId);
+    }
     QString id;
     QPointF position;
     QStringList attachmentTargetIds;
@@ -17,14 +23,17 @@ struct VanishingPoint {
     bool locked = false;
     QString name;
 
-    bool isAttachedTo(const QString &targetId) const { return attachmentTargetIds.contains(targetId); }
+    bool isAttachedTo(const QString &targetId) const {
+        return attachmentTargetIds.contains(targetId);
+    }
 
     bool operator==(const VanishingPoint &other) const {
-        return id == other.id && position == other.position &&
-               attachmentTargetIds == other.attachmentTargetIds &&
+        return id == other.id && position == other.position && attachmentTargetIds == other.attachmentTargetIds &&
                color == other.color && visible == other.visible && locked == other.locked && name == other.name;
     }
-    bool operator!=(const VanishingPoint &other) const { return !(*this == other); }
+    bool operator!=(const VanishingPoint &other) const {
+        return !(*this == other);
+    }
 };
 
 struct DrawingState {
@@ -71,4 +80,4 @@ bool load(const QString &path, DrawingState *state, QString *error);
 bool load(const QString &path, DrawingHistory *history, QString *error);
 bool loadPng(const QString &path, QImage *image, QString *error);
 bool exportPng(const QString &path, const QImage &image, QString *error);
-}
+} // namespace Project
