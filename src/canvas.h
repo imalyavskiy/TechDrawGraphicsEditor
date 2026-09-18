@@ -10,8 +10,10 @@ class QPainter;
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    /// Перечисляет режимы ввода: три растровых инструмента, панорамирование и редактирование перспективы.
-    enum Tool { Pencil, Brush, Eraser, Pan, Perspective };
+    /// Перечисляет режимы ввода: три растровых инструмента, перемещение объектов и редактирование перспективы.
+    enum Tool { Pencil, Brush, Eraser, Move, Perspective };
+    /// Определяет, какой класс объектов захватывает универсальный инструмент перемещения.
+    enum MoveTarget { GuidesTarget, ActiveLayerTarget };
     /// Создаёт холст с начальным документом и пустой историей Undo/Redo.
     explicit Canvas(QWidget *parent = nullptr);
     /// Возвращает активный снимок документа без копирования.
@@ -60,6 +62,38 @@ public:
     Tool tool() const {
         return tool_;
     }
+    /// Выбирает направляющие либо активный слой как явную цель инструмента перемещения.
+    void setMoveTarget(MoveTarget target);
+    /// Возвращает текущую цель универсального инструмента перемещения.
+    MoveTarget moveTarget() const { return moveTarget_; }
+    /// Временно показывает или скрывает все документные направляющие без изменения истории.
+    void setGuidesVisible(bool visible);
+    /// Возвращает текущее состояние отображения направляющих.
+    bool guidesVisible() const { return guidesVisible_; }
+    /// Включает или отключает единый режим прилипания инструментов к направляющим.
+    void setSnapToGuides(bool enabled);
+    /// Возвращает состояние единого режима прилипания к направляющим.
+    bool snapToGuides() const { return snapToGuides_; }
+    /// Задаёт максимальное экранное расстояние автоматического захвата направляющей.
+    void setGuideSnapDistance(int pixels);
+    /// Возвращает расстояние автоматического захвата в экранных пикселях.
+    int guideSnapDistance() const { return guideSnapDistance_; }
+    /// Включает или завершает режим жестового создания перспективного луча.
+    void setPerspectiveGuideCreationEnabled(bool enabled);
+    /// Возвращает состояние режима создания перспективного луча.
+    bool perspectiveGuideCreationEnabled() const { return perspectiveGuideCreationEnabled_; }
+    /// Ограничивает допустимое угловое отклонение жеста от направления на точку схода.
+    void setPerspectiveGuideAngleThreshold(double degrees);
+    /// Возвращает угловой порог выбора точки схода в градусах.
+    double perspectiveGuideAngleThreshold() const { return perspectiveGuideAngleThreshold_; }
+    /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
+    const GuideId &selectedGuideId() const { return selectedGuideId_; }
+    /// Создаёт обычную направляющую в точной координате документа и добавляет команду истории.
+    void addGuide(GuideType type, double position);
+    /// Удаляет выбранную направляющую одной отменяемой командой.
+    void removeSelectedGuide();
+    /// Удаляет весь набор направляющих одной отменяемой командой.
+    void removeAllGuides();
     /// Устанавливает основной цвет карандаша и кисти.
     void setFront(QColor color) {
         front_ = color;
@@ -182,6 +216,14 @@ signals:
     void selectedPointChanged(int index);
     /// Сообщает панели и инструментам об изменении структуры, выбора или свойств слоёв.
     void layersChanged();
+    /// Сообщает об автоматической смене инструмента после завершённого жеста на холсте.
+    void toolChanged(Canvas::Tool tool);
+    /// Сообщает панели свойств об автоматической смене цели перемещения.
+    void moveTargetChanged(Canvas::MoveTarget target);
+    /// Синхронизирует все представления режима создания перспективной направляющей.
+    void perspectiveGuideCreationChanged(bool enabled);
+    /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
+    void selectedGuideChanged(const GuideId &id);
 
 protected:
     /// Рисует растр, перспективную оснастку, маркеры и линейки.
@@ -208,6 +250,7 @@ private:
     DrawingState before_;
     QUndoStack undo_;
     Tool tool_ = Pencil;
+    MoveTarget moveTarget_ = GuidesTarget;
     QColor front_ = QColor("#2c3441");
     QColor back_ = Qt::white;
     DrawingToolSettings strokeSettings_;
@@ -222,6 +265,8 @@ private:
     bool movingPoint_ = false;
     bool movingHorizon_ = false;
     bool movingVertical_ = false;
+    bool movingGuides_ = false;
+    bool movingLayer_ = false;
     bool space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
@@ -234,6 +279,25 @@ private:
     bool rulerPercent_ = false;
     bool cursorInViewport_ = false;
     QPointF cursorView_;
+    bool guidesVisible_ = true;
+    bool snapToGuides_ = true;
+    int guideSnapDistance_ = 8;
+    bool creatingGuide_ = false;
+    bool perspectiveGuideCreationEnabled_ = false;
+    bool creatingPerspectiveGuide_ = false;
+    GuideType creatingGuideType_ = GuideType::Horizontal;
+    double guidePreviewPosition_ = 0;
+    double perspectiveGuideAngleThreshold_ = 12;
+    QPointF perspectiveGuideSource_;
+    QPointF perspectiveGuidePointer_;
+    QString perspectiveGuideCandidateId_;
+    GuideId selectedGuideId_;
+    GuideId hoveredGuideId_;
+    GuideId activeStrokeGuideId_;
+    QVector<GuideId> movingGuideIds_;
+    QString movingLayerId_;
+    QPointF moveStartImage_;
+    bool deleteMovedGuides_ = false;
     /// Рисует один растровый отрезок выбранным инструментом между двумя точками изображения.
     void stroke(QPointF start, QPointF end);
     /// Накладывает один круглый отпечаток активного инструмента на растровое изображение.
@@ -262,10 +326,26 @@ private:
     int perspectiveHit(QPointF viewPosition) const;
     /// Выбирает курсор по доступности и состоянию фиксации объекта под указателем.
     void updatePerspectiveCursor(QPointF viewPosition);
+    /// Возвращает ближайшую направляющую либо пару обычных направляющих в точке их пересечения.
+    QVector<int> guideHits(QPointF viewPosition) const;
+    /// Показывает курсор захвата или запрета согласно явной цели инструмента перемещения.
+    void updateMoveCursor(QPointF viewPosition);
+    /// Ищет ближайшую направляющую общей геометрической операцией в координатах документа.
+    int nearestGuideIndex(QPointF imagePosition,
+                          double maximumDistance,
+                          GuideProjection *projection = nullptr) const;
+    /// Проецирует точку документа на направляющую с заданным устойчивым идентификатором.
+    GuideProjection projectToGuide(const GuideId &id, QPointF imagePosition) const;
     /// Возвращает прямоугольник внутри четырёх линеек, доступный для холста и оснастки.
     QRectF viewportRect() const;
     /// Рисует четыре линейки и проекции текущего положения курсора.
     void drawRulers(QPainter &painter);
     /// Находит изменяемую запись слоя по идентификатору.
     LayerEntry *editableLayerEntry(const QString &id);
+    /// Определяет, начинается ли жест на одной из четырёх линеек, и возвращает тип направляющей.
+    bool rulerGuideType(QPointF viewPosition, GuideType *type) const;
+    /// Создаёт направляющую при отпускании над документом либо отменяет жест за его пределами.
+    void finishGuideCreation(QPointF viewPosition);
+    /// Завершает жест перспективной направляющей и создаёт связанный односторонний луч при наличии кандидата.
+    void finishPerspectiveGuideCreation();
 };

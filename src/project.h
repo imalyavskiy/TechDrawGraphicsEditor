@@ -1,4 +1,5 @@
 #pragma once
+#include "guidemodel.h"
 #include "layermodel.h"
 #include <QByteArray>
 #include <QImage>
@@ -67,11 +68,13 @@ struct VanishingPoint {
     }
 };
 
-/// Содержит полный снимок документа: размер холста, стек слоёв, геометрию перспективы и её оформление.
+/// Содержит полный снимок документа: холст, слои, направляющие, геометрию перспективы и её оформление.
 struct DrawingState {
     QSize canvasSize;
     LayerStack layers;
     QVector<VanishingPoint> vanishingPoints;
+    /// Хранит служебные направляющие отдельно от пикселей и содержимого слоёв.
+    QVector<Guide> guides;
     double horizonY = 0;
     bool horizonLocked = false;
     double verticalX = 0;
@@ -118,7 +121,7 @@ struct DrawingHistory {
 };
 
 namespace Project {
-inline constexpr int CurrentFormatVersion = 9;
+inline constexpr int CurrentFormatVersion = 10;
 
 /// Проверяет размер растра по ограничениям стороны и общего числа пикселей.
 bool validSize(QSize size);

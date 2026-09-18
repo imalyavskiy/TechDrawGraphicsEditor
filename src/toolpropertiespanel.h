@@ -7,9 +7,11 @@ class DrawingToolSettingsModel;
 class QLabel;
 class QPushButton;
 class QSpinBox;
+class QComboBox;
+class RolloutSection;
 class StrokePreview;
 
-/// Единая панель параметров карандаша, кисти и ластика.
+/// Показывает параметры выбранного рисующего или вспомогательного инструмента.
 class ToolPropertiesPanel final : public QWidget {
     Q_OBJECT
 
@@ -20,6 +22,10 @@ public:
     void setColors(const QColor &front, const QColor &back);
     /// Передаёт фокус полю ширины для команды меню параметров инструмента.
     void focusWidth();
+    /// Выбирает набор видимых секций по текущему инструменту Canvas.
+    void setCanvasTool(int tool);
+    /// Синхронизирует комбинированный список с целью перемещения без повторного сигнала.
+    void setMoveTarget(int target);
 
 signals:
     /// Запрашивает открытие общего диалога выбора цвета Front.
@@ -28,6 +34,8 @@ signals:
     void backColorRequested();
     /// Запрашивает обмен общих цветов Front и Back.
     void swapColorsRequested();
+    /// Передаёт выбранную пользователем цель универсального инструмента перемещения.
+    void moveTargetRequested(int target);
 
 private:
     DrawingToolSettingsModel *model_ = nullptr;
@@ -46,8 +54,13 @@ private:
     QPushButton *front_ = nullptr;
     QPushButton *back_ = nullptr;
     StrokePreview *preview_ = nullptr;
+    RolloutSection *mainSection_ = nullptr;
+    RolloutSection *detailsSection_ = nullptr;
+    RolloutSection *moveSection_ = nullptr;
+    QComboBox *moveTarget_ = nullptr;
     QColor frontColor_;
     QColor backColor_;
+    int canvasTool_ = 0;
 
     /// Синхронизирует все видимые поля с активным инструментом и контекстом цели.
     void refresh();

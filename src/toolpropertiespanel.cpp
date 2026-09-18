@@ -83,23 +83,32 @@ ToolPropertiesPanel::ToolPropertiesPanel(DrawingToolSettingsModel *model, QWidge
     outer->addWidget(title_);
     outer->addWidget(unavailable_);
 
-    auto *mainSection = new RolloutSection(tr("Основные параметры"), "strokeMainSettings", this);
-    auto *mainForm = new QFormLayout(mainSection->contentWidget());
+    moveSection_ = new RolloutSection(tr("Цель перемещения"), "moveTargetSettings", this);
+    auto *moveForm = new QFormLayout(moveSection_->contentWidget());
+    moveForm->setContentsMargins(7, 6, 7, 7);
+    moveTarget_ = new QComboBox(moveSection_);
+    moveTarget_->setObjectName("moveTarget");
+    moveTarget_->addItems({tr("Направляющие"), tr("Выбранный слой")});
+    moveForm->addRow(tr("Перемещать"), moveTarget_);
+    outer->addWidget(moveSection_);
+
+    mainSection_ = new RolloutSection(tr("Основные параметры"), "strokeMainSettings", this);
+    auto *mainForm = new QFormLayout(mainSection_->contentWidget());
     mainForm->setContentsMargins(7, 6, 7, 7);
-    width_ = new QSpinBox(mainSection);
+    width_ = new QSpinBox(mainSection_);
     width_->setObjectName("strokeWidth");
     width_->setRange(1, 200);
     width_->setSuffix(tr(" px"));
     width_->setKeyboardTracking(false);
     mainForm->addRow(tr("Ширина"), width_);
-    opacity_ = new QSpinBox(mainSection);
+    opacity_ = new QSpinBox(mainSection_);
     opacity_->setObjectName("strokeOpacity");
     opacity_->setRange(1, 100);
     opacity_->setSuffix(tr(" %"));
     opacity_->setKeyboardTracking(false);
-    opacityLabel_ = new QLabel(tr("Непрозрачность"), mainSection);
+    opacityLabel_ = new QLabel(tr("Непрозрачность"), mainSection_);
     mainForm->addRow(opacityLabel_, opacity_);
-    auto *colors = new QWidget(mainSection);
+    auto *colors = new QWidget(mainSection_);
     auto *colorsLayout = new QHBoxLayout(colors);
     colorsLayout->setContentsMargins(0, 0, 0, 0);
     front_ = new QPushButton(colors);
@@ -117,40 +126,40 @@ ToolPropertiesPanel::ToolPropertiesPanel(DrawingToolSettingsModel *model, QWidge
     colorsLayout->addWidget(swap);
     colorsLayout->addStretch();
     mainForm->addRow(tr("Цвет"), colors);
-    outer->addWidget(mainSection);
+    outer->addWidget(mainSection_);
 
-    auto *detailsSection = new RolloutSection(tr("Наконечник"), "strokeTipSettings", this);
-    auto *details = new QFormLayout(detailsSection->contentWidget());
+    detailsSection_ = new RolloutSection(tr("Наконечник"), "strokeTipSettings", this);
+    auto *details = new QFormLayout(detailsSection_->contentWidget());
     details->setContentsMargins(7, 6, 7, 7);
-    preview_ = new StrokePreview(detailsSection);
+    preview_ = new StrokePreview(detailsSection_);
     details->addRow(preview_);
-    hardness_ = new QSpinBox(detailsSection);
+    hardness_ = new QSpinBox(detailsSection_);
     hardness_->setObjectName("strokeHardness");
     hardness_->setRange(0, 100);
     hardness_->setSuffix(tr(" %"));
     hardness_->setKeyboardTracking(false);
-    hardnessLabel_ = new QLabel(tr("Жёсткость"), detailsSection);
+    hardnessLabel_ = new QLabel(tr("Жёсткость"), detailsSection_);
     details->addRow(hardnessLabel_, hardness_);
-    spacing_ = new QSpinBox(detailsSection);
+    spacing_ = new QSpinBox(detailsSection_);
     spacing_->setObjectName("strokeSpacing");
     spacing_->setRange(1, 100);
     spacing_->setSuffix(tr(" %"));
     spacing_->setKeyboardTracking(false);
     spacing_->setToolTip(tr("Расстояние между отпечатками в процентах диаметра"));
     details->addRow(tr("Шаг"), spacing_);
-    strength_ = new QSpinBox(detailsSection);
+    strength_ = new QSpinBox(detailsSection_);
     strength_->setObjectName("eraserStrength");
     strength_->setRange(1, 100);
     strength_->setSuffix(tr(" %"));
     strength_->setKeyboardTracking(false);
-    strengthLabel_ = new QLabel(tr("Сила"), detailsSection);
+    strengthLabel_ = new QLabel(tr("Сила"), detailsSection_);
     details->addRow(strengthLabel_, strength_);
-    eraserMode_ = new QLabel(detailsSection);
+    eraserMode_ = new QLabel(detailsSection_);
     eraserMode_->setObjectName("eraserMode");
     eraserMode_->setWordWrap(true);
-    resultLabel_ = new QLabel(tr("Результат"), detailsSection);
+    resultLabel_ = new QLabel(tr("Результат"), detailsSection_);
     details->addRow(resultLabel_, eraserMode_);
-    outer->addWidget(detailsSection);
+    outer->addWidget(detailsSection_);
     outer->addStretch();
 
     connect(width_, qOverload<int>(&QSpinBox::valueChanged), model_, &DrawingToolSettingsModel::setWidth);
@@ -158,6 +167,8 @@ ToolPropertiesPanel::ToolPropertiesPanel(DrawingToolSettingsModel *model, QWidge
     connect(hardness_, qOverload<int>(&QSpinBox::valueChanged), model_, &DrawingToolSettingsModel::setHardness);
     connect(spacing_, qOverload<int>(&QSpinBox::valueChanged), model_, &DrawingToolSettingsModel::setSpacing);
     connect(strength_, qOverload<int>(&QSpinBox::valueChanged), model_, &DrawingToolSettingsModel::setStrength);
+    connect(moveTarget_, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &ToolPropertiesPanel::moveTargetRequested);
     connect(front_, &QPushButton::clicked, this, &ToolPropertiesPanel::frontColorRequested);
     connect(back_, &QPushButton::clicked, this, &ToolPropertiesPanel::backColorRequested);
     connect(swap, &QToolButton::clicked, this, &ToolPropertiesPanel::swapColorsRequested);
@@ -180,14 +191,35 @@ void ToolPropertiesPanel::focusWidth() {
     width_->selectAll();
 }
 
+void ToolPropertiesPanel::setCanvasTool(int tool) {
+    if (canvasTool_ == tool)
+        return;
+    canvasTool_ = tool;
+    refresh();
+}
+
+void ToolPropertiesPanel::setMoveTarget(int target) {
+    QSignalBlocker blocker(moveTarget_);
+    moveTarget_->setCurrentIndex(qBound(0, target, 1));
+}
+
 void ToolPropertiesPanel::refresh() {
     const int tool = model_->activeTool();
     const bool paints = tool >= DrawingToolSettingsModel::Pencil && tool < DrawingToolSettingsModel::PaintToolCount;
+    const bool move = canvasTool_ == 3;
     const auto &context = model_->targetContext();
     const bool enabled = paints && context.editable;
-    setEnabled(enabled);
+    setEnabled(move || enabled);
     title_->setEnabled(true);
     unavailable_->setEnabled(true);
+    moveSection_->setVisible(move);
+    mainSection_->setVisible(paints && !move);
+    detailsSection_->setVisible(paints && !move);
+    if (move) {
+        title_->setText(tr("Перемещение"));
+        unavailable_->hide();
+        return;
+    }
     if (!paints) {
         title_->setText(tr("Параметры рисования"));
         unavailable_->setText(tr("Выбран вспомогательный режим"));

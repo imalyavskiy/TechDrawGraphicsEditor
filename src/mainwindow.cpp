@@ -35,12 +35,16 @@ QIcon toolIcon(int kind) {
         painter.drawLine(8, 10, 16, 17);
         painter.drawLine(11, 20, 21, 20);
     } else if (kind == 3) {
-        painter.drawRoundedRect(QRectF(7, 9, 12, 12), 4, 4);
-        painter.drawLine(7, 14, 4, 10);
-        painter.drawLine(9, 10, 9, 4);
-        painter.drawLine(12, 9, 12, 3);
-        painter.drawLine(15, 10, 15, 4);
-        painter.drawLine(18, 11, 18, 7);
+        painter.drawLine(12, 3, 12, 21);
+        painter.drawLine(3, 12, 21, 12);
+        painter.drawLine(12, 3, 9, 7);
+        painter.drawLine(12, 3, 15, 7);
+        painter.drawLine(12, 21, 9, 17);
+        painter.drawLine(12, 21, 15, 17);
+        painter.drawLine(3, 12, 7, 9);
+        painter.drawLine(3, 12, 7, 15);
+        painter.drawLine(21, 12, 17, 9);
+        painter.drawLine(21, 12, 17, 15);
     } else {
         painter.drawEllipse(QPointF(12, 10), 3, 3);
         painter.drawLine(12, 1, 12, 6);
@@ -63,6 +67,35 @@ QIcon actualSizeIcon() {
     font.setPixelSize(11);
     painter.setFont(font);
     painter.drawText(image.rect(), Qt::AlignCenter, QCoreApplication::translate("MainWindow", "1:1"));
+    return QIcon(image);
+}
+/// Строит пиктограмму общего переключателя прилипания к направляющим.
+QIcon snapIcon() {
+    QPixmap image(24, 24);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#364152"), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawArc(QRectF(5, 3, 14, 16), 0, 180 * 16);
+    painter.drawLine(5, 11, 5, 17);
+    painter.drawLine(19, 11, 19, 17);
+    painter.setPen(QPen(QColor("#2f86c7"), 2));
+    painter.drawLine(3, 19, 9, 19);
+    painter.drawLine(15, 19, 21, 19);
+    return QIcon(image);
+}
+/// Строит пиктограмму одностороннего перспективного луча для общей команды создания.
+QIcon perspectiveGuideIcon() {
+    QPixmap image(24, 24);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#364152"), 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(QColor("#364152"));
+    painter.drawEllipse(QPointF(5, 5), 2.5, 2.5);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(QPointF(7, 7), QPointF(21, 21));
+    painter.drawLine(QPointF(11, 7), QPointF(21, 17));
     return QIcon(image);
 }
 /// Строит открытый или закрытый глаз для переключателя видимости точки.
@@ -244,6 +277,12 @@ void MainWindow::initializeWindow() {
     coordinatePercent_ = QSettings().value("perspective/coordinatePercent", true).toBool();
     rulerPercent_ = QSettings().value("view/rulers/percent", false).toBool();
     canvas_->setRulerPercent(rulerPercent_);
+    canvas_->setGuidesVisible(QSettings().value("view/guides/visible", true).toBool());
+    canvas_->setSnapToGuides(QSettings().value("view/guides/snap", true).toBool());
+    canvas_->setGuideSnapDistance(QSettings().value("view/guides/snapDistance", 8).toInt());
+    canvas_->setPerspectiveGuideAngleThreshold(
+        QSettings().value("view/guides/perspectiveAngleThreshold", 12.0).toDouble());
+    canvas_->setMoveTarget(Canvas::MoveTarget(qBound(0, QSettings().value("tools/moveTarget", 0).toInt(), 1)));
     DrawingState initialState = canvas_->state();
     applySavedPerspectiveDefaults(&initialState);
     applySavedViewSettings(&initialState);
@@ -275,6 +314,8 @@ void MainWindow::setupMenusAndToolbars() {
     edit->setObjectName("editMenu");
     viewMenu_ = menuBar()->addMenu(tr("&Вид"));
     viewMenu_->setObjectName("viewMenu");
+    auto *imageMenu = menuBar()->addMenu(tr("&Изображение"));
+    imageMenu->setObjectName("imageMenu");
     toolsMenu_ = menuBar()->addMenu(tr("&Инструменты"));
     toolsMenu_->setObjectName("toolsMenu");
     helpMenu_ = menuBar()->addMenu(tr("&Справка"));
@@ -319,6 +360,43 @@ void MainWindow::setupMenusAndToolbars() {
     edit->addSeparator();
     auto *settingsAction = edit->addAction(tr("Настройки…"), this, &MainWindow::showSettings);
     settingsAction->setObjectName("settingsAction");
+    auto *guidesMenu = imageMenu->addMenu(tr("Направляющие"));
+    guidesMenu->setObjectName("guidesMenu");
+    auto *newHorizontalGuide = guidesMenu->addAction(tr("Новая горизонтальная…"), this, [this] {
+        newGuide(GuideType::Horizontal);
+    });
+    newHorizontalGuide->setObjectName("newHorizontalGuideAction");
+    auto *newVerticalGuide = guidesMenu->addAction(tr("Новая вертикальная…"), this, [this] {
+        newGuide(GuideType::Vertical);
+    });
+    newVerticalGuide->setObjectName("newVerticalGuideAction");
+    perspectiveGuideAction_ = guidesMenu->addAction(perspectiveGuideIcon(), tr("Создать перспективную"));
+    perspectiveGuideAction_->setObjectName("newPerspectiveGuideAction");
+    perspectiveGuideAction_->setCheckable(true);
+    connect(perspectiveGuideAction_, &QAction::toggled, canvas_, &Canvas::setPerspectiveGuideCreationEnabled);
+    connect(canvas_, &Canvas::perspectiveGuideCreationChanged, perspectiveGuideAction_, &QAction::setChecked);
+    guidesMenu->addSeparator();
+    removeSelectedGuideAction_ = guidesMenu->addAction(tr("Удалить выбранную"), canvas_, &Canvas::removeSelectedGuide);
+    removeSelectedGuideAction_->setObjectName("removeSelectedGuideAction");
+    removeAllGuidesAction_ = guidesMenu->addAction(tr("Удалить все"), canvas_, &Canvas::removeAllGuides);
+    removeAllGuidesAction_->setObjectName("removeAllGuidesAction");
+    viewMenu_->addSeparator();
+    showGuidesAction_ = viewMenu_->addAction(tr("Показывать направляющие"));
+    showGuidesAction_->setObjectName("showGuidesAction");
+    showGuidesAction_->setCheckable(true);
+    showGuidesAction_->setChecked(canvas_->guidesVisible());
+    connect(showGuidesAction_, &QAction::toggled, this, [this](bool visible) {
+        QSettings().setValue("view/guides/visible", visible);
+        canvas_->setGuidesVisible(visible);
+    });
+    snapGuidesAction_ = viewMenu_->addAction(snapIcon(), tr("Прилипание к направляющим"));
+    snapGuidesAction_->setObjectName("snapGuidesAction");
+    snapGuidesAction_->setCheckable(true);
+    snapGuidesAction_->setChecked(canvas_->snapToGuides());
+    connect(snapGuidesAction_, &QAction::toggled, this, [this](bool enabled) {
+        QSettings().setValue("view/guides/snap", enabled);
+        canvas_->setSnapToGuides(enabled);
+    });
     newAction->setToolTip(tr("Создать (Ctrl+N)"));
     openAction->setToolTip(tr("Открыть (Ctrl+O)"));
     saveAction->setToolTip(tr("Сохранить проект (Ctrl+S)"));
@@ -334,6 +412,9 @@ void MainWindow::setupMenusAndToolbars() {
     mainToolbar_->addSeparator();
     mainToolbar_->addAction(undoAction);
     mainToolbar_->addAction(redoAction);
+    mainToolbar_->addSeparator();
+    mainToolbar_->addAction(snapGuidesAction_);
+    mainToolbar_->addAction(perspectiveGuideAction_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -382,7 +463,7 @@ void MainWindow::setupMenusAndToolbars() {
     toolsPanelLayout->addWidget(toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
-    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Перспектива")};
+    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение"), tr("Перспектива")};
     QStringList shortcuts{"B", "K", "E", "H", "P"};
     for (int i = 0; i < 5; ++i) {
         auto *action = new QAction(toolIcon(i), names[i], this);
@@ -404,6 +485,17 @@ void MainWindow::setupMenusAndToolbars() {
         if (i == int(Canvas::Perspective))
             perspectiveAction_ = action;
     }
+    connect(canvas_, &Canvas::toolChanged, this, [this, names](Canvas::Tool tool) {
+        if (auto *action = findChild<QAction *>(QStringLiteral("tool%1").arg(int(tool))))
+            action->setChecked(true);
+        toolLabel_->setText(names.value(int(tool)));
+        const bool paints = tool <= Canvas::Eraser;
+        toolSettings_->setActiveTool(paints ? int(tool) : -1);
+        if (toolProperties_)
+            toolProperties_->setCanvasTool(int(tool));
+        if (paints)
+            canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
+    });
     toolsMenu_->addSeparator();
     toolsMenu_->addAction(frontColorAction);
     toolsMenu_->addAction(backColorAction);
@@ -416,6 +508,16 @@ void MainWindow::setupMenusAndToolbars() {
     connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
+    toolProperties_->setCanvasTool(int(canvas_->tool()));
+    toolProperties_->setMoveTarget(int(canvas_->moveTarget()));
+    connect(toolProperties_, &ToolPropertiesPanel::moveTargetRequested, this, [this](int target) {
+        QSettings().setValue("tools/moveTarget", target);
+        canvas_->setMoveTarget(Canvas::MoveTarget(target));
+    });
+    connect(canvas_, &Canvas::moveTargetChanged, this, [this](Canvas::MoveTarget target) {
+        QSettings().setValue("tools/moveTarget", int(target));
+        toolProperties_->setMoveTarget(int(target));
+    });
     connect(toolSettings_, &DrawingToolSettingsModel::settingsChanged, this, [this] {
         if (toolSettings_->activeTool() >= 0)
             canvas_->setStrokeSettings(toolSettings_->settingsFor(toolSettings_->activeTool()));
@@ -930,6 +1032,7 @@ void MainWindow::setupViewAndStatusBar() {
                                     .arg(suffix));
     });
     connect(canvas_, &Canvas::stateChanged, this, &MainWindow::updateState);
+    connect(canvas_, &Canvas::selectedGuideChanged, this, &MainWindow::updateState);
     connect(canvas_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateState);
     updateState();
     QTimer::singleShot(0, canvas_, &Canvas::fit);
@@ -939,6 +1042,42 @@ void MainWindow::updateColors() {
     toolProperties_->setColors(front_, back_);
     canvas_->setFront(front_);
     canvas_->setBack(back_);
+}
+void MainWindow::newGuide(GuideType type) {
+    const bool horizontal = type == GuideType::Horizontal;
+    const double dimension = horizontal ? canvas_->state().canvasSize.height() : canvas_->state().canvasSize.width();
+    QDialog dialog(this);
+    dialog.setWindowTitle(horizontal ? tr("Новая горизонтальная направляющая")
+                                     : tr("Новая вертикальная направляющая"));
+    auto *layout = new QFormLayout(&dialog);
+    auto *position = new QDoubleSpinBox(&dialog);
+    position->setObjectName("guidePosition");
+    position->setDecimals(2);
+    position->setRange(0, dimension);
+    position->setValue(dimension / 2.0);
+    position->setSuffix(tr(" px"));
+    auto *units = new QComboBox(&dialog);
+    units->setObjectName("guideUnits");
+    units->addItems({tr("Пиксели"), tr("Проценты")});
+    layout->addRow(horizontal ? tr("От верхнего края") : tr("От левого края"), position);
+    layout->addRow(tr("Единицы"), units);
+    int previousUnits = 0;
+    connect(units, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [=, &previousUnits](int index) {
+        const double pixels = previousUnits == 0 ? position->value() : position->value() * dimension / 100.0;
+        QSignalBlocker blocker(position);
+        position->setRange(0, index == 0 ? dimension : 100.0);
+        position->setSuffix(index == 0 ? tr(" px") : tr(" %"));
+        position->setValue(index == 0 ? pixels : pixels * 100.0 / dimension);
+        previousUnits = index;
+    });
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    const double pixels = units->currentIndex() == 0 ? position->value() : position->value() * dimension / 100.0;
+    canvas_->addGuide(type, pixels);
 }
 void MainWindow::activateTool(Canvas::Tool tool, const QString &name) {
     canvas_->setTool(tool);
@@ -1017,6 +1156,10 @@ void MainWindow::updateState() {
     else if (activeLayer->locked)
         target.unavailableReason = tr("Активный слой зафиксирован");
     toolSettings_->setTargetContext(target);
+    if (removeSelectedGuideAction_)
+        removeSelectedGuideAction_->setEnabled(!canvas_->selectedGuideId().isEmpty());
+    if (removeAllGuidesAction_)
+        removeAllGuidesAction_->setEnabled(!canvas_->state().guides.isEmpty());
     // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
@@ -1137,6 +1280,11 @@ void MainWindow::updateState() {
     const int selected = canvas_->selectedPointIndex();
     vanishingPointsList_->setCurrentRow(selected);
     const bool hasPoint = selected >= 0 && selected < points.size();
+    int selectedPointGuideCount = 0;
+    if (hasPoint)
+        for (const auto &guide : canvas_->state().guides)
+            if (guide.type == GuideType::Perspective && guide.vanishingPointId == points[selected].id)
+                ++selectedPointGuideCount;
     for (int row = 0; row < points.size(); ++row) {
         auto *card = vanishingPointsList_->itemWidget(vanishingPointsList_->item(row));
         if (!card)
@@ -1168,7 +1316,11 @@ void MainWindow::updateState() {
             lock->setToolTip(points[row].locked ? tr("Снять фиксацию") : tr("Фиксировать"));
         }
     }
-    removePointButton_->setEnabled(hasPoint);
+    removePointButton_->setEnabled(hasPoint && selectedPointGuideCount == 0);
+    removePointButton_->setToolTip(
+        selectedPointGuideCount > 0
+            ? tr("Связанных перспективных направляющих: %1. Сначала удалите их.").arg(selectedPointGuideCount)
+            : QString());
     selectedPointVisible_->setEnabled(hasPoint);
     selectedPointLocked_->setEnabled(hasPoint);
     gridColorButton_->setEnabled(hasPoint);
@@ -1240,6 +1392,19 @@ void MainWindow::showSettings() {
     rulerUnits->addItems({tr("Пиксели"), tr("Проценты")});
     rulerUnits->setCurrentIndex(rulerPercent_ ? 1 : 0);
     viewForm->addRow(tr("Единицы линеек"), rulerUnits);
+    auto *perspectiveGuideThreshold = new QDoubleSpinBox;
+    perspectiveGuideThreshold->setObjectName("perspectiveGuideAngleThreshold");
+    perspectiveGuideThreshold->setRange(1, 45);
+    perspectiveGuideThreshold->setDecimals(1);
+    perspectiveGuideThreshold->setSuffix(tr("°"));
+    perspectiveGuideThreshold->setValue(canvas_->perspectiveGuideAngleThreshold());
+    viewForm->addRow(tr("Порог выбора точки схода"), perspectiveGuideThreshold);
+    auto *guideSnapDistance = new QSpinBox;
+    guideSnapDistance->setObjectName("guideSnapDistance");
+    guideSnapDistance->setRange(1, 50);
+    guideSnapDistance->setSuffix(tr(" px"));
+    guideSnapDistance->setValue(canvas_->guideSnapDistance());
+    viewForm->addRow(tr("Расстояние прилипания"), guideSnapDistance);
     viewForm->addRow(
         new QLabel(tr("Единицы числовых координат точек схода и горизонта выбираются отдельно в панели перспективы.")));
     tabs->addTab(viewPage, tr("Вид"));
@@ -1266,7 +1431,11 @@ void MainWindow::showSettings() {
         return;
     rulerPercent_ = rulerUnits->currentIndex() == 1;
     QSettings().setValue("view/rulers/percent", rulerPercent_);
+    QSettings().setValue("view/guides/perspectiveAngleThreshold", perspectiveGuideThreshold->value());
+    QSettings().setValue("view/guides/snapDistance", guideSnapDistance->value());
     canvas_->setRulerPercent(rulerPercent_);
+    canvas_->setPerspectiveGuideAngleThreshold(perspectiveGuideThreshold->value());
+    canvas_->setGuideSnapDistance(guideSnapDistance->value());
     positionLabel_->clear();
 }
 void MainWindow::showAbout() {

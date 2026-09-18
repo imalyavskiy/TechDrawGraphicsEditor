@@ -58,6 +58,227 @@ QImage pixels(const DrawingState &state) {
     return state.flattenedImage();
 }
 
+/// Проверяет общий контракт проекции обычных направляющих и одностороннего перспективного луча.
+void testGuideGeometry() {
+    const Guide horizontal{QStringLiteral("g-h"), GuideType::Horizontal, 50, QString(), 0};
+    const Guide vertical{QStringLiteral("g-v"), GuideType::Vertical, 10, QString(), 0};
+    Guide perspective;
+    perspective.id = QStringLiteral("g-p");
+    perspective.type = GuideType::Perspective;
+    perspective.vanishingPointId = QStringLiteral("vp-1");
+    perspective.angleRadians = 0;
+    const QHash<QString, QPointF> points{{QStringLiteral("vp-1"), QPointF(100, 100)}};
+
+    const GuideProjection horizontalProjection = GuideGeometry::project(horizontal, QPointF(30, 12));
+    const GuideProjection verticalProjection = GuideGeometry::project(vertical, QPointF(30, 12));
+    const GuideProjection rayProjection = GuideGeometry::project(perspective, QPointF(80, 110), points);
+    require(horizontalProjection.valid && horizontalProjection.point == QPointF(30, 50) &&
+                horizontalProjection.direction == QPointF(1, 0) && verticalProjection.valid &&
+                verticalProjection.point == QPointF(10, 12) && verticalProjection.direction == QPointF(0, 1),
+            "ordinary guide projection is invalid");
+    require(rayProjection.valid && rayProjection.point == QPointF(100, 100) && rayProjection.direction == QPointF(1, 0),
+            "perspective guide projection must stop at its vanishing-point origin");
+    GuideProjection nearestProjection;
+    require(GuideGeometry::nearest({horizontal, vertical, perspective},
+                                   QPointF(12, 14),
+                                   points,
+                                   20,
+                                   &nearestProjection) == 1 &&
+                nearestProjection.point == QPointF(10, 14),
+            "common nearest-guide query did not select the closest geometry");
+}
+
+/// Имитирует вытягивание направляющих с четырёх линеек и проверяет историю, отмену и видимость.
+void testOrdinaryGuideCreation() {
+    Canvas canvas;
+    canvas.resize(800, 600);
+    canvas.show();
+    QApplication::processEvents();
+    canvas.fit();
+    canvas.setMoveTarget(Canvas::ActiveLayerTarget);
+    QApplication::processEvents();
+    const auto dragGuide = [&canvas](QPointF start, QPointF end) {
+        mouse(&canvas, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+        QApplication::processEvents();
+    };
+    QPointF target = canvas.toView(QPointF(120, 50));
+    dragGuide(QPointF(target.x(), 4), target);
+    target = canvas.toView(QPointF(180, 100));
+    dragGuide(QPointF(target.x(), canvas.height() - 4), target);
+    target = canvas.toView(QPointF(70, 140));
+    dragGuide(QPointF(4, target.y()), target);
+    target = canvas.toView(QPointF(160, 190));
+    dragGuide(QPointF(canvas.width() - 4, target.y()), target);
+    require(canvas.state().guides.size() == 4 && canvas.state().guides[0].type == GuideType::Horizontal &&
+                qAbs(canvas.state().guides[0].position - 50) < 0.01 &&
+                canvas.state().guides[1].type == GuideType::Horizontal &&
+                qAbs(canvas.state().guides[1].position - 100) < 0.01 &&
+                canvas.state().guides[2].type == GuideType::Vertical &&
+                qAbs(canvas.state().guides[2].position - 70) < 0.01 &&
+                canvas.state().guides[3].type == GuideType::Vertical &&
+                qAbs(canvas.state().guides[3].position - 160) < 0.01 && canvas.tool() == Canvas::Move &&
+                canvas.moveTarget() == Canvas::GuidesTarget &&
+                canvas.undoStack()->count() == 4,
+            "guides were not created from all four rulers as undoable document objects");
+    canvas.setMoveTarget(Canvas::GuidesTarget);
+    const int beforeJointMove = canvas.undoStack()->count();
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(70, 50)), Qt::NoButton, Qt::NoButton);
+    require(canvas.cursor().shape() == Qt::OpenHandCursor, "movable guide must use the open-hand cursor");
+    drag(&canvas, QPointF(70, 50), QPointF(90, 80));
+    require(qAbs(canvas.state().guides[0].position - 80) < 0.01 &&
+                qAbs(canvas.state().guides[2].position - 90) < 0.01 &&
+                canvas.undoStack()->count() == beforeJointMove + 1,
+            "an ordinary guide intersection must move both guides in one undo command");
+    canvas.undoStack()->undo();
+    require(qAbs(canvas.state().guides[0].position - 50) < 0.01 &&
+                qAbs(canvas.state().guides[2].position - 70) < 0.01,
+            "undo did not restore jointly moved guides");
+
+    const DrawingState beforeCancelledMove = canvas.state();
+    mouse(&canvas,
+          QEvent::MouseButtonPress,
+          canvas.toView(QPointF(300, 100)),
+          Qt::LeftButton,
+          Qt::LeftButton);
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(300, 140)), Qt::NoButton, Qt::LeftButton);
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(&canvas, &escape);
+    require(canvas.state().guides == beforeCancelledMove.guides,
+            "Escape must restore guide positions without adding history");
+
+    drag(&canvas, QPointF(300, 100), QPointF(300, -10));
+    require(canvas.state().guides.size() == 3, "dragging a guide outside the document must delete it");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "deleted guide must be restored by Undo");
+
+    canvas.setMoveTarget(Canvas::ActiveLayerTarget);
+    const QString layerId = canvas.state().layers.activeLayerId();
+    const QPointF originalOffset = canvas.state().layers.entry(layerId)->offset;
+    drag(&canvas, QPointF(400, 300), QPointF(445, 325));
+    require(canvas.state().layers.entry(layerId)->offset == originalOffset + QPointF(45, 25),
+            "move tool did not offset the explicitly selected layer");
+    canvas.undoStack()->undo();
+    require(canvas.state().layers.entry(layerId)->offset == originalOffset,
+            "layer move must be restored by one Undo command");
+    canvas.setLayerLocked(layerId, true);
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(400, 300)), Qt::NoButton, Qt::NoButton);
+    require(canvas.cursor().shape() == Qt::ForbiddenCursor, "locked move target must use the forbidden cursor");
+    canvas.setLayerLocked(layerId, false);
+    canvas.setMoveTarget(Canvas::GuidesTarget);
+    const int beforeCancelled = canvas.state().guides.size();
+    const QPointF outsidePaper = canvas.toView(QPointF(-10, 10));
+    dragGuide(QPointF(canvas.width() / 2.0, 4), outsidePaper);
+    require(canvas.state().guides.size() == beforeCancelled,
+            "releasing a ruler guide outside the document must cancel creation");
+    const int historyBeforeVisibility = canvas.undoStack()->count();
+    canvas.setGuidesVisible(false);
+    require(!canvas.guidesVisible() && canvas.undoStack()->count() == historyBeforeVisibility,
+            "guide visibility must remain view state outside document history");
+    canvas.setGuidesVisible(true);
+    click(&canvas, QPointF(300, 50));
+    canvas.removeSelectedGuide();
+    require(canvas.state().guides.size() == 3, "selected guide removal failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "selected guide removal must be undoable");
+    canvas.removeAllGuides();
+    require(canvas.state().guides.isEmpty(), "remove-all guides failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "remove-all guides must be one undoable command");
+    canvas.close();
+}
+
+/// Проверяет общий захват обычных и перспективных направляющих всеми рисующими инструментами.
+void testGuideDrawing() {
+    DrawingState state;
+    QImage image(640, 400, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    state.setSingleRasterImage(image, QStringLiteral("Background"));
+    state.vanishingPoints.append({QStringLiteral("vp-draw"), QPointF(500, 300)});
+    state.guides.append({QStringLiteral("guide-horizontal"), GuideType::Horizontal, 100, QString(), 0});
+    state.guides.append({QStringLiteral("guide-vertical"), GuideType::Vertical, 200, QString(), 0});
+    Guide perspective;
+    perspective.id = QStringLiteral("guide-perspective");
+    perspective.type = GuideType::Perspective;
+    perspective.vanishingPointId = QStringLiteral("vp-draw");
+    perspective.angleRadians = 3.14159265358979323846;
+    state.guides.append(perspective);
+
+    Canvas canvas;
+    canvas.resize(900, 700);
+    canvas.setDocument(state);
+    canvas.show();
+    QApplication::processEvents();
+    canvas.fit();
+    canvas.setSnapToGuides(true);
+    canvas.setGuideSnapDistance(8);
+    canvas.setTool(Canvas::Pencil);
+    canvas.setFront(Qt::black);
+    canvas.setStrokeWidth(3);
+
+    int history = canvas.undoStack()->count();
+    drag(&canvas, QPointF(100, 105), QPointF(300, 107));
+    require(pixels(canvas.state()).pixelColor(200, 100) == QColor(Qt::black) &&
+                pixels(canvas.state()).pixelColor(200, 106) == QColor(Qt::white) &&
+                canvas.undoStack()->count() == history + 1,
+            "pencil stroke did not snap to the captured horizontal guide as one undo command");
+
+    history = canvas.undoStack()->count();
+    canvas.setFront(QColor("#225588"));
+    drag(&canvas, QPointF(150, 103), QPointF(202, 180));
+    require(pixels(canvas.state()).pixelColor(190, 100) == QColor("#225588"),
+            "captured horizontal guide did not receive the second pencil stroke");
+    require(pixels(canvas.state()).pixelColor(200, 150) == QColor(Qt::white),
+            "captured guide changed during a pencil stroke");
+    require(canvas.undoStack()->count() == history + 1,
+            "guide-constrained pencil stroke must create one undo command");
+
+    canvas.setFront(QColor("#397a42"));
+    click(&canvas, QPointF(320, 105));
+    click(&canvas, QPointF(380, 106), Qt::ShiftModifier);
+    require(pixels(canvas.state()).pixelColor(350, 100) == QColor("#397a42"),
+            "connected pencil segment did not follow its captured guide");
+
+    history = canvas.undoStack()->count();
+    canvas.setFront(Qt::black);
+    drag(&canvas, QPointF(400, 304), QPointF(600, 300));
+    require(pixels(canvas.state()).pixelColor(450, 300) == QColor(Qt::black) &&
+                pixels(canvas.state()).pixelColor(550, 300) == QColor(Qt::white) &&
+                canvas.undoStack()->count() == history + 1,
+            "perspective guide stroke crossed the vanishing point onto the opposite half-line");
+
+    DrawingToolSettings brush;
+    brush.width = 5;
+    brush.opacity = 100;
+    brush.hardness = 100;
+    brush.spacing = 15;
+    canvas.setTool(Canvas::Brush);
+    canvas.setFront(QColor("#cc3344"));
+    canvas.setStrokeSettings(brush);
+    drag(&canvas, QPointF(205, 220), QPointF(207, 270));
+    require(pixels(canvas.state()).pixelColor(200, 245) == QColor("#cc3344"),
+            "brush did not use the common guide projection");
+
+    DrawingToolSettings eraser = brush;
+    eraser.strength = 100;
+    canvas.setTool(Canvas::Eraser);
+    canvas.setBack(Qt::white);
+    canvas.setStrokeSettings(eraser);
+    drag(&canvas, QPointF(150, 104), QPointF(250, 103));
+    require(pixels(canvas.state()).pixelColor(200, 100) == QColor(Qt::white),
+            "eraser did not use the common guide projection");
+
+    canvas.setSnapToGuides(false);
+    canvas.setTool(Canvas::Pencil);
+    canvas.setFront(QColor("#315fab"));
+    canvas.setStrokeWidth(3);
+    drag(&canvas, QPointF(100, 120), QPointF(180, 120));
+    require(pixels(canvas.state()).pixelColor(140, 120) == QColor("#315fab"),
+            "disabled guide snapping did not preserve a free pencil stroke");
+    canvas.close();
+}
+
 /// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
 QImage *editablePixels(DrawingState *state) {
     LayerEntry *entry = state->layers.activeEntry();
@@ -348,7 +569,7 @@ void testLayerAwareEraser() {
     require(pixels(canvas.state()) == beforeHidden, "hidden active layer must reject painting");
 }
 
-/// Проверяет DRW 9, историю стеков, дедупликацию ресурсов и отказ на неизвестном типе слоя.
+/// Проверяет DRW 10, историю стеков и направляющих, дедупликацию ресурсов и неизвестный тип слоя.
 void testMultiLayerProject(const QDir &out) {
     DrawingState base;
     QImage background(40, 30, QImage::Format_ARGB32_Premultiplied);
@@ -357,7 +578,15 @@ void testMultiLayerProject(const QDir &out) {
     base.horizonY = 15;
     base.verticalX = 20;
     base.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(30, 15), QString(), QString()});
+    base.guides.append({QStringLiteral("guide-h"), GuideType::Horizontal, 12, QString(), 0});
     DrawingState layered = base;
+    layered.guides.append({QStringLiteral("guide-v"), GuideType::Vertical, 22, QString(), 0});
+    Guide perspectiveGuide;
+    perspectiveGuide.id = QStringLiteral("guide-p");
+    perspectiveGuide.type = GuideType::Perspective;
+    perspectiveGuide.vanishingPointId = QStringLiteral("vp-1");
+    perspectiveGuide.angleRadians = 0.75;
+    layered.guides.append(perspectiveGuide);
     const QString paintId = layered.layers.addRaster(layered.canvasSize, QStringLiteral("Paint"));
     LayerContent *content = layered.layers.editableActiveContent(LayerCapability::RasterPainting);
     const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
@@ -373,14 +602,15 @@ void testMultiLayerProject(const QDir &out) {
     history.labels = QStringList{QStringLiteral("layer operation")};
     history.index = 1;
     QString error;
-    const QString path = out.filePath("multilayer-v9.drw");
+    const QString path = out.filePath("multilayer-v10.drw");
     require(Project::save(path, history, &error), qPrintable(error));
     DrawingHistory loaded;
     require(Project::load(path, &loaded, &error), qPrintable(error));
     require(loaded.states.size() == 2 && loaded.index == 1 && loaded.labels == history.labels &&
                 loaded.states[1].layers == layered.layers && loaded.states[0].layers == base.layers &&
+                loaded.states[1].guides == layered.guides && loaded.states[0].guides == base.guides &&
                 loaded.states[1].layers.activeLayerId() == paintId && pixels(loaded.states[1]) == pixels(layered),
-            "version 9 multilayer stack or history did not roundtrip");
+            "version 10 multilayer and guide history did not roundtrip");
 
     QZipReader archive(path);
     const QJsonObject metadata = QJsonDocument::fromJson(archive.fileData("project.json")).object();
@@ -388,9 +618,9 @@ void testMultiLayerProject(const QDir &out) {
     for (const auto &entry : archive.fileInfoList())
         if (entry.isFile && entry.filePath.startsWith("resources/"))
             ++resourceCount;
-    require(metadata.value("version").toInt() == 9 &&
+    require(metadata.value("version").toInt() == 10 && metadata.value("guides").toArray().size() == 3 &&
                 metadata.value("layers").toObject().value("entries").toArray().size() == 2 && resourceCount == 2,
-            "version 9 manifest or content resource deduplication is invalid");
+            "version 10 manifest, guides, or content resource deduplication is invalid");
 
     QJsonObject unknownMetadata = metadata;
     QJsonObject unknownLayers = unknownMetadata.value("layers").toObject();
@@ -473,6 +703,117 @@ DrawingState initialDrawingState() {
     initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(650, 240), QString(), QString()});
     return initial;
+}
+
+/// Проверяет точное создание и команды вида для обычных направляющих в главном окне.
+void testGuideMenus() {
+    MainWindow window;
+    window.show();
+    QApplication::processEvents();
+    auto *canvas = window.canvas();
+    auto *imageMenu = window.findChild<QMenu *>("imageMenu");
+    auto *guidesMenu = window.findChild<QMenu *>("guidesMenu");
+    auto *newHorizontal = window.findChild<QAction *>("newHorizontalGuideAction");
+    auto *newVertical = window.findChild<QAction *>("newVerticalGuideAction");
+    auto *removeSelected = window.findChild<QAction *>("removeSelectedGuideAction");
+    auto *removeAll = window.findChild<QAction *>("removeAllGuidesAction");
+    auto *showGuides = window.findChild<QAction *>("showGuidesAction");
+    auto *snapGuides = window.findChild<QAction *>("snapGuidesAction");
+    auto *perspectiveGuide = window.findChild<QAction *>("newPerspectiveGuideAction");
+    auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
+    require(imageMenu && guidesMenu && newHorizontal && newVertical && removeSelected && removeAll && showGuides &&
+                snapGuides && perspectiveGuide && mainToolbar && imageMenu->actions().contains(guidesMenu->menuAction()) &&
+                mainToolbar->actions().contains(snapGuides) && mainToolbar->actions().contains(perspectiveGuide),
+            "guide menu or shared toolbar snapping action is missing");
+
+    bool horizontalDialogChecked = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *position = dialog ? dialog->findChild<QDoubleSpinBox *>("guidePosition") : nullptr;
+        auto *units = dialog ? dialog->findChild<QComboBox *>("guideUnits") : nullptr;
+        horizontalDialogChecked = dialog && position && units && units->count() == 2;
+        if (position)
+            position->setValue(123);
+        if (dialog)
+            dialog->accept();
+    });
+    newHorizontal->trigger();
+    require(horizontalDialogChecked && canvas->state().guides.size() == 1 &&
+                canvas->state().guides[0].type == GuideType::Horizontal &&
+                qAbs(canvas->state().guides[0].position - 123) < 0.01,
+            "horizontal guide dialog did not create an exact pixel position");
+
+    bool verticalDialogChecked = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *position = dialog ? dialog->findChild<QDoubleSpinBox *>("guidePosition") : nullptr;
+        auto *units = dialog ? dialog->findChild<QComboBox *>("guideUnits") : nullptr;
+        verticalDialogChecked = dialog && position && units;
+        if (units)
+            units->setCurrentIndex(1);
+        if (position)
+            position->setValue(25);
+        if (dialog)
+            dialog->accept();
+    });
+    newVertical->trigger();
+    require(verticalDialogChecked && canvas->state().guides.size() == 2 &&
+                canvas->state().guides[1].type == GuideType::Vertical &&
+                qAbs(canvas->state().guides[1].position - 250) < 0.01,
+            "vertical guide dialog did not convert percent from the left edge");
+    require(removeSelected->isEnabled() && removeAll->isEnabled(), "guide removal actions were not enabled");
+    removeSelected->trigger();
+    require(canvas->state().guides.size() == 1, "remove selected guide menu action failed");
+    canvas->undoStack()->undo();
+    removeAll->trigger();
+    require(canvas->state().guides.isEmpty(), "remove all guides menu action failed");
+    canvas->undoStack()->undo();
+
+    const QPointF source(400, 300);
+    perspectiveGuide->setChecked(true);
+    drag(canvas, source, QPointF(500, 276));
+    require(canvas->state().guides.size() == 3 &&
+                canvas->state().guides.last().type == GuideType::Perspective &&
+                canvas->state().guides.last().vanishingPointId == canvas->state().vanishingPoints[0].id &&
+                perspectiveGuide->isChecked() && canvas->perspectiveGuideCreationEnabled(),
+            "perspective guide gesture did not create a linked ray or synchronize its action");
+    const int pointCount = canvas->state().vanishingPoints.size();
+    auto *removePoint = window.findChild<QPushButton *>("removeVanishingPoint");
+    require(removePoint && !removePoint->isEnabled() && removePoint->toolTip().contains(QStringLiteral("1")),
+            "vanishing-point removal control must report its linked guide count");
+    canvas->removeSelectedVanishingPoint();
+    require(canvas->state().vanishingPoints.size() == pointCount,
+            "a vanishing point referenced by a perspective guide must not be deleted");
+    const double originalAngle = canvas->state().guides.last().angleRadians;
+    perspectiveGuide->setChecked(false);
+    canvas->setMoveTarget(Canvas::GuidesTarget);
+    canvas->setTool(Canvas::Move);
+    drag(canvas, source, QPointF(420, 390));
+    require(!qFuzzyCompare(canvas->state().guides.last().angleRadians + 4, originalAngle + 4) &&
+                canvas->state().vanishingPoints[0].position == QPointF(650, 240),
+            "moving a perspective guide must rotate it around its unchanged vanishing point");
+    canvas->undoStack()->undo();
+    canvas->removeSelectedGuide();
+    require(canvas->state().guides.size() == 2 && removePoint->isEnabled(),
+            "selected perspective guide removal failed to release its vanishing point");
+
+    perspectiveGuide->setChecked(true);
+    const int beforeRejectedPerspective = canvas->state().guides.size();
+    drag(canvas, source, QPointF(300, 324));
+    require(canvas->state().guides.size() == beforeRejectedPerspective,
+            "gesture outside the angular threshold must not create a perspective guide");
+    perspectiveGuide->setChecked(false);
+
+    showGuides->setChecked(false);
+    snapGuides->setChecked(false);
+    require(!canvas->guidesVisible() && !canvas->snapToGuides() &&
+                !QSettings().value("view/guides/visible", true).toBool() &&
+                !QSettings().value("view/guides/snap", true).toBool(),
+            "guide view settings were not applied or persisted");
+    showGuides->setChecked(true);
+    snapGuides->setChecked(true);
+    canvas->undoStack()->setClean();
+    window.close();
 }
 
 /// Проверяет компоновку, меню, настройки и основные диалоги главного окна.
@@ -916,19 +1257,28 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         auto *tabs = dialog ? dialog->findChild<QTabWidget *>("settingsTabs") : nullptr;
         auto *rulerUnits = dialog ? dialog->findChild<QComboBox *>("rulerUnits") : nullptr;
+        auto *guideThreshold = dialog ? dialog->findChild<QDoubleSpinBox *>("perspectiveGuideAngleThreshold") : nullptr;
+        auto *snapDistance = dialog ? dialog->findChild<QSpinBox *>("guideSnapDistance") : nullptr;
         settingsDialogChecked = tabs && tabs->count() == 3 && tabs->tabText(0) == QStringLiteral("Вид") &&
                                 tabs->tabText(1) == QStringLiteral("Система") &&
                                 tabs->tabText(2) == QStringLiteral("Файлы") && rulerUnits &&
-                                rulerUnits->currentIndex() == 0;
+                                rulerUnits->currentIndex() == 0 && guideThreshold && guideThreshold->value() == 12 &&
+                                snapDistance && snapDistance->value() == 8;
         if (rulerUnits)
             rulerUnits->setCurrentIndex(1);
+        if (guideThreshold)
+            guideThreshold->setValue(15);
+        if (snapDistance)
+            snapDistance->setValue(11);
         if (dialog)
             dialog->accept();
     });
     require(settingsAction, "settings action is missing");
     settingsAction->trigger();
     require(settingsDialogChecked && canvas->rulerPercent() && QSettings().value("view/rulers/percent").toBool() &&
-                pointUnits->currentIndex() == 1,
+                pointUnits->currentIndex() == 1 && canvas->perspectiveGuideAngleThreshold() == 15 &&
+                QSettings().value("view/guides/perspectiveAngleThreshold").toDouble() == 15 &&
+                canvas->guideSnapDistance() == 11 && QSettings().value("view/guides/snapDistance").toInt() == 11,
             "settings dialog did not persist independent ruler units");
     pointX->setValue(-300);
     require(canvas->state().vanishingPoints[0].position == QPointF(200, 240),
@@ -1494,8 +1844,9 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
             "zoom must not edit document");
     QPointF point(100, 100);
     require(QLineF(canvas->toImage(canvas->toView(point)), point).length() < 0.001, "view coordinate roundtrip failed");
-    canvas->setTool(Canvas::Pan);
-    drag(canvas, QPointF(100, 100), QPointF(150, 130));
+    mouse(canvas, QEvent::MouseButtonPress, QPointF(100, 100), Qt::MiddleButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseMove, QPointF(150, 130), Qt::NoButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseButtonRelease, QPointF(150, 130), Qt::MiddleButton, Qt::NoButton);
     require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
             "pan must not edit document");
     canvas->fit();
@@ -1788,9 +2139,13 @@ void testToolWidthPersistence() {
     auto *pencilAction = widthsWindow.findChild<QAction *>("tool0");
     auto *brushAction = widthsWindow.findChild<QAction *>("tool1");
     auto *eraserAction = widthsWindow.findChild<QAction *>("tool2");
-    auto *panAction = widthsWindow.findChild<QAction *>("tool3");
+    auto *moveAction = widthsWindow.findChild<QAction *>("tool3");
+    auto *moveTarget = widthsWindow.findChild<QComboBox *>("moveTarget");
+    auto *moveSection = widthsWindow.findChild<QWidget *>("moveTargetSettings");
+    auto *strokeSection = widthsWindow.findChild<QWidget *>("strokeMainSettings");
     require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl && toolTitle &&
-                eraserMode && pencilAction && brushAction && eraserAction && panAction,
+                eraserMode && pencilAction && brushAction && eraserAction && moveAction && moveTarget && moveSection &&
+                strokeSection,
             "shared per-tool controls are missing");
     widthControl->setValue(4);
     opacityControl->setValue(80);
@@ -1839,9 +2194,15 @@ void testToolWidthPersistence() {
     require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
                 strengthControl->value() == 55,
             "eraser settings were not restored");
-    panAction->trigger();
-    require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
-            "drawing controls must be disabled for a non-paint mode");
+    moveAction->trigger();
+    require(strokeSection->isHidden() && !moveSection->isHidden() && moveTarget->isEnabled() &&
+                toolTitle->text() == QStringLiteral("Перемещение"),
+            "move mode must replace drawing controls with its explicit target");
+    moveTarget->setCurrentIndex(1);
+    require(widthsWindow.canvas()->moveTarget() == Canvas::ActiveLayerTarget &&
+                QSettings().value("tools/moveTarget").toInt() == 1,
+            "move target selection must update the canvas and persist");
+    moveTarget->setCurrentIndex(0);
     widthsWindow.canvas()->undoStack()->setClean();
     widthsWindow.close();
     MainWindow persistedWidthsWindow;
@@ -2066,6 +2427,10 @@ int runSelfTests(const QString &outputDirectory) {
         });
         watchdog.start();
 
+        testGuideGeometry();
+        testOrdinaryGuideCreation();
+        testGuideDrawing();
+        testGuideMenus();
         testLayerArchitecture();
         testLayerPanel();
         testLayerAwareEraser();

@@ -8,6 +8,7 @@ SOURCE_FILES = (
     "src/autohidedockwidget.cpp",
     "src/canvas.cpp",
     "src/drawingtoolsettings.cpp",
+    "src/guidemodel.cpp",
     "src/layermodel.cpp",
     "src/layerpanel.cpp",
     "src/main.cpp",

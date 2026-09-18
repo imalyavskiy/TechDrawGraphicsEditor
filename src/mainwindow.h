@@ -87,6 +87,11 @@ private:
     AutoHideDockWidget *layersDock_ = nullptr;
     LayerPanel *layerPanel_ = nullptr;
     QAction *perspectiveAction_ = nullptr;
+    QAction *showGuidesAction_ = nullptr;
+    QAction *snapGuidesAction_ = nullptr;
+    QAction *perspectiveGuideAction_ = nullptr;
+    QAction *removeSelectedGuideAction_ = nullptr;
+    QAction *removeAllGuidesAction_ = nullptr;
     QMenu *viewMenu_ = nullptr;
     QMenu *toolsMenu_ = nullptr;
     QMenu *helpMenu_ = nullptr;
@@ -138,6 +143,8 @@ private:
     void showSettings();
     /// Показывает значок и полное пользовательское название приложения.
     void showAbout();
+    /// Запрашивает точную координату и создаёт обычную направляющую выбранного типа.
+    void newGuide(GuideType type);
     /// Переводит X изображения в выбранные пользователем единицы относительно центра.
     double displayedX(double imageX) const;
     /// Переводит направленную вверх Y-координату изображения в выбранные единицы.

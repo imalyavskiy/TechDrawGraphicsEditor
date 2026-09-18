@@ -66,7 +66,71 @@ QJsonObject perspectiveJson(const DrawingState &state) {
                        {"vertical", QJsonObject{{"x", state.verticalX}, {"locked", state.verticalLocked}}},
                        {"points", points}};
 }
-/// Читает геометрию перспективы с миграцией схем версий 1–9 в актуальную модель.
+/// Сериализует документную геометрию направляющих без параметров представления.
+QJsonArray guidesJson(const DrawingState &state) {
+    QJsonArray result;
+    for (const Guide &guide : state.guides) {
+        QJsonObject object{{"id", guide.id}};
+        if (guide.type == GuideType::Horizontal) {
+            object["type"] = "horizontal";
+            object["position"] = guide.position;
+        } else if (guide.type == GuideType::Vertical) {
+            object["type"] = "vertical";
+            object["position"] = guide.position;
+        } else {
+            object["type"] = "perspective";
+            object["vanishingPointId"] = guide.vanishingPointId;
+            object["angleRadians"] = guide.angleRadians;
+        }
+        result.append(object);
+    }
+    return result;
+}
+/// Читает направляющие DRW 10 и оставляет пустой набор при миграции прежних форматов.
+bool parseGuides(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
+    state->guides.clear();
+    if (formatVersion < 10)
+        return true;
+    if (!value.isArray())
+        return fail(error, QCoreApplication::translate("Project", "Отсутствует список направляющих."));
+    const QJsonArray array = value.toArray();
+    if (array.size() > 1024)
+        return fail(error, QCoreApplication::translate("Project", "Слишком много направляющих."));
+    QSet<QString> ids;
+    QSet<QString> pointIds;
+    for (const VanishingPoint &point : state->vanishingPoints)
+        pointIds.insert(point.id);
+    for (const QJsonValue &value : array) {
+        if (!value.isObject())
+            return fail(error, QCoreApplication::translate("Project", "Некорректная направляющая."));
+        const QJsonObject object = value.toObject();
+        Guide guide;
+        guide.id = object.value("id").toString();
+        const QString type = object.value("type").toString();
+        if (guide.id.isEmpty() || guide.id.size() > 80 || ids.contains(guide.id))
+            return fail(error, QCoreApplication::translate("Project", "Некорректный идентификатор направляющей."));
+        if (type == QStringLiteral("horizontal") || type == QStringLiteral("vertical")) {
+            guide.type = type == QStringLiteral("horizontal") ? GuideType::Horizontal : GuideType::Vertical;
+            guide.position = object.value("position").toDouble(qQNaN());
+            if (!std::isfinite(guide.position) || std::abs(guide.position) > 1000000)
+                return fail(error, QCoreApplication::translate("Project", "Положение направляющей вне диапазона."));
+        } else if (type == QStringLiteral("perspective")) {
+            guide.type = GuideType::Perspective;
+            guide.vanishingPointId = object.value("vanishingPointId").toString();
+            guide.angleRadians = object.value("angleRadians").toDouble(qQNaN());
+            if (!pointIds.contains(guide.vanishingPointId) || !std::isfinite(guide.angleRadians) ||
+                std::abs(guide.angleRadians) > 1000)
+                return fail(error,
+                            QCoreApplication::translate("Project", "Некорректная перспективная направляющая."));
+        } else {
+            return fail(error, QCoreApplication::translate("Project", "Неизвестный тип направляющей."));
+        }
+        ids.insert(guide.id);
+        state->guides.append(guide);
+    }
+    return true;
+}
+/// Читает геометрию перспективы с миграцией схем версий 1–10 в актуальную модель.
 bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     if (!value.isObject())
         return fail(error, QCoreApplication::translate("Project", "Отсутствуют параметры перспективы."));
@@ -225,6 +289,21 @@ bool validState(const DrawingState &state) {
             targets.insert(targetId);
         }
     }
+    QSet<QString> guideIds;
+    for (const Guide &guide : state.guides) {
+        if (guide.id.isEmpty() || guide.id.size() > 80 || guideIds.contains(guide.id) ||
+            !std::isfinite(guide.position) || !std::isfinite(guide.angleRadians) ||
+            std::abs(guide.position) > 1000000 || std::abs(guide.angleRadians) > 1000)
+            return false;
+        if (guide.type == GuideType::Perspective) {
+            if (guide.vanishingPointId.isEmpty() || !ids.contains(guide.vanishingPointId))
+                return false;
+        } else if ((guide.type != GuideType::Horizontal && guide.type != GuideType::Vertical) ||
+                   !guide.vanishingPointId.isEmpty()) {
+            return false;
+        }
+        guideIds.insert(guide.id);
+    }
     return std::isfinite(state.rayStepDegrees) && state.rayStepDegrees >= 1 && state.rayStepDegrees <= 30 &&
            std::isfinite(state.rayAngleOffset) && state.rayAngleOffset >= -180 && state.rayAngleOffset <= 180 &&
            state.rayPattern >= 0 && state.rayPattern <= 3 && std::isfinite(state.rayWidth) && state.rayWidth >= 0.1 &&
@@ -236,14 +315,15 @@ bool validState(const DrawingState &state) {
            state.verticalOpacity >= 0 && state.verticalOpacity <= 100 && std::isfinite(state.verticalWidth) &&
            state.verticalWidth >= 0.1 && state.verticalWidth <= 20;
 }
-/// Сравнивает сохраняемые данные, учитывая наличие полноценного стека только в новой схеме.
-bool samePersistentState(const DrawingState &a, const DrawingState &b, bool layersStored) {
-    if (a.canvasSize != b.canvasSize || (layersStored ? a.layers != b.layers
-                                                     : a.flattenedImage() != b.flattenedImage()) ||
+/// Сравнивает сохраняемые данные с учётом появления стеков в DRW 9 и направляющих в DRW 10.
+bool samePersistentState(const DrawingState &a, const DrawingState &b, int formatVersion) {
+    if (a.canvasSize != b.canvasSize || (formatVersion >= 9 ? a.layers != b.layers
+                                                            : a.flattenedImage() != b.flattenedImage()) ||
         !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) ||
         a.horizonLocked != b.horizonLocked ||
         !qFuzzyCompare(a.verticalX + 1, b.verticalX + 1) || a.verticalLocked != b.verticalLocked ||
-        a.vanishingPoints.size() != b.vanishingPoints.size())
+        a.vanishingPoints.size() != b.vanishingPoints.size() ||
+        (formatVersion >= 10 && a.guides != b.guides))
         return false;
     for (int i = 0; i < a.vanishingPoints.size(); ++i) {
         const auto &x = a.vanishingPoints[i], &y = b.vanishingPoints[i];
@@ -398,7 +478,9 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
         QJsonObject layers;
         if (!serializeLayers(history.states[i].layers, i, &layers, &resources, error))
             return false;
-        states.append(QJsonObject{{"layers", layers}, {"perspective", perspectiveJson(history.states[i])}});
+        states.append(QJsonObject{{"layers", layers},
+                                  {"perspective", perspectiveJson(history.states[i])},
+                                  {"guides", guidesJson(history.states[i])}});
     }
     QJsonArray labels;
     for (const auto &label : history.labels)
@@ -412,6 +494,7 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
                          {"image", "drawing.png"},
                          {"layers", states[history.index].toObject().value("layers")},
                          {"perspective", perspectiveJson(current)},
+                         {"guides", guidesJson(current)},
                          {"history", historyJson}};
 
     QByteArray archive;
@@ -547,6 +630,8 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     }
     if (!parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
         return false;
+    if (!parseGuides(object.value("guides"), &current, error, int(versionValue)))
+        return false;
     DrawingHistory result;
     // Версия 1 предшествует сохраняемой истории и поэтому разворачивается в единственный снимок.
     if (versionValue == 1) {
@@ -585,6 +670,8 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         }
         if (!parsePerspective(stateObject.value("perspective"), &state, error, int(versionValue)))
             return false;
+        if (!parseGuides(stateObject.value("guides"), &state, error, int(versionValue)))
+            return false;
         result.states.append(state);
     }
     for (const auto &value : labels) {
@@ -593,7 +680,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         result.labels.append(value.toString());
     }
     result.index = int(indexValue);
-    if (!samePersistentState(result.states[result.index], current, versionValue >= 9))
+    if (!samePersistentState(result.states[result.index], current, int(versionValue)))
         return fail(error,
                     QCoreApplication::translate("Project", "Текущее состояние не совпадает с историей документа."));
     *history = result;
