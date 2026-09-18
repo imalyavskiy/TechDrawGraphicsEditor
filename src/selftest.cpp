@@ -52,6 +52,7 @@ struct ProjectFixture {
     QString projectPath;
 };
 
+/// Проверяет реестр типов, copy-on-write, композицию, миниатюру и кодек растрового слоя.
 void testLayerArchitecture() {
     QImage source(24, 16, QImage::Format_ARGB32_Premultiplied);
     source.fill(QColor("#b94c42"));

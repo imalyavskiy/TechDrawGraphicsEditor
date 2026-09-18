@@ -7,14 +7,17 @@
 #include <QUuid>
 
 namespace {
+/// Записывает диагностическое сообщение и возвращает `false` из проверок кодека.
 bool fail(QString *error, const QString &message) {
     if (error)
         *error = message;
     return false;
 }
 
+/// Выводит растровое содержимое с общими смещением, видимостью и непрозрачностью записи.
 class RasterLayerRenderer final : public LayerRenderer {
 public:
+    /// Рисует QImage в координатах документа, не изменяя содержимое.
     void render(QPainter &painter,
                 const LayerEntry &entry,
                 const LayerContent &content,
@@ -32,8 +35,10 @@ public:
     }
 };
 
+/// Преобразует растровое содержимое в PNG-ресурс контейнера и обратно.
 class RasterLayerCodec final : public LayerCodec {
 public:
+    /// Кодирует изображение и записывает свойства его альфа-канала в манифест.
     bool encode(const LayerContent &content,
                 const QString &resourceRoot,
                 QJsonObject *manifest,
@@ -85,7 +90,7 @@ public:
         return result;
     }
 };
-} 
+} // namespace
 
 const QString &LayerTypes::raster() {
     static const QString id = QStringLiteral("raster");
@@ -257,3 +262,4 @@ bool RasterLayerContent::equals(const LayerContent &other) const {
 }
 
 qint64 RasterLayerContent::estimatedBytes() const { return image.sizeInBytes(); }
+    /// Декодирует проверенный PNG ожидаемого размера и восстанавливает свойства прозрачности.
