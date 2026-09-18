@@ -196,6 +196,7 @@ void testLayerPanel() {
     panel.close();
 }
 
+/// Проверяет контекстное стирание цветом Back или до прозрачности и запрет рисования по слою.
 void testLayerAwareEraser() {
     Canvas canvas;
     canvas.resize(700, 500);
