@@ -123,9 +123,10 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
                                        const QString &settingsKey,
                                        bool initiallyVisible,
                                        int defaultWidth,
-                                       QMainWindow *owner)
+                                       QMainWindow *owner,
+                                       int edgeOrder)
     : QDockWidget(title, owner), owner_(owner), area_(area), settingsKey_(settingsKey),
-      minimumPanelWidth_(defaultWidth), preferredWidth_(defaultWidth) {
+      edgeOrder_(edgeOrder), minimumPanelWidth_(defaultWidth), preferredWidth_(defaultWidth) {
     setAllowedAreas(area);
     setFeatures(QDockWidget::NoDockWidgetFeatures);
     setMinimumWidth(minimumPanelWidth_);
@@ -195,28 +196,10 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     overlayLayout_->setContentsMargins(0, 0, 0, 0);
     overlay_->hide();
 
-    tabDock_ = new QDockWidget(owner_);
-    tabDock_->setObjectName(settingsKey_ + "AutoHideStrip");
-    tabDock_->setAllowedAreas(area_);
-    tabDock_->setFeatures(QDockWidget::NoDockWidgetFeatures);
-    auto *emptyTabTitleBar = new QWidget(tabDock_);
-    emptyTabTitleBar->setFixedHeight(0);
-    tabDock_->setTitleBarWidget(emptyTabTitleBar);
-    auto *tabHost = new QWidget(tabDock_);
-    auto *tabLayout = new QVBoxLayout(tabHost);
-    tabLayout->setContentsMargins(area_ == Qt::LeftDockWidgetArea ? 0 : 4,
-                                 2,
-                                 area_ == Qt::LeftDockWidgetArea ? 4 : 0,
-                                 0);
-    tabLayout->setSpacing(0);
-    edgeTab_ = new EdgeTabButton(title, area_, tabHost);
+    edgeTab_ = new EdgeTabButton(title, area_, owner_);
     edgeTab_->setObjectName(settingsKey_ + "AutoHideTab");
-    tabLayout->addWidget(edgeTab_);
-    tabLayout->addStretch();
-    tabDock_->setWidget(tabHost);
-    tabDock_->setFixedWidth(edgeTab_->sizeHint().width() + 6);
-    owner_->addDockWidget(area_, tabDock_);
-    tabDock_->hide();
+    edgeTab_->setProperty("edgeOrder", edgeOrder_);
+    edgeTab_->hide();
 
     visibilityAction_ = new QAction(title, owner_);
     visibilityAction_->setCheckable(true);
@@ -262,6 +245,49 @@ void AutoHideDockWidget::reveal() {
 
 bool AutoHideDockWidget::isPinned() const {
     return pinned_;
+}
+
+void AutoHideDockWidget::attachEdgeTab() {
+    if (tabStrip_)
+        return;
+    const QString stripName = area_ == Qt::LeftDockWidgetArea ? "leftAutoHideStrip" : "rightAutoHideStrip";
+    tabStrip_ = owner_->findChild<QToolBar *>(stripName, Qt::FindDirectChildrenOnly);
+    QVBoxLayout *tabLayout = nullptr;
+    if (!tabStrip_) {
+        tabStrip_ = new QToolBar(owner_);
+        tabStrip_->setObjectName(stripName);
+        tabStrip_->setAllowedAreas(area_ == Qt::LeftDockWidgetArea ? Qt::LeftToolBarArea : Qt::RightToolBarArea);
+        tabStrip_->setMovable(false);
+        tabStrip_->setFloatable(false);
+        tabStrip_->setOrientation(Qt::Vertical);
+        tabStrip_->setContentsMargins(0, 0, 0, 0);
+        auto *tabHost = new QWidget(tabStrip_);
+        tabHost->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        tabLayout = new QVBoxLayout(tabHost);
+        tabLayout->setContentsMargins(area_ == Qt::LeftDockWidgetArea ? 0 : 4,
+                                     2,
+                                     area_ == Qt::LeftDockWidgetArea ? 4 : 0,
+                                     0);
+        tabLayout->setSpacing(0);
+        tabLayout->addStretch();
+        tabStrip_->addWidget(tabHost);
+        tabStrip_->setFixedWidth(edgeTab_->sizeHint().width() + 6);
+        owner_->addToolBar(area_ == Qt::LeftDockWidgetArea ? Qt::LeftToolBarArea : Qt::RightToolBarArea,
+                           tabStrip_);
+    } else {
+        QWidget *tabHost = tabStrip_->widgetForAction(tabStrip_->actions().constFirst());
+        tabLayout = qobject_cast<QVBoxLayout *>(tabHost->layout());
+    }
+    edgeTab_->setParent(tabLayout->parentWidget());
+    int insertIndex = 0;
+    while (insertIndex < tabLayout->count() - 1) {
+        QWidget *existing = tabLayout->itemAt(insertIndex)->widget();
+        if (existing && existing->property("edgeOrder").toInt() > edgeOrder_)
+            break;
+        ++insertIndex;
+    }
+    tabLayout->insertWidget(insertIndex, edgeTab_);
+    applyVisibility();
 }
 
 void AutoHideDockWidget::collapseToTab() {
@@ -314,14 +340,20 @@ void AutoHideDockWidget::applyVisibility() {
     const bool enabled = visibilityAction_->isChecked();
     if (pinned_) {
         overlay_->hide();
-        tabDock_->hide();
+        edgeTab_->hide();
         QDockWidget::setVisible(enabled);
     } else {
         QDockWidget::hide();
         overlay_->hide();
-        tabDock_->setVisible(enabled);
+        edgeTab_->setVisible(enabled);
     }
-    QTimer::singleShot(0, this, &AutoHideDockWidget::updateFloatingGeometry);
+    updateEdgeStripVisibility();
+    QTimer::singleShot(0, this, [this] {
+        const auto siblings = owner_->findChildren<AutoHideDockWidget *>(QString(), Qt::FindDirectChildrenOnly);
+        for (AutoHideDockWidget *sibling : siblings)
+            if (sibling->area_ == area_)
+                sibling->updateFloatingGeometry();
+    });
 }
 
 void AutoHideDockWidget::movePanelTo(QWidget *host, QVBoxLayout *layout) {
@@ -353,8 +385,13 @@ void AutoHideDockWidget::updateFloatingGeometry() {
         return;
     const int width = qBound(minimumPanelWidth_,
                              preferredWidth_,
-                             qMax(minimumPanelWidth_, central.width() - 48));
-    const int overlayX = area_ == Qt::LeftDockWidgetArea ? central.left() : central.right() - width + 1;
+                             qMax(minimumPanelWidth_, owner_->width() - 48));
+    const int innerEdge = area_ == Qt::LeftDockWidgetArea
+                              ? (tabStrip_ && tabStrip_->isVisible() ? tabStrip_->geometry().right() + 1
+                                                                    : central.left())
+                              : (tabStrip_ && tabStrip_->isVisible() ? tabStrip_->geometry().left() - 1
+                                                                    : central.right());
+    const int overlayX = area_ == Qt::LeftDockWidgetArea ? innerEdge : innerEdge - width + 1;
     overlay_->setGeometry(overlayX, central.top(), width, central.height());
     if (overlay_->isVisible())
         overlay_->raise();
@@ -365,4 +402,14 @@ void AutoHideDockWidget::updatePinButton() {
     pinButton_->setIcon(pinIcon(pinned_));
     pinButton_->setToolTip(pinned_ ? tr("Открепить панель") : tr("Закрепить панель"));
     pinButton_->setAccessibleName(pinButton_->toolTip());
+}
+
+void AutoHideDockWidget::updateEdgeStripVisibility() {
+    if (!tabStrip_)
+        return;
+    bool anyVisible = false;
+    const auto tabs = tabStrip_->findChildren<EdgeTabButton *>();
+    for (const EdgeTabButton *tab : tabs)
+        anyVisible = anyVisible || !tab->isHidden();
+    tabStrip_->setVisible(anyVisible);
 }

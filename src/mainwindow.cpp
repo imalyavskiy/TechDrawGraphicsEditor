@@ -412,6 +412,7 @@ void MainWindow::setupMenusAndToolbars() {
     toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsPanel);
     toolsPanelLayout->addWidget(toolProperties_, 1);
     toolsDock_->setPanelWidget(toolsPanel);
+    toolsDock_->attachEdgeTab();
     connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
@@ -658,13 +659,15 @@ void MainWindow::setupPerspectivePanel() {
 }
 
 void MainWindow::setupLayersPanel() {
-    layersDock_ = new AutoHideDockWidget(tr("Слои"), Qt::RightDockWidgetArea, "layers", true, 330, this);
+    layersDock_ = new AutoHideDockWidget(tr("Слои"), Qt::RightDockWidgetArea, "layers", true, 330, this, 1);
     layersDock_->setObjectName("layersDock");
     layerPanel_ = new LayerPanel(canvas_, layersDock_);
     layersDock_->setPanelWidget(layerPanel_);
     addDockWidget(Qt::RightDockWidgetArea, layersDock_);
     splitDockWidget(perspectiveDock_, layersDock_, Qt::Vertical);
     resizeDocks({perspectiveDock_, layersDock_}, {440, 260}, Qt::Vertical);
+    perspectiveDock_->attachEdgeTab();
+    layersDock_->attachEdgeTab();
 }
 
 void MainWindow::connectPerspectiveControls() {

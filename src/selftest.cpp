@@ -598,7 +598,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     QApplication::processEvents();
     auto *toolsPin = window.findChild<QToolButton *>("toolsPanelPin");
     auto *toolsTitle = window.findChild<QLabel *>("toolsPanelTitle");
-    auto *toolsStrip = window.findChild<QDockWidget *>("toolsAutoHideStrip");
+    auto *toolsStrip = window.findChild<QToolBar *>("leftAutoHideStrip");
     auto *toolsTab = window.findChild<QToolButton *>("toolsAutoHideTab");
     auto *toolsOverlay = window.findChild<QWidget *>("toolsAutoHideOverlay");
     require(toolsPin && toolsTitle && toolsStrip && toolsTab && toolsOverlay && toolsDock->isPinned() &&
@@ -760,7 +760,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *perspectiveScroll = window.findChild<QScrollArea *>("perspectiveScroll");
     auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
     auto *perspectiveTitle = window.findChild<QLabel *>("perspectivePanelTitle");
-    auto *perspectiveStrip = window.findChild<QDockWidget *>("perspectiveAutoHideStrip");
+    auto *perspectiveStrip = window.findChild<QToolBar *>("rightAutoHideStrip");
     auto *perspectiveTab = window.findChild<QToolButton *>("perspectiveAutoHideTab");
     auto *perspectiveOverlay = window.findChild<QWidget *>("perspectiveAutoHideOverlay");
     auto *horizonToggle = window.findChild<QToolButton *>("horizonSettingsToggle");
@@ -778,8 +778,13 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 perspectiveScroll->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
                 viewMenu->actions().contains(perspectivePanelToggle) &&
                 perspectivePin && perspectiveTitle && perspectiveStrip && perspectiveTab && perspectiveOverlay &&
-                perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x() &&
-                perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
+                perspectiveDock->windowTitle() == QStringLiteral("Перспектива"),
+            "perspective panel title, scroll area, edge tab, or View command is invalid");
+    perspectivePanelToggle->setChecked(true);
+    QApplication::processEvents();
+    require(perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x(),
+            "perspective panel pin must face the center of the window");
+    require(horizonToggle &&
                 horizonContent && verticalToggle && commonToggle && pointsToggle && selectedPointToggle &&
                 horizonFrame && verticalFrame && commonFrame && pointsFrame && selectedPointFrame &&
                 horizonFrame->frameShape() == QFrame::StyledPanel &&
@@ -787,9 +792,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 commonFrame->frameShape() == QFrame::StyledPanel && pointsFrame->frameShape() == QFrame::StyledPanel &&
                 selectedPointFrame->frameShape() == QFrame::StyledPanel &&
                 horizonToggle->arrowType() == Qt::DownArrow && horizonSettings->property("expanded").toBool(),
-            "perspective rollout headers, borders, or panel title are invalid");
-    perspectivePanelToggle->setChecked(true);
-    QApplication::processEvents();
+            "perspective rollout headers or borders are invalid");
     perspectivePin->click();
     QApplication::processEvents();
     require(!perspectiveDock->isPinned() && perspectiveStrip->isVisible() && perspectiveTab->isVisible() &&
@@ -803,7 +806,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "the right auto-hide tab must leave a small gap after the ruler");
     perspectiveTab->click();
     QApplication::processEvents();
-    require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
+    require(perspectiveOverlay->isVisible() &&
+                perspectiveOverlay->geometry().contains(layersDock->geometry().center()),
+            "the right edge tab must reveal the perspective panel over pinned panels in its column");
     QMouseEvent outsidePerspective(QEvent::MouseButtonPress,
                                    QPointF(2, 2),
                                    Qt::LeftButton,
@@ -1072,8 +1077,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     defaultsWindow.close();
     auto *collapsePanels = window.findChild<QToolButton *>("collapsePanelsButton");
     auto *layersTab = window.findChild<QToolButton *>("layersAutoHideTab");
+    auto *layersOverlay = window.findChild<QWidget *>("layersAutoHideOverlay");
     auto *zoomPercent = window.findChild<QDoubleSpinBox *>("zoomPercent");
-    require(collapsePanels && layersTab && zoomPercent && !collapsePanels->toolTip().isEmpty() &&
+    require(collapsePanels && layersTab && layersOverlay && zoomPercent && !collapsePanels->toolTip().isEmpty() &&
                 collapsePanels->mapTo(&window, QPoint()).x() > zoomPercent->mapTo(&window, QPoint()).x(),
             "bottom-right collapse-panels button is missing or misplaced");
     toolsToolbarToggle->setChecked(true);
@@ -1092,6 +1098,22 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "collapse-panels button did not move every open panel to its edge tab");
     require(canvas->width() > canvasWidthBeforeCollapse && canvas->zoom() < 16,
             "collapse-panels button did not refit the canvas in the released workspace");
+    require(perspectiveStrip->geometry().right() == window.rect().right(),
+            "right auto-hide tabs must occupy the outermost edge of the window");
+    require(toolsStrip->geometry().left() == window.rect().left(),
+            "left auto-hide tabs must occupy the outermost edge of the window");
+    require(perspectiveTab->mapTo(perspectiveStrip, QPoint()).y() <
+                    layersTab->mapTo(perspectiveStrip, QPoint()).y() &&
+                layersTab->mapTo(perspectiveStrip, QPoint()).y() ==
+                    perspectiveTab->mapTo(perspectiveStrip, QPoint()).y() + perspectiveTab->height(),
+            "right auto-hide tabs must form one contiguous column in panel order");
+    layersTab->click();
+    QApplication::processEvents();
+    require(layersOverlay->isVisible() &&
+                layersOverlay->geometry().top() == window.centralWidget()->geometry().top(),
+            "an auto-hidden panel must open from the top of the available workspace");
+    collapsePanels->click();
+    QApplication::processEvents();
     QSettings().remove("perspective/view");
 }
 

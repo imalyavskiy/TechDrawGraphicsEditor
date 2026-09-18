@@ -6,6 +6,7 @@ class QAction;
 class QFrame;
 class QMainWindow;
 class QToolButton;
+class QToolBar;
 class QVBoxLayout;
 
 /// Боковая панель, которую можно закрепить либо свернуть во вкладку у края окна.
@@ -19,9 +20,11 @@ public:
                        const QString &settingsKey,
                        bool initiallyVisible,
                        int defaultWidth,
-                       QMainWindow *owner);
+                       QMainWindow *owner,
+                       int edgeOrder = 0);
     /// Помещает пользовательское содержимое под общим заголовком с кнопкой закрепления.
     void setPanelWidget(QWidget *widget);
+    void attachEdgeTab();
     /// Возвращает независимую команду полной видимости для меню «Вид».
     QAction *visibilityAction() const;
     /// Показывает закреплённую панель либо временно раскрывает откреплённую.
@@ -39,6 +42,7 @@ private:
     QMainWindow *owner_ = nullptr;
     Qt::DockWidgetArea area_ = Qt::LeftDockWidgetArea;
     QString settingsKey_;
+    int edgeOrder_ = 0;
     int minimumPanelWidth_ = 220;
     int preferredWidth_ = 260;
     bool pinned_ = true;
@@ -49,7 +53,7 @@ private:
     QToolButton *pinButton_ = nullptr;
     QFrame *overlay_ = nullptr;
     QVBoxLayout *overlayLayout_ = nullptr;
-    QDockWidget *tabDock_ = nullptr;
+    QToolBar *tabStrip_ = nullptr;
     QToolButton *edgeTab_ = nullptr;
     QAction *visibilityAction_ = nullptr;
 
@@ -67,4 +71,5 @@ private:
     void updateFloatingGeometry();
     /// Обновляет пиктограмму и подсказку кнопки закрепления.
     void updatePinButton();
+    void updateEdgeStripVisibility();
 };
