@@ -127,6 +127,8 @@ private:
     int symmetricPartnerIndex(int movedIndex) const;
     void updateSymmetricPoint(int movedIndex, int partnerIndex = -1);
     QVector<int> attachedPointIndices(const QString &targetId) const;
+    void moveHorizon(double imageY);
+    void moveVertical(double imageX);
     enum PerspectiveHit { NoPerspectiveHit = -1, VerticalHit = -2, HorizonHit = -3 };
     int perspectiveHit(QPointF viewPosition) const;
     void updatePerspectiveCursor(QPointF viewPosition);
