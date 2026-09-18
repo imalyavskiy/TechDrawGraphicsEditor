@@ -11,7 +11,7 @@ class QComboBox;
 class RolloutSection;
 class StrokePreview;
 
-/// Единая панель параметров карандаша, кисти и ластика.
+/// Показывает параметры выбранного рисующего или вспомогательного инструмента.
 class ToolPropertiesPanel final : public QWidget {
     Q_OBJECT
 
@@ -22,7 +22,9 @@ public:
     void setColors(const QColor &front, const QColor &back);
     /// Передаёт фокус полю ширины для команды меню параметров инструмента.
     void focusWidth();
+    /// Выбирает набор видимых секций по текущему инструменту Canvas.
     void setCanvasTool(int tool);
+    /// Синхронизирует комбинированный список с целью перемещения без повторного сигнала.
     void setMoveTarget(int target);
 
 signals:
@@ -32,6 +34,7 @@ signals:
     void backColorRequested();
     /// Запрашивает обмен общих цветов Front и Back.
     void swapColorsRequested();
+    /// Передаёт выбранную пользователем цель универсального инструмента перемещения.
     void moveTargetRequested(int target);
 
 private:

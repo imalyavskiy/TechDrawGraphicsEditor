@@ -10,8 +10,9 @@ class QPainter;
 class Canvas : public QWidget {
     Q_OBJECT
 public:
-    /// Перечисляет режимы ввода: три растровых инструмента, панорамирование и редактирование перспективы.
+    /// Перечисляет режимы ввода: три растровых инструмента, перемещение объектов и редактирование перспективы.
     enum Tool { Pencil, Brush, Eraser, Move, Perspective };
+    /// Определяет, какой класс объектов захватывает универсальный инструмент перемещения.
     enum MoveTarget { GuidesTarget, ActiveLayerTarget };
     /// Создаёт холст с начальным документом и пустой историей Undo/Redo.
     explicit Canvas(QWidget *parent = nullptr);
@@ -61,7 +62,9 @@ public:
     Tool tool() const {
         return tool_;
     }
+    /// Выбирает направляющие либо активный слой как явную цель инструмента перемещения.
     void setMoveTarget(MoveTarget target);
+    /// Возвращает текущую цель универсального инструмента перемещения.
     MoveTarget moveTarget() const { return moveTarget_; }
     /// Временно показывает или скрывает все документные направляющие без изменения истории.
     void setGuidesVisible(bool visible);
@@ -203,6 +206,7 @@ signals:
     void layersChanged();
     /// Сообщает об автоматической смене инструмента после завершённого жеста на холсте.
     void toolChanged(Canvas::Tool tool);
+    /// Сообщает панели свойств об автоматической смене цели перемещения.
     void moveTargetChanged(Canvas::MoveTarget target);
     /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
     void selectedGuideChanged(const GuideId &id);
@@ -300,7 +304,9 @@ private:
     int perspectiveHit(QPointF viewPosition) const;
     /// Выбирает курсор по доступности и состоянию фиксации объекта под указателем.
     void updatePerspectiveCursor(QPointF viewPosition);
+    /// Возвращает ближайшую направляющую либо пару обычных направляющих в точке их пересечения.
     QVector<int> guideHits(QPointF viewPosition) const;
+    /// Показывает курсор захвата или запрета согласно явной цели инструмента перемещения.
     void updateMoveCursor(QPointF viewPosition);
     /// Возвращает прямоугольник внутри четырёх линеек, доступный для холста и оснастки.
     QRectF viewportRect() const;
