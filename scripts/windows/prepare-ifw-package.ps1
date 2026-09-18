@@ -22,8 +22,11 @@ foreach ($required in @('CMakeLists.txt', 'installer\product.json', 'resources\t
     }
 }
 
-$product = Get-Content -LiteralPath (Join-Path $projectRootFull 'installer\product.json') -Raw | ConvertFrom-Json
-$cmake = Get-Content -LiteralPath (Join-Path $projectRootFull 'CMakeLists.txt') -Raw
+# Windows PowerShell 5.1 otherwise treats UTF-8 files without a BOM as the
+# current ANSI code page. Every repository text input is explicitly decoded so
+# localized product names cannot be damaged while expanding the QtIFW files.
+$product = Get-Content -LiteralPath (Join-Path $projectRootFull 'installer\product.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$cmake = Get-Content -LiteralPath (Join-Path $projectRootFull 'CMakeLists.txt') -Raw -Encoding UTF8
 $versionMatch = [regex]::Match($cmake, 'project\s*\(\s*TechDraw\s+VERSION\s+([0-9]+(?:\.[0-9]+)+)', 'IgnoreCase')
 if (-not $versionMatch.Success) { throw 'Cannot read the TechDraw version from CMakeLists.txt.' }
 $productVersion = $versionMatch.Groups[1].Value
@@ -75,7 +78,7 @@ $portableFiles | Set-Content -LiteralPath (Join-Path $migrationDirectory 'payloa
 # Expands a source template using the one shared metadata object.
 function Expand-TechDrawTemplate {
     param([string]$Source, [string]$Destination)
-    $text = Get-Content -LiteralPath $Source -Raw
+    $text = Get-Content -LiteralPath $Source -Raw -Encoding UTF8
     $replacements = [ordered]@{
         '@PRODUCT_ID@' = [string]$product.productId
         '@PRODUCT_NAME@' = [string]$product.name
@@ -102,6 +105,15 @@ Expand-TechDrawTemplate (Join-Path $metaSource 'component.qs') (Join-Path $metaD
 Get-ChildItem -LiteralPath $metaSource -File |
     Where-Object { $_.Name -notin @('package.xml.in', 'component.qs') } |
     Copy-Item -Destination $metaDirectory
+
+# Fail packaging before binarycreator when a future script change corrupts the
+# localized title or the component source while crossing PowerShell encodings.
+$generatedConfig = Get-Content -LiteralPath (Join-Path $configDirectory 'config.xml') -Raw -Encoding UTF8
+$generatedComponent = Get-Content -LiteralPath (Join-Path $metaDirectory 'component.qs') -Raw -Encoding UTF8
+if (-not $generatedConfig.Contains([string]$product.displayName) -or
+    -not $generatedComponent.Contains([string]$product.displayName)) {
+    throw 'Generated QtIFW files failed the UTF-8 localization check.'
+}
 
 [ordered]@{
     product = $product.name
