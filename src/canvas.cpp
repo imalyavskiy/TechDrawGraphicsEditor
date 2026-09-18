@@ -30,6 +30,7 @@ QString coordinateLabel(double value) {
     return std::abs(value) >= 1000 ? QString::number(value, 'g', 4)
                                    : QString::number(value, 'f', std::abs(value) < 10 ? 1 : 0);
 }
+/// Обрезает односторонний луч прямоугольником, не добавляя противоположную ветвь за его началом.
 bool clippedRay(QPointF origin, QPointF direction, const QRectF &rect, QLineF *result) {
     double minimum = 0;
     double maximum = std::numeric_limits<double>::infinity();

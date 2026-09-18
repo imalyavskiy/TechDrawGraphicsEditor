@@ -88,6 +88,7 @@ void testGuideGeometry() {
             "common nearest-guide query did not select the closest geometry");
 }
 
+/// Имитирует вытягивание направляющих с четырёх линеек и проверяет историю, отмену и видимость.
 void testOrdinaryGuideCreation() {
     Canvas canvas;
     canvas.resize(800, 600);

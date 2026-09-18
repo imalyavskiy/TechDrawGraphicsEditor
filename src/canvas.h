@@ -60,11 +60,17 @@ public:
     Tool tool() const {
         return tool_;
     }
+    /// Временно показывает или скрывает все документные направляющие без изменения истории.
     void setGuidesVisible(bool visible);
+    /// Возвращает текущее состояние отображения направляющих.
     bool guidesVisible() const { return guidesVisible_; }
+    /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
     const GuideId &selectedGuideId() const { return selectedGuideId_; }
+    /// Создаёт обычную направляющую в точной координате документа и добавляет команду истории.
     void addGuide(GuideType type, double position);
+    /// Удаляет выбранную направляющую одной отменяемой командой.
     void removeSelectedGuide();
+    /// Удаляет весь набор направляющих одной отменяемой командой.
     void removeAllGuides();
     /// Устанавливает основной цвет карандаша и кисти.
     void setFront(QColor color) {
@@ -188,7 +194,9 @@ signals:
     void selectedPointChanged(int index);
     /// Сообщает панели и инструментам об изменении структуры, выбора или свойств слоёв.
     void layersChanged();
+    /// Сообщает об автоматической смене инструмента после завершённого жеста на холсте.
     void toolChanged(Canvas::Tool tool);
+    /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
     void selectedGuideChanged(const GuideId &id);
 
 protected:
@@ -281,6 +289,8 @@ private:
     void drawRulers(QPainter &painter);
     /// Находит изменяемую запись слоя по идентификатору.
     LayerEntry *editableLayerEntry(const QString &id);
+    /// Определяет, начинается ли жест на одной из четырёх линеек, и возвращает тип направляющей.
     bool rulerGuideType(QPointF viewPosition, GuideType *type) const;
+    /// Создаёт направляющую при отпускании над документом либо отменяет жест за его пределами.
     void finishGuideCreation(QPointF viewPosition);
 };
