@@ -12,6 +12,29 @@ SOURCE_FILES = (
     "src/rolloutsection.cpp",
 )
 CYRILLIC = re.compile(r"[\u0400-\u04ff]")
+USER_TEXT_CALLS = {
+    "QAction",
+    "QLabel",
+    "addAction",
+    "addMenu",
+    "addRow",
+    "addTab",
+    "critical",
+    "drawText",
+    "getColor",
+    "getOpenFileName",
+    "getSaveFileName",
+    "information",
+    "question",
+    "setPlaceholderText",
+    "setPrefix",
+    "setSuffix",
+    "setText",
+    "setToolTip",
+    "setWindowTitle",
+    "showMessage",
+    "warning",
+}
 
 
 def tokens(text):
@@ -74,8 +97,10 @@ def audit(path):
         elif kind == "symbol" and value == ")":
             if stack:
                 stack.pop()
-        elif kind == "string" and CYRILLIC.search(value):
-            if not any(callee in {"tr", "translate", "QT_TRANSLATE_NOOP"} for callee in stack):
+        elif kind == "string":
+            translated = any(callee in {"tr", "translate", "QT_TRANSLATE_NOOP"} for callee in stack)
+            visible_call = bool(stack) and stack[-1] in USER_TEXT_CALLS
+            if not translated and (CYRILLIC.search(value) or visible_call):
                 violations.append((line, value.replace("\n", "\\n")[:100]))
         previous = (kind, value)
     return violations

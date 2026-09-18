@@ -501,13 +501,13 @@ void MainWindow::setupPerspectivePanel() {
     rayStartOpacity_ = new QSpinBox;
     rayStartOpacity_->setObjectName("rayStartOpacity");
     rayStartOpacity_->setRange(0, 100);
-    rayStartOpacity_->setSuffix(" %");
+    rayStartOpacity_->setSuffix(tr(" %"));
     rayStartOpacity_->setKeyboardTracking(false);
     commonForm->addRow(tr("Непрозрачность у точки"), rayStartOpacity_);
     rayEndOpacity_ = new QSpinBox;
     rayEndOpacity_->setObjectName("rayEndOpacity");
     rayEndOpacity_->setRange(0, 100);
-    rayEndOpacity_->setSuffix(" %");
+    rayEndOpacity_->setSuffix(tr(" %"));
     rayEndOpacity_->setKeyboardTracking(false);
     commonForm->addRow(tr("Итоговая непрозрачность"), rayEndOpacity_);
     rayFadeLength_ = new QSpinBox;
@@ -555,7 +555,7 @@ void MainWindow::setupPerspectivePanel() {
     horizonOpacity_ = new QSpinBox;
     horizonOpacity_->setObjectName("horizonOpacity");
     horizonOpacity_->setRange(0, 100);
-    horizonOpacity_->setSuffix(" %");
+    horizonOpacity_->setSuffix(tr(" %"));
     horizonOpacity_->setKeyboardTracking(false);
     horizonForm->addRow(tr("Непрозрачность"), horizonOpacity_);
     horizonWidth_ = new QDoubleSpinBox;
@@ -596,7 +596,7 @@ void MainWindow::setupPerspectivePanel() {
     verticalOpacity_ = new QSpinBox;
     verticalOpacity_->setObjectName("verticalOpacity");
     verticalOpacity_->setRange(0, 100);
-    verticalOpacity_->setSuffix(" %");
+    verticalOpacity_->setSuffix(tr(" %"));
     verticalOpacity_->setKeyboardTracking(false);
     verticalForm->addRow(tr("Непрозрачность"), verticalOpacity_);
     verticalWidth_ = new QDoubleSpinBox;
@@ -1013,7 +1013,7 @@ void MainWindow::updateState() {
     horizonVisible_->setChecked(canvas_->state().horizonVisible);
     horizonLocked_->setChecked(canvas_->state().horizonLocked);
     horizonSymmetry_->setChecked(canvas_->state().horizonSymmetry);
-    horizonPosition_->setSuffix(coordinatePercent_ ? " %" : tr(" px"));
+    horizonPosition_->setSuffix(coordinatePercent_ ? tr(" %") : tr(" px"));
     horizonPosition_->setValue(displayedY(canvas_->state().horizonY));
     horizonUnits_->setCurrentIndex(coordinatePercent_ ? 0 : 1);
     verticalOpacity_->setValue(canvas_->state().verticalOpacity);
@@ -1021,7 +1021,7 @@ void MainWindow::updateState() {
     verticalVisible_->setChecked(canvas_->state().verticalVisible);
     verticalLocked_->setChecked(canvas_->state().verticalLocked);
     verticalSymmetry_->setChecked(canvas_->state().verticalSymmetry);
-    verticalPosition_->setSuffix(coordinatePercent_ ? " %" : tr(" px"));
+    verticalPosition_->setSuffix(coordinatePercent_ ? tr(" %") : tr(" px"));
     verticalPosition_->setValue(displayedX(canvas_->state().verticalX));
     verticalUnits_->setCurrentIndex(coordinatePercent_ ? 0 : 1);
     const auto &points = canvas_->state().vanishingPoints;
@@ -1147,8 +1147,8 @@ void MainWindow::updateState() {
     pointY_->setEnabled(hasPoint);
     pointUnits_->setEnabled(hasPoint);
     pointAttachment_->setEnabled(hasPoint);
-    pointX_->setSuffix(coordinatePercent_ ? " %" : tr(" px"));
-    pointY_->setSuffix(coordinatePercent_ ? " %" : tr(" px"));
+    pointX_->setSuffix(coordinatePercent_ ? tr(" %") : tr(" px"));
+    pointY_->setSuffix(coordinatePercent_ ? tr(" %") : tr(" px"));
     pointUnits_->setCurrentIndex(coordinatePercent_ ? 0 : 1);
     if (hasPoint) {
         pointX_->setValue(displayedX(points[selected].position.x()));
