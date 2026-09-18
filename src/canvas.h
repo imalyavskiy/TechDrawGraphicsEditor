@@ -74,6 +74,10 @@ public:
     void setSnapToGuides(bool enabled);
     /// Возвращает состояние единого режима прилипания к направляющим.
     bool snapToGuides() const { return snapToGuides_; }
+    void setPerspectiveGuideCreationEnabled(bool enabled);
+    bool perspectiveGuideCreationEnabled() const { return perspectiveGuideCreationEnabled_; }
+    void setPerspectiveGuideAngleThreshold(double degrees);
+    double perspectiveGuideAngleThreshold() const { return perspectiveGuideAngleThreshold_; }
     /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
     const GuideId &selectedGuideId() const { return selectedGuideId_; }
     /// Создаёт обычную направляющую в точной координате документа и добавляет команду истории.
@@ -208,6 +212,7 @@ signals:
     void toolChanged(Canvas::Tool tool);
     /// Сообщает панели свойств об автоматической смене цели перемещения.
     void moveTargetChanged(Canvas::MoveTarget target);
+    void perspectiveGuideCreationChanged(bool enabled);
     /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
     void selectedGuideChanged(const GuideId &id);
 
@@ -268,8 +273,14 @@ private:
     bool guidesVisible_ = true;
     bool snapToGuides_ = true;
     bool creatingGuide_ = false;
+    bool perspectiveGuideCreationEnabled_ = false;
+    bool creatingPerspectiveGuide_ = false;
     GuideType creatingGuideType_ = GuideType::Horizontal;
     double guidePreviewPosition_ = 0;
+    double perspectiveGuideAngleThreshold_ = 12;
+    QPointF perspectiveGuideSource_;
+    QPointF perspectiveGuidePointer_;
+    QString perspectiveGuideCandidateId_;
     GuideId selectedGuideId_;
     GuideId hoveredGuideId_;
     QVector<GuideId> movingGuideIds_;
@@ -318,4 +329,5 @@ private:
     bool rulerGuideType(QPointF viewPosition, GuideType *type) const;
     /// Создаёт направляющую при отпускании над документом либо отменяет жест за его пределами.
     void finishGuideCreation(QPointF viewPosition);
+    void finishPerspectiveGuideCreation();
 };

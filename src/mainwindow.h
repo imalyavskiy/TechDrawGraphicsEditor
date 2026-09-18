@@ -89,6 +89,7 @@ private:
     QAction *perspectiveAction_ = nullptr;
     QAction *showGuidesAction_ = nullptr;
     QAction *snapGuidesAction_ = nullptr;
+    QAction *perspectiveGuideAction_ = nullptr;
     QAction *removeSelectedGuideAction_ = nullptr;
     QAction *removeAllGuidesAction_ = nullptr;
     QMenu *viewMenu_ = nullptr;

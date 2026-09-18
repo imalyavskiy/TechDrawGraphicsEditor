@@ -84,6 +84,19 @@ QIcon snapIcon() {
     painter.drawLine(15, 19, 21, 19);
     return QIcon(image);
 }
+QIcon perspectiveGuideIcon() {
+    QPixmap image(24, 24);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#364152"), 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(QColor("#364152"));
+    painter.drawEllipse(QPointF(5, 5), 2.5, 2.5);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(QPointF(7, 7), QPointF(21, 21));
+    painter.drawLine(QPointF(11, 7), QPointF(21, 17));
+    return QIcon(image);
+}
 /// Строит открытый или закрытый глаз для переключателя видимости точки.
 QIcon eyeIcon(bool open) {
     QPixmap image(20, 20);
@@ -265,6 +278,8 @@ void MainWindow::initializeWindow() {
     canvas_->setRulerPercent(rulerPercent_);
     canvas_->setGuidesVisible(QSettings().value("view/guides/visible", true).toBool());
     canvas_->setSnapToGuides(QSettings().value("view/guides/snap", true).toBool());
+    canvas_->setPerspectiveGuideAngleThreshold(
+        QSettings().value("view/guides/perspectiveAngleThreshold", 12.0).toDouble());
     canvas_->setMoveTarget(Canvas::MoveTarget(qBound(0, QSettings().value("tools/moveTarget", 0).toInt(), 1)));
     DrawingState initialState = canvas_->state();
     applySavedPerspectiveDefaults(&initialState);
@@ -353,6 +368,11 @@ void MainWindow::setupMenusAndToolbars() {
         newGuide(GuideType::Vertical);
     });
     newVerticalGuide->setObjectName("newVerticalGuideAction");
+    perspectiveGuideAction_ = guidesMenu->addAction(perspectiveGuideIcon(), tr("Создать перспективную"));
+    perspectiveGuideAction_->setObjectName("newPerspectiveGuideAction");
+    perspectiveGuideAction_->setCheckable(true);
+    connect(perspectiveGuideAction_, &QAction::toggled, canvas_, &Canvas::setPerspectiveGuideCreationEnabled);
+    connect(canvas_, &Canvas::perspectiveGuideCreationChanged, perspectiveGuideAction_, &QAction::setChecked);
     guidesMenu->addSeparator();
     removeSelectedGuideAction_ = guidesMenu->addAction(tr("Удалить выбранную"), canvas_, &Canvas::removeSelectedGuide);
     removeSelectedGuideAction_->setObjectName("removeSelectedGuideAction");
@@ -392,6 +412,7 @@ void MainWindow::setupMenusAndToolbars() {
     mainToolbar_->addAction(redoAction);
     mainToolbar_->addSeparator();
     mainToolbar_->addAction(snapGuidesAction_);
+    mainToolbar_->addAction(perspectiveGuideAction_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -1257,6 +1278,13 @@ void MainWindow::updateState() {
     const int selected = canvas_->selectedPointIndex();
     vanishingPointsList_->setCurrentRow(selected);
     const bool hasPoint = selected >= 0 && selected < points.size();
+    bool selectedPointHasGuides = false;
+    if (hasPoint)
+        for (const auto &guide : canvas_->state().guides)
+            if (guide.type == GuideType::Perspective && guide.vanishingPointId == points[selected].id) {
+                selectedPointHasGuides = true;
+                break;
+            }
     for (int row = 0; row < points.size(); ++row) {
         auto *card = vanishingPointsList_->itemWidget(vanishingPointsList_->item(row));
         if (!card)
@@ -1288,7 +1316,10 @@ void MainWindow::updateState() {
             lock->setToolTip(points[row].locked ? tr("Снять фиксацию") : tr("Фиксировать"));
         }
     }
-    removePointButton_->setEnabled(hasPoint);
+    removePointButton_->setEnabled(hasPoint && !selectedPointHasGuides);
+    removePointButton_->setToolTip(selectedPointHasGuides
+                                       ? tr("Сначала удалите связанные перспективные направляющие")
+                                       : QString());
     selectedPointVisible_->setEnabled(hasPoint);
     selectedPointLocked_->setEnabled(hasPoint);
     gridColorButton_->setEnabled(hasPoint);
@@ -1360,6 +1391,13 @@ void MainWindow::showSettings() {
     rulerUnits->addItems({tr("Пиксели"), tr("Проценты")});
     rulerUnits->setCurrentIndex(rulerPercent_ ? 1 : 0);
     viewForm->addRow(tr("Единицы линеек"), rulerUnits);
+    auto *perspectiveGuideThreshold = new QDoubleSpinBox;
+    perspectiveGuideThreshold->setObjectName("perspectiveGuideAngleThreshold");
+    perspectiveGuideThreshold->setRange(1, 45);
+    perspectiveGuideThreshold->setDecimals(1);
+    perspectiveGuideThreshold->setSuffix(tr("°"));
+    perspectiveGuideThreshold->setValue(canvas_->perspectiveGuideAngleThreshold());
+    viewForm->addRow(tr("Порог выбора точки схода"), perspectiveGuideThreshold);
     viewForm->addRow(
         new QLabel(tr("Единицы числовых координат точек схода и горизонта выбираются отдельно в панели перспективы.")));
     tabs->addTab(viewPage, tr("Вид"));
@@ -1386,7 +1424,9 @@ void MainWindow::showSettings() {
         return;
     rulerPercent_ = rulerUnits->currentIndex() == 1;
     QSettings().setValue("view/rulers/percent", rulerPercent_);
+    QSettings().setValue("view/guides/perspectiveAngleThreshold", perspectiveGuideThreshold->value());
     canvas_->setRulerPercent(rulerPercent_);
+    canvas_->setPerspectiveGuideAngleThreshold(perspectiveGuideThreshold->value());
     positionLabel_->clear();
 }
 void MainWindow::showAbout() {

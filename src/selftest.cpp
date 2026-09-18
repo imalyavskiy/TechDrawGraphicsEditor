@@ -629,10 +629,11 @@ void testGuideMenus() {
     auto *removeAll = window.findChild<QAction *>("removeAllGuidesAction");
     auto *showGuides = window.findChild<QAction *>("showGuidesAction");
     auto *snapGuides = window.findChild<QAction *>("snapGuidesAction");
+    auto *perspectiveGuide = window.findChild<QAction *>("newPerspectiveGuideAction");
     auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
     require(imageMenu && guidesMenu && newHorizontal && newVertical && removeSelected && removeAll && showGuides &&
-                snapGuides && mainToolbar && imageMenu->actions().contains(guidesMenu->menuAction()) &&
-                mainToolbar->actions().contains(snapGuides),
+                snapGuides && perspectiveGuide && mainToolbar && imageMenu->actions().contains(guidesMenu->menuAction()) &&
+                mainToolbar->actions().contains(snapGuides) && mainToolbar->actions().contains(perspectiveGuide),
             "guide menu or shared toolbar snapping action is missing");
 
     bool horizontalDialogChecked = false;
@@ -677,6 +678,37 @@ void testGuideMenus() {
     removeAll->trigger();
     require(canvas->state().guides.isEmpty(), "remove all guides menu action failed");
     canvas->undoStack()->undo();
+
+    const QPointF source(400, 300);
+    perspectiveGuide->setChecked(true);
+    drag(canvas, source, QPointF(500, 276));
+    require(canvas->state().guides.size() == 3 &&
+                canvas->state().guides.last().type == GuideType::Perspective &&
+                canvas->state().guides.last().vanishingPointId == canvas->state().vanishingPoints[0].id &&
+                perspectiveGuide->isChecked() && canvas->perspectiveGuideCreationEnabled(),
+            "perspective guide gesture did not create a linked ray or synchronize its action");
+    const int pointCount = canvas->state().vanishingPoints.size();
+    canvas->removeSelectedVanishingPoint();
+    require(canvas->state().vanishingPoints.size() == pointCount,
+            "a vanishing point referenced by a perspective guide must not be deleted");
+    const double originalAngle = canvas->state().guides.last().angleRadians;
+    perspectiveGuide->setChecked(false);
+    canvas->setMoveTarget(Canvas::GuidesTarget);
+    canvas->setTool(Canvas::Move);
+    drag(canvas, source, QPointF(420, 390));
+    require(!qFuzzyCompare(canvas->state().guides.last().angleRadians + 4, originalAngle + 4) &&
+                canvas->state().vanishingPoints[0].position == QPointF(650, 240),
+            "moving a perspective guide must rotate it around its unchanged vanishing point");
+    canvas->undoStack()->undo();
+    canvas->removeSelectedGuide();
+    require(canvas->state().guides.size() == 2, "selected perspective guide removal failed");
+
+    perspectiveGuide->setChecked(true);
+    const int beforeRejectedPerspective = canvas->state().guides.size();
+    drag(canvas, source, QPointF(300, 324));
+    require(canvas->state().guides.size() == beforeRejectedPerspective,
+            "gesture outside the angular threshold must not create a perspective guide");
+    perspectiveGuide->setChecked(false);
 
     showGuides->setChecked(false);
     snapGuides->setChecked(false);
@@ -1131,19 +1163,23 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         auto *tabs = dialog ? dialog->findChild<QTabWidget *>("settingsTabs") : nullptr;
         auto *rulerUnits = dialog ? dialog->findChild<QComboBox *>("rulerUnits") : nullptr;
+        auto *guideThreshold = dialog ? dialog->findChild<QDoubleSpinBox *>("perspectiveGuideAngleThreshold") : nullptr;
         settingsDialogChecked = tabs && tabs->count() == 3 && tabs->tabText(0) == QStringLiteral("Вид") &&
                                 tabs->tabText(1) == QStringLiteral("Система") &&
                                 tabs->tabText(2) == QStringLiteral("Файлы") && rulerUnits &&
-                                rulerUnits->currentIndex() == 0;
+                                rulerUnits->currentIndex() == 0 && guideThreshold && guideThreshold->value() == 12;
         if (rulerUnits)
             rulerUnits->setCurrentIndex(1);
+        if (guideThreshold)
+            guideThreshold->setValue(15);
         if (dialog)
             dialog->accept();
     });
     require(settingsAction, "settings action is missing");
     settingsAction->trigger();
     require(settingsDialogChecked && canvas->rulerPercent() && QSettings().value("view/rulers/percent").toBool() &&
-                pointUnits->currentIndex() == 1,
+                pointUnits->currentIndex() == 1 && canvas->perspectiveGuideAngleThreshold() == 15 &&
+                QSettings().value("view/guides/perspectiveAngleThreshold").toDouble() == 15,
             "settings dialog did not persist independent ruler units");
     pointX->setValue(-300);
     require(canvas->state().vanishingPoints[0].position == QPointF(200, 240),
