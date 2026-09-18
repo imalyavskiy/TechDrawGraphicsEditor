@@ -231,6 +231,73 @@ void testLayerAwareEraser() {
     require(pixels(canvas.state()) == beforeHidden, "hidden active layer must reject painting");
 }
 
+void testMultiLayerProject(const QDir &out) {
+    DrawingState base;
+    QImage background(40, 30, QImage::Format_ARGB32_Premultiplied);
+    background.fill(QColor("#f2eee4"));
+    base.setSingleRasterImage(background, QStringLiteral("Background"));
+    base.horizonY = 15;
+    base.verticalX = 20;
+    base.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(30, 15), QString(), QString()});
+    DrawingState layered = base;
+    const QString paintId = layered.layers.addRaster(layered.canvasSize, QStringLiteral("Paint"));
+    LayerContent *content = layered.layers.editableActiveContent(LayerCapability::RasterPainting);
+    const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
+    QImage *paint = content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
+    require(paint, "multilayer fixture did not expose raster content");
+    paint->setPixelColor(8, 9, QColor("#d64040"));
+    LayerEntry *active = layered.layers.activeEntry();
+    active->opacity = 65;
+    active->offset = QPointF(2, 3);
+    active->locked = true;
+    DrawingHistory history;
+    history.states = {base, layered};
+    history.labels = QStringList{QStringLiteral("layer operation")};
+    history.index = 1;
+    QString error;
+    const QString path = out.filePath("multilayer-v9.drw");
+    require(Project::save(path, history, &error), qPrintable(error));
+    DrawingHistory loaded;
+    require(Project::load(path, &loaded, &error), qPrintable(error));
+    require(loaded.states.size() == 2 && loaded.index == 1 && loaded.labels == history.labels &&
+                loaded.states[1].layers == layered.layers && loaded.states[0].layers == base.layers &&
+                loaded.states[1].layers.activeLayerId() == paintId && pixels(loaded.states[1]) == pixels(layered),
+            "version 9 multilayer stack or history did not roundtrip");
+
+    QZipReader archive(path);
+    const QJsonObject metadata = QJsonDocument::fromJson(archive.fileData("project.json")).object();
+    int resourceCount = 0;
+    for (const auto &entry : archive.fileInfoList())
+        if (entry.isFile && entry.filePath.startsWith("resources/"))
+            ++resourceCount;
+    require(metadata.value("version").toInt() == 9 &&
+                metadata.value("layers").toObject().value("entries").toArray().size() == 2 && resourceCount == 2,
+            "version 9 manifest or content resource deduplication is invalid");
+
+    QJsonObject unknownMetadata = metadata;
+    QJsonObject unknownLayers = unknownMetadata.value("layers").toObject();
+    QJsonArray unknownEntries = unknownLayers.value("entries").toArray();
+    QJsonObject unknownEntry = unknownEntries.first().toObject();
+    unknownEntry["type"] = QStringLiteral("unregistered-test-type");
+    unknownEntries[0] = unknownEntry;
+    unknownLayers["entries"] = unknownEntries;
+    unknownMetadata["layers"] = unknownLayers;
+    const QString unknownPath = out.filePath("unknown-layer.drw");
+    QZipWriter unknownArchive(unknownPath);
+    for (const auto &entry : archive.fileInfoList()) {
+        if (!entry.isFile)
+            continue;
+        unknownArchive.addFile(entry.filePath,
+                               entry.filePath == QStringLiteral("project.json")
+                                   ? QJsonDocument(unknownMetadata).toJson()
+                                   : archive.fileData(entry.filePath));
+    }
+    unknownArchive.close();
+    DrawingState rejected;
+    require(!Project::load(unknownPath, &rejected, &error) && error.contains(QStringLiteral("unregistered-test-type")),
+            "unknown layer type must be rejected without flattening");
+}
+
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
@@ -1307,6 +1374,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     QJsonArray version6States = version6History.value("states").toArray();
     for (int index = 0; index < version6States.size(); ++index) {
         QJsonObject state = version6States[index].toObject();
+        state["image"] = QStringLiteral("drawing.png");
         state["perspective"] = downgradeToVersion6(state.value("perspective").toObject());
         version6States[index] = state;
     }
@@ -1725,6 +1793,7 @@ int runSelfTests(const QString &outputDirectory) {
         testLayerArchitecture();
         testLayerPanel();
         testLayerAwareEraser();
+        testMultiLayerProject(out);
 
         MainWindow window;
         testMainWindowUi(window, out);

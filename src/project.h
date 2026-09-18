@@ -118,7 +118,7 @@ struct DrawingHistory {
 };
 
 namespace Project {
-inline constexpr int CurrentFormatVersion = 8;
+inline constexpr int CurrentFormatVersion = 9;
 
 /// Проверяет размер растра по ограничениям стороны и общего числа пикселей.
 bool validSize(QSize size);
