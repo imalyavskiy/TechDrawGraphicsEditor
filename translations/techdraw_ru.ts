@@ -1192,6 +1192,31 @@ Technical Draw</translation>
         </message>
     </context>
     <context>
+        <name>ToolPropertiesPanel</name>
+        <message><source>Основные параметры</source><translation>Основные параметры</translation></message>
+        <message><source> px</source><translation> px</translation></message>
+        <message><source>Ширина</source><translation>Ширина</translation></message>
+        <message><source> %</source><translation> %</translation></message>
+        <message><source>Непрозрачность</source><translation>Непрозрачность</translation></message>
+        <message><source>Основной цвет (Front)</source><translation>Основной цвет (Front)</translation></message>
+        <message><source>Фоновый цвет и цвет ластика (Back)</source><translation>Фоновый цвет и цвет ластика (Back)</translation></message>
+        <message><source>Поменять цвета местами (X)</source><translation>Поменять цвета местами (X)</translation></message>
+        <message><source>Цвет</source><translation>Цвет</translation></message>
+        <message><source>Наконечник</source><translation>Наконечник</translation></message>
+        <message><source>Жёсткость</source><translation>Жёсткость</translation></message>
+        <message><source>Расстояние между отпечатками в процентах диаметра</source><translation>Расстояние между отпечатками в процентах диаметра</translation></message>
+        <message><source>Шаг</source><translation>Шаг</translation></message>
+        <message><source>Сила</source><translation>Сила</translation></message>
+        <message><source>Результат</source><translation>Результат</translation></message>
+        <message><source>Параметры рисования</source><translation>Параметры рисования</translation></message>
+        <message><source>Выбран вспомогательный режим</source><translation>Выбран вспомогательный режим</translation></message>
+        <message><source>Карандаш</source><translation>Карандаш</translation></message>
+        <message><source>Кисть</source><translation>Кисть</translation></message>
+        <message><source>Ластик</source><translation>Ластик</translation></message>
+        <message><source>До прозрачности</source><translation>До прозрачности</translation></message>
+        <message><source>Цветом Back</source><translation>Цветом Back</translation></message>
+    </context>
+    <context>
         <name>TranslationProbe</name>
         <message>
             <location filename="../src/selftest.cpp" line="59" />

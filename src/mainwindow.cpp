@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "rolloutsection.h"
+#include "drawingtoolsettings.h"
+#include "toolpropertiespanel.h"
 #include <QtWidgets>
 
 namespace {
@@ -144,11 +146,6 @@ void rememberDirectory(const QString &key, const QString &filePath) {
 QString suggestedFile(const QString &key, const QString &name) {
     return QDir(rememberedDirectory(key)).filePath(name);
 }
-/// Возвращает отдельный ключ QSettings для ширины заданного рисующего инструмента.
-QString widthSetting(int tool) {
-    static const QStringList keys{"tools/pencilWidth", "tools/brushWidth", "tools/eraserWidth"};
-    return keys[tool];
-}
 /// Применяет проверенный пользовательский пресет общих параметров опорных лучей.
 void applySavedPerspectiveDefaults(DrawingState *state) {
     QSettings settings;
@@ -231,7 +228,8 @@ bool matchesPerspectiveDefaults(const DrawingState &state) {
 }
 } // namespace
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent), canvas_(new Canvas(this)), toolSettings_(new DrawingToolSettingsModel(this)) {
     initializeWindow();
     setupMenusAndToolbars();
     setupPerspectivePanel();
@@ -333,70 +331,6 @@ void MainWindow::setupMenusAndToolbars() {
     mainToolbar_->addSeparator();
     mainToolbar_->addAction(undoAction);
     mainToolbar_->addAction(redoAction);
-    mainToolbar_->addSeparator();
-    mainToolbar_->addWidget(new QLabel(tr(" Ширина "), mainToolbar_));
-    QSettings widthSettings;
-    for (int i = 0; i < toolWidths_.size(); ++i)
-        toolWidths_[i] = qBound(1, widthSettings.value(widthSetting(i), 3).toInt(), 200);
-    strokeWidth_ = new QSpinBox(mainToolbar_);
-    strokeWidth_->setObjectName("strokeWidth");
-    strokeWidth_->setRange(1, 200);
-    strokeWidth_->setValue(toolWidths_[Canvas::Pencil]);
-    strokeWidth_->setSuffix(tr(" px"));
-    strokeWidth_->setKeyboardTracking(false);
-    mainToolbar_->addWidget(strokeWidth_);
-    canvas_->setStrokeWidth(strokeWidth_->value());
-    connect(strokeWidth_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
-        const int tool = int(canvas_->tool());
-        if (tool <= int(Canvas::Eraser)) {
-            toolWidths_[tool] = value;
-            QSettings().setValue(widthSetting(tool), value);
-            canvas_->setStrokeWidth(value);
-        }
-    });
-    auto *strokeWidthAction = new QAction(tr("Толщина штриха…"), this);
-    strokeWidthAction->setObjectName("strokeWidthAction");
-    connect(strokeWidthAction, &QAction::triggered, this, [this] {
-        QDialog dialog(this);
-        dialog.setObjectName("strokeWidthDialog");
-        dialog.setWindowTitle(tr("Толщина штриха"));
-        auto *dialogLayout = new QVBoxLayout(&dialog);
-        auto *form = new QFormLayout;
-        dialogLayout->addLayout(form);
-        QSpinBox *controls[3];
-        const QStringList labels{tr("Карандаш"), tr("Кисть"), tr("Ластик")};
-        const QStringList objectNames{"pencilWidthSetting", "brushWidthSetting", "eraserWidthSetting"};
-        for (int i = 0; i < 3; ++i) {
-            controls[i] = new QSpinBox;
-            controls[i]->setObjectName(objectNames[i]);
-            controls[i]->setRange(1, 200);
-            controls[i]->setSuffix(tr(" px"));
-            controls[i]->setValue(toolWidths_[i]);
-            form->addRow(labels[i], controls[i]);
-        }
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-        dialogLayout->addWidget(buttons);
-        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        if (dialog.exec() != QDialog::Accepted)
-            return;
-        for (int i = 0; i < 3; ++i) {
-            toolWidths_[i] = controls[i]->value();
-            QSettings().setValue(widthSetting(i), toolWidths_[i]);
-        }
-        const int active = int(canvas_->tool());
-        if (active <= int(Canvas::Eraser)) {
-            QSignalBlocker block(strokeWidth_);
-            strokeWidth_->setValue(toolWidths_[active]);
-            canvas_->setStrokeWidth(toolWidths_[active]);
-        }
-    });
-    mainToolbar_->addSeparator();
-    frontButton_ = new QPushButton(mainToolbar_);
-    frontButton_->setToolTip(tr("Основной цвет (Front)"));
-    frontButton_->setObjectName("frontColor");
-    frontButton_->setFixedWidth(34);
-    mainToolbar_->addWidget(frontButton_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -405,12 +339,6 @@ void MainWindow::setupMenusAndToolbars() {
     swap->setObjectName("swapColorsAction");
     swap->setToolTip(tr("Поменять цвета местами (X)"));
     swap->setShortcut(QKeySequence("X"));
-    mainToolbar_->addAction(swap);
-    backButton_ = new QPushButton(mainToolbar_);
-    backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)"));
-    backButton_->setObjectName("backColor");
-    backButton_->setFixedWidth(34);
-    mainToolbar_->addWidget(backButton_);
     connect(frontColorAction, &QAction::triggered, this, [this] {
         const QColor color = QColorDialog::getColor(front_, this, tr("Основной цвет — Front"));
         if (color.isValid()) {
@@ -425,13 +353,10 @@ void MainWindow::setupMenusAndToolbars() {
             updateColors();
         }
     });
-    connect(frontButton_, &QPushButton::clicked, frontColorAction, &QAction::trigger);
-    connect(backButton_, &QPushButton::clicked, backColorAction, &QAction::trigger);
     connect(swap, &QAction::triggered, this, [this] {
         qSwap(front_, back_);
         updateColors();
     });
-    updateColors();
     toolsToolbar_ = new QToolBar(tr("Инструменты"), this);
     toolsToolbar_->setObjectName("toolsToolbar");
     toolsToolbar_->setMovable(false);
@@ -463,11 +388,22 @@ void MainWindow::setupMenusAndToolbars() {
             perspectiveAction_ = action;
     }
     toolsMenu_->addSeparator();
-    toolsMenu_->addAction(strokeWidthAction);
-    toolsMenu_->addSeparator();
     toolsMenu_->addAction(frontColorAction);
     toolsMenu_->addAction(backColorAction);
     toolsMenu_->addAction(swap);
+
+    toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsToolbar_);
+    toolsToolbar_->addSeparator();
+    toolsToolbar_->addWidget(toolProperties_);
+    connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
+    connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
+    connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
+    connect(toolSettings_, &DrawingToolSettingsModel::settingsChanged, this, [this] {
+        if (toolSettings_->activeTool() >= 0)
+            canvas_->setStrokeSettings(toolSettings_->settingsFor(toolSettings_->activeTool()));
+    });
+    canvas_->setStrokeSettings(toolSettings_->settingsFor(DrawingToolSettingsModel::Pencil));
+    updateColors();
 }
 
 void MainWindow::setupPerspectivePanel() {
@@ -951,8 +887,7 @@ void MainWindow::setupViewAndStatusBar() {
 }
 
 void MainWindow::updateColors() {
-    colorSwatch(frontButton_, front_);
-    colorSwatch(backButton_, back_);
+    toolProperties_->setColors(front_, back_);
     canvas_->setFront(front_);
     canvas_->setBack(back_);
 }
@@ -960,12 +895,9 @@ void MainWindow::activateTool(Canvas::Tool tool, const QString &name) {
     canvas_->setTool(tool);
     toolLabel_->setText(name);
     const bool paints = tool <= Canvas::Eraser;
-    strokeWidth_->setEnabled(paints);
-    if (paints) {
-        QSignalBlocker block(strokeWidth_);
-        strokeWidth_->setValue(toolWidths_[int(tool)]);
-        canvas_->setStrokeWidth(toolWidths_[int(tool)]);
-    }
+    toolSettings_->setActiveTool(paints ? int(tool) : -1);
+    if (paints)
+        canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
     if (tool == Canvas::Perspective) {
         perspectiveDock_->show();
         canvas_->setGridVisible(true);

@@ -53,6 +53,8 @@ add_executable(TechDraw WIN32
     ${TECHDRAW_WINDOWS_RESOURCE}
     src/canvas.cpp
     src/canvas.h
+    src/drawingtoolsettings.cpp
+    src/drawingtoolsettings.h
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h
@@ -64,6 +66,8 @@ add_executable(TechDraw WIN32
     src/selftest.h
     src/taskbarpin.cpp
     src/taskbarpin.h
+    src/toolpropertiespanel.cpp
+    src/toolpropertiespanel.h
 )
 
 add_dependencies(TechDraw TechDrawTranslations)

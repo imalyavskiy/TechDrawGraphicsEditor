@@ -829,17 +829,44 @@ void Canvas::drawRulers(QPainter &p) {
 }
 
 void Canvas::stroke(QPointF start, QPointF end) {
-    QPainter painter(&state_.image);
-    painter.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
-    QPen pen(tool_ == Eraser ? back_ : front_, width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    painter.setPen(pen);
-    if (start == end) {
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(pen.color());
-        painter.drawEllipse(start, width_ / 2.0, width_ / 2.0);
-    } else
-        painter.drawLine(start, end);
+    const double length = QLineF(start, end).length();
+    const double step = qMax(1.0, strokeSettings_.width * strokeSettings_.spacing / 100.0);
+    if (length <= 0.0001) {
+        stamp(start);
+        distanceToNextStamp_ = step;
+        return;
+    }
+    double distance = qMax(0.0, distanceToNextStamp_);
+    while (distance <= length) {
+        stamp(start + (end - start) * (distance / length));
+        distance += step;
+    }
+    distanceToNextStamp_ = distance - length;
     update();
+}
+
+void Canvas::stamp(QPointF center) {
+    QPainter painter(&state_.image);
+    const bool softEdge = tool_ != Pencil && strokeSettings_.hardness < 100;
+    painter.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
+    painter.setPen(Qt::NoPen);
+    QColor color = tool_ == Eraser ? back_ : front_;
+    const int amount = tool_ == Eraser ? strokeSettings_.strength : strokeSettings_.opacity;
+    color.setAlphaF(amount / 100.0);
+    const double radius = strokeSettings_.width / 2.0;
+    if (softEdge) {
+        QRadialGradient gradient(center, radius);
+        const double hardStop = qBound(0.0, strokeSettings_.hardness / 100.0, 0.999);
+        gradient.setColorAt(0, color);
+        gradient.setColorAt(hardStop, color);
+        QColor transparent = color;
+        transparent.setAlpha(0);
+        gradient.setColorAt(1, transparent);
+        painter.setBrush(gradient);
+    } else {
+        painter.setBrush(color);
+    }
+    painter.drawEllipse(center, radius, radius);
 }
 bool Canvas::isPaintTool() const {
     return tool_ == Pencil || tool_ == Brush || tool_ == Eraser;
@@ -939,6 +966,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         return;
     before_ = state_;
     dragging_ = true;
+    distanceToNextStamp_ = 0;
     const bool straight = (e->modifiers() & Qt::ShiftModifier) || shiftPressed_;
     if (straight && hasPaintAnchor_) {
         point = constrainedPoint(point, (e->modifiers() & Qt::ControlModifier) || controlPressed_);

@@ -1,4 +1,5 @@
 #pragma once
+#include "drawingtoolsettings.h"
 #include "project.h"
 #include <QWidget>
 #include <QUndoStack>
@@ -41,9 +42,13 @@ public:
     void setBack(QColor color) {
         back_ = color;
     }
-    /// Устанавливает ширину следующего растрового штриха в пикселях изображения.
+    /// Устанавливает все параметры следующего растрового штриха.
+    void setStrokeSettings(const DrawingToolSettings &settings) {
+        strokeSettings_ = settings;
+    }
+    /// Устанавливает только ширину штриха для совместимости управляющего кода и тестов.
     void setStrokeWidth(int width) {
-        width_ = width;
+        strokeSettings_.width = qBound(1, width, 200);
     }
     /// Включает или скрывает семейства опорных лучей.
     void setGridVisible(bool visible);
@@ -177,7 +182,8 @@ private:
     Tool tool_ = Pencil;
     QColor front_ = QColor("#2c3441");
     QColor back_ = Qt::white;
-    int width_ = 3;
+    DrawingToolSettings strokeSettings_;
+    double distanceToNextStamp_ = 0;
     double zoom_ = 1.0;
     QPointF pan_;
     QPointF last_;
@@ -202,6 +208,8 @@ private:
     QPointF cursorView_;
     /// Рисует один растровый отрезок выбранным инструментом между двумя точками изображения.
     void stroke(QPointF start, QPointF end);
+    /// Накладывает один круглый отпечаток активного инструмента на растровое изображение.
+    void stamp(QPointF center);
     /// Добавляет снимок в Undo/Redo, если состояние действительно изменилось.
     void commit(const DrawingState &before, const QString &label);
     /// Завершает текущий жест и восстанавливает обычное состояние курсора.

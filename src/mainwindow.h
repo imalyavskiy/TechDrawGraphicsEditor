@@ -12,6 +12,8 @@ class QMenu;
 class QListWidget;
 class QComboBox;
 class QToolBar;
+class DrawingToolSettingsModel;
+class ToolPropertiesPanel;
 
 /// Главное окно связывает пользовательские команды, Canvas, файлы проекта и постоянные настройки.
 class MainWindow : public QMainWindow {
@@ -46,7 +48,6 @@ private:
     QDoubleSpinBox *verticalPosition_ = nullptr;
     QDoubleSpinBox *pointX_ = nullptr;
     QDoubleSpinBox *pointY_ = nullptr;
-    QSpinBox *strokeWidth_ = nullptr;
     QSpinBox *rayGap_ = nullptr;
     QSpinBox *rayStartOpacity_ = nullptr;
     QSpinBox *rayEndOpacity_ = nullptr;
@@ -64,8 +65,6 @@ private:
     QCheckBox *verticalSymmetry_ = nullptr;
     QCheckBox *axesVisible_ = nullptr;
     QCheckBox *markersVisible_ = nullptr;
-    QPushButton *frontButton_ = nullptr;
-    QPushButton *backButton_ = nullptr;
     QPushButton *gridColorButton_ = nullptr;
     QPushButton *horizonColorButton_ = nullptr;
     QPushButton *verticalColorButton_ = nullptr;
@@ -88,9 +87,10 @@ private:
     QMenu *helpMenu_ = nullptr;
     QToolBar *mainToolbar_ = nullptr;
     QToolBar *toolsToolbar_ = nullptr;
+    DrawingToolSettingsModel *toolSettings_ = nullptr;
+    ToolPropertiesPanel *toolProperties_ = nullptr;
     QMenu *recentFilesMenu_ = nullptr;
     QStringList recentFiles_;
-    QVector<int> toolWidths_{3, 3, 3};
     bool coordinatePercent_ = true;
     bool rulerPercent_ = false;
     /// Задаёт свойства окна и последовательно создаёт основные части интерфейса.

@@ -115,16 +115,15 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *saveMenuAction = window.findChild<QAction *>("saveAction");
     auto *undoMenuAction = window.findChild<QAction *>("undoAction");
     auto *redoMenuAction = window.findChild<QAction *>("redoAction");
-    auto *widthMenuAction = window.findChild<QAction *>("strokeWidthAction");
     auto *frontMenuAction = window.findChild<QAction *>("frontColorAction");
     auto *backMenuAction = window.findChild<QAction *>("backColorAction");
     auto *swapMenuAction = window.findChild<QAction *>("swapColorsAction");
-    require(newMenuAction && openMenuAction && saveMenuAction && undoMenuAction && redoMenuAction && widthMenuAction &&
+    require(newMenuAction && openMenuAction && saveMenuAction && undoMenuAction && redoMenuAction &&
                 frontMenuAction && backMenuAction && swapMenuAction && fileMenu->actions().contains(newMenuAction) &&
                 fileMenu->actions().contains(openMenuAction) && fileMenu->actions().contains(saveMenuAction) &&
                 editMenu->actions().contains(undoMenuAction) && editMenu->actions().contains(redoMenuAction) &&
-                toolsMenu->actions().contains(widthMenuAction) && toolsMenu->actions().contains(frontMenuAction) &&
-                toolsMenu->actions().contains(backMenuAction) && toolsMenu->actions().contains(swapMenuAction),
+                toolsMenu->actions().contains(frontMenuAction) && toolsMenu->actions().contains(backMenuAction) &&
+                toolsMenu->actions().contains(swapMenuAction),
             "main toolbar commands are not all available through menus");
     for (int i = 0; i < 5; ++i) {
         auto *toolAction = window.findChild<QAction *>(QString("tool%1").arg(i));
@@ -134,6 +133,18 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(perspectiveAction && perspectiveAction->text() == QStringLiteral("Перспектива") &&
                 mainToolbar->actions().contains(perspectiveAction) && !toolsToolbar->actions().contains(perspectiveAction),
             "perspective mode must be available from the main toolbar, not the drawing tools toolbar");
+    auto *toolProperties = window.findChild<QWidget *>("toolPropertiesPanel");
+    auto *toolPropertiesTitle = window.findChild<QLabel *>("toolPropertiesTitle");
+    auto *widthControl = window.findChild<QSpinBox *>("strokeWidth");
+    auto *opacityControl = window.findChild<QSpinBox *>("strokeOpacity");
+    auto *hardnessControl = window.findChild<QSpinBox *>("strokeHardness");
+    auto *spacingControl = window.findChild<QSpinBox *>("strokeSpacing");
+    auto *strengthControl = window.findChild<QSpinBox *>("eraserStrength");
+    auto *strokePreview = window.findChild<QWidget *>("strokePreview");
+    require(toolProperties && toolPropertiesTitle && widthControl && opacityControl && hardnessControl &&
+                spacingControl && strengthControl && strokePreview && toolsToolbar->isAncestorOf(toolProperties) &&
+                toolPropertiesTitle->text() == QStringLiteral("Карандаш"),
+            "the shared drawing tool properties panel is missing from below the tool selector");
     auto *frontButton = window.findChild<QPushButton *>("frontColor");
     auto *backButton = window.findChild<QPushButton *>("backColor");
     require(frontButton && backButton && frontButton->text().isEmpty() && backButton->text().isEmpty() &&
@@ -814,8 +825,31 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeWidth(11);
     drag(canvas, {110, 180}, {210, 180});
     require(canvas->state().image.pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
+    DrawingToolSettings softBrush;
+    softBrush.width = 20;
+    softBrush.opacity = 50;
+    softBrush.hardness = 0;
+    softBrush.spacing = 50;
+    canvas->setStrokeSettings(softBrush);
+    click(canvas, {260, 180});
+    const QColor softCenter = canvas->state().image.pixelColor(260, 180);
+    const QColor softEdge = canvas->state().image.pixelColor(269, 180);
+    require(softCenter != QColor(Qt::white) && softCenter != QColor("#6c3f88") && softEdge != softCenter,
+            "brush opacity and soft hardness must affect the round stamp");
+    softBrush.opacity = 100;
+    softBrush.hardness = 100;
+    softBrush.spacing = 50;
+    canvas->setStrokeSettings(softBrush);
+    drag(canvas, {260, 220}, {360, 220});
+    require(canvas->state().image.pixelColor(310, 220) == QColor("#6c3f88"),
+            "stamp interpolation must keep a fast brush stroke continuous");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
+    DrawingToolSettings eraserSettings;
+    eraserSettings.width = 11;
+    eraserSettings.hardness = 100;
+    eraserSettings.strength = 100;
+    canvas->setStrokeSettings(eraserSettings);
     click(canvas, {110, 180});
     click(canvas, {210, 180}, Qt::ShiftModifier);
     require(canvas->state().image.pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
@@ -1103,71 +1137,80 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     return {pixels, loaded, projectPath};
 }
 
-/// Проверяет независимое сохранение ширины карандаша, кисти и ластика в QSettings.
+/// Проверяет единую панель и независимое сохранение параметров карандаша, кисти и ластика.
 void testToolWidthPersistence() {
     MainWindow widthsWindow;
     auto *widthControl = widthsWindow.findChild<QSpinBox *>("strokeWidth");
+    auto *opacityControl = widthsWindow.findChild<QSpinBox *>("strokeOpacity");
+    auto *hardnessControl = widthsWindow.findChild<QSpinBox *>("strokeHardness");
+    auto *spacingControl = widthsWindow.findChild<QSpinBox *>("strokeSpacing");
+    auto *strengthControl = widthsWindow.findChild<QSpinBox *>("eraserStrength");
+    auto *toolTitle = widthsWindow.findChild<QLabel *>("toolPropertiesTitle");
+    auto *eraserMode = widthsWindow.findChild<QLabel *>("eraserMode");
     auto *pencilAction = widthsWindow.findChild<QAction *>("tool0");
     auto *brushAction = widthsWindow.findChild<QAction *>("tool1");
     auto *eraserAction = widthsWindow.findChild<QAction *>("tool2");
     auto *panAction = widthsWindow.findChild<QAction *>("tool3");
-    require(widthControl && pencilAction && brushAction && eraserAction && panAction,
-            "per-tool width controls are missing");
+    require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl && toolTitle &&
+                eraserMode && pencilAction && brushAction && eraserAction && panAction,
+            "shared per-tool controls are missing");
     widthControl->setValue(4);
+    opacityControl->setValue(80);
+    spacingControl->setValue(12);
     brushAction->trigger();
-    require(widthControl->value() == 3, "brush must start with its own width");
+    require(toolTitle->text() == QStringLiteral("Кисть") && widthControl->value() == 3 &&
+                opacityControl->value() == 100 && hardnessControl->value() == 70 && spacingControl->value() == 15 &&
+                !opacityControl->isHidden() && !hardnessControl->isHidden() && strengthControl->isHidden(),
+            "brush must expose its own width, opacity, hardness, and spacing");
     widthControl->setValue(11);
+    opacityControl->setValue(65);
+    hardnessControl->setValue(40);
+    spacingControl->setValue(20);
     eraserAction->trigger();
-    require(widthControl->value() == 3, "eraser must start with its own width");
+    require(toolTitle->text() == QStringLiteral("Ластик") && widthControl->value() == 3 &&
+                hardnessControl->value() == 100 && spacingControl->value() == 15 && strengthControl->value() == 100 &&
+                opacityControl->isHidden() && !hardnessControl->isHidden() && !strengthControl->isHidden() &&
+                eraserMode->text() == QStringLiteral("Цветом Back"),
+            "eraser must expose hardness and strength and report the current Back-color behavior");
     widthControl->setValue(17);
+    hardnessControl->setValue(25);
+    spacingControl->setValue(30);
+    strengthControl->setValue(55);
     pencilAction->trigger();
-    require(widthControl->value() == 4, "pencil width was not restored");
+    require(toolTitle->text() == QStringLiteral("Карандаш") && widthControl->value() == 4 &&
+                opacityControl->value() == 80 && spacingControl->value() == 12 && hardnessControl->isHidden(),
+            "pencil settings were not restored");
     brushAction->trigger();
-    require(widthControl->value() == 11, "brush width was not restored");
+    require(widthControl->value() == 11 && opacityControl->value() == 65 && hardnessControl->value() == 40 &&
+                spacingControl->value() == 20,
+            "brush settings were not restored");
     eraserAction->trigger();
-    require(widthControl->value() == 17, "eraser width was not restored");
+    require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
+                strengthControl->value() == 55,
+            "eraser settings were not restored");
     panAction->trigger();
-    require(!widthControl->isEnabled(), "width control must be disabled for a non-paint tool");
-    auto *widthDialogAction = widthsWindow.findChild<QAction *>("strokeWidthAction");
-    bool widthDialogShown = false;
-    QTimer::singleShot(0, &widthsWindow, [&] {
-        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-        auto *pencil = dialog ? dialog->findChild<QSpinBox *>("pencilWidthSetting") : nullptr;
-        auto *brush = dialog ? dialog->findChild<QSpinBox *>("brushWidthSetting") : nullptr;
-        auto *eraser = dialog ? dialog->findChild<QSpinBox *>("eraserWidthSetting") : nullptr;
-        widthDialogShown = dialog && pencil && brush && eraser && pencil->value() == 4 && brush->value() == 11 &&
-                           eraser->value() == 17;
-        if (pencil)
-            pencil->setValue(6);
-        if (brush)
-            brush->setValue(12);
-        if (eraser)
-            eraser->setValue(18);
-        if (dialog)
-            dialog->accept();
-    });
-    require(widthDialogAction, "stroke width menu action is missing");
-    widthDialogAction->trigger();
-    require(widthDialogShown && QSettings().value("tools/pencilWidth").toInt() == 6 &&
-                QSettings().value("tools/brushWidth").toInt() == 12 &&
-                QSettings().value("tools/eraserWidth").toInt() == 18 && !widthControl->isEnabled(),
-            "stroke width menu did not work while a non-paint tool was active");
-    pencilAction->trigger();
-    require(widthControl->value() == 6, "menu did not update pencil width");
-    brushAction->trigger();
-    require(widthControl->value() == 12, "menu did not update brush width");
-    eraserAction->trigger();
-    require(widthControl->value() == 18, "menu did not update eraser width");
+    require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
+            "drawing controls must be disabled for a non-paint mode");
     widthsWindow.close();
     MainWindow persistedWidthsWindow;
     widthControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeWidth");
+    opacityControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeOpacity");
+    hardnessControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeHardness");
+    spacingControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeSpacing");
+    strengthControl = persistedWidthsWindow.findChild<QSpinBox *>("eraserStrength");
     brushAction = persistedWidthsWindow.findChild<QAction *>("tool1");
     eraserAction = persistedWidthsWindow.findChild<QAction *>("tool2");
-    require(widthControl && widthControl->value() == 6, "pencil width did not persist");
+    require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl &&
+                widthControl->value() == 4 && opacityControl->value() == 80 && spacingControl->value() == 12,
+            "pencil settings did not persist");
     brushAction->trigger();
-    require(widthControl->value() == 12, "brush width did not persist");
+    require(widthControl->value() == 11 && opacityControl->value() == 65 && hardnessControl->value() == 40 &&
+                spacingControl->value() == 20,
+            "brush settings did not persist");
     eraserAction->trigger();
-    require(widthControl->value() == 18, "eraser width did not persist");
+    require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
+                strengthControl->value() == 55,
+            "eraser settings did not persist");
     persistedWidthsWindow.close();
 }
 
