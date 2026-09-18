@@ -688,6 +688,9 @@ void testGuideMenus() {
                 perspectiveGuide->isChecked() && canvas->perspectiveGuideCreationEnabled(),
             "perspective guide gesture did not create a linked ray or synchronize its action");
     const int pointCount = canvas->state().vanishingPoints.size();
+    auto *removePoint = window.findChild<QPushButton *>("removeVanishingPoint");
+    require(removePoint && !removePoint->isEnabled() && removePoint->toolTip().contains(QStringLiteral("1")),
+            "vanishing-point removal control must report its linked guide count");
     canvas->removeSelectedVanishingPoint();
     require(canvas->state().vanishingPoints.size() == pointCount,
             "a vanishing point referenced by a perspective guide must not be deleted");
@@ -701,7 +704,8 @@ void testGuideMenus() {
             "moving a perspective guide must rotate it around its unchanged vanishing point");
     canvas->undoStack()->undo();
     canvas->removeSelectedGuide();
-    require(canvas->state().guides.size() == 2, "selected perspective guide removal failed");
+    require(canvas->state().guides.size() == 2 && removePoint->isEnabled(),
+            "selected perspective guide removal failed to release its vanishing point");
 
     perspectiveGuide->setChecked(true);
     const int beforeRejectedPerspective = canvas->state().guides.size();

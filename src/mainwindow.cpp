@@ -1279,13 +1279,11 @@ void MainWindow::updateState() {
     const int selected = canvas_->selectedPointIndex();
     vanishingPointsList_->setCurrentRow(selected);
     const bool hasPoint = selected >= 0 && selected < points.size();
-    bool selectedPointHasGuides = false;
+    int selectedPointGuideCount = 0;
     if (hasPoint)
         for (const auto &guide : canvas_->state().guides)
-            if (guide.type == GuideType::Perspective && guide.vanishingPointId == points[selected].id) {
-                selectedPointHasGuides = true;
-                break;
-            }
+            if (guide.type == GuideType::Perspective && guide.vanishingPointId == points[selected].id)
+                ++selectedPointGuideCount;
     for (int row = 0; row < points.size(); ++row) {
         auto *card = vanishingPointsList_->itemWidget(vanishingPointsList_->item(row));
         if (!card)
@@ -1317,10 +1315,11 @@ void MainWindow::updateState() {
             lock->setToolTip(points[row].locked ? tr("Снять фиксацию") : tr("Фиксировать"));
         }
     }
-    removePointButton_->setEnabled(hasPoint && !selectedPointHasGuides);
-    removePointButton_->setToolTip(selectedPointHasGuides
-                                       ? tr("Сначала удалите связанные перспективные направляющие")
-                                       : QString());
+    removePointButton_->setEnabled(hasPoint && selectedPointGuideCount == 0);
+    removePointButton_->setToolTip(
+        selectedPointGuideCount > 0
+            ? tr("Связанных перспективных направляющих: %1. Сначала удалите их.").arg(selectedPointGuideCount)
+            : QString());
     selectedPointVisible_->setEnabled(hasPoint);
     selectedPointLocked_->setEnabled(hasPoint);
     gridColorButton_->setEnabled(hasPoint);
