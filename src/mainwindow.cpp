@@ -1,64 +1,11 @@
 #include "mainwindow.h"
+#include "rolloutsection.h"
 #include <QtWidgets>
 
 namespace {
 QString productName() {
     return QStringLiteral("Технический рисунок / Technical Draw");
 }
-
-class RolloutSection final : public QFrame {
-public:
-    RolloutSection(const QString &title, const QString &name, QWidget *parent = nullptr) : QFrame(parent) {
-        setObjectName(name);
-        setProperty("title", title);
-        setProperty("expanded", true);
-        setFrameShape(QFrame::StyledPanel);
-        setFrameShadow(QFrame::Plain);
-        setLineWidth(1);
-        auto *outer = new QVBoxLayout(this);
-        outer->setContentsMargins(0, 0, 0, 0);
-        outer->setSpacing(0);
-        auto *header = new QFrame(this);
-        header->setObjectName("rolloutHeader");
-        auto *headerLayout = new QHBoxLayout(header);
-        headerLayout->setContentsMargins(4, 2, 7, 2);
-        headerLayout->setSpacing(3);
-        toggle_ = new QToolButton(header);
-        toggle_->setObjectName(name + "Toggle");
-        toggle_->setCheckable(true);
-        toggle_->setChecked(true);
-        toggle_->setArrowType(Qt::DownArrow);
-        toggle_->setAutoRaise(true);
-        toggle_->setFixedSize(22, 22);
-        toggle_->setToolTip(QObject::tr("Свернуть раздел"));
-        auto *titleLabel = new QLabel(title, header);
-        titleLabel->setObjectName(name + "Title");
-        titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        QFont titleFont = titleLabel->font();
-        titleFont.setBold(true);
-        titleLabel->setFont(titleFont);
-        headerLayout->addWidget(toggle_);
-        headerLayout->addWidget(titleLabel);
-        content_ = new QWidget(this);
-        content_->setObjectName(name + "Content");
-        outer->addWidget(header);
-        outer->addWidget(content_);
-        connect(toggle_, &QToolButton::toggled, this, [this](bool expanded) {
-            content_->setVisible(expanded);
-            toggle_->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
-            toggle_->setToolTip(expanded ? QObject::tr("Свернуть раздел") : QObject::tr("Развернуть раздел"));
-            setProperty("expanded", expanded);
-            updateGeometry();
-        });
-    }
-    QWidget *contentWidget() const {
-        return content_;
-    }
-
-private:
-    QToolButton *toggle_ = nullptr;
-    QWidget *content_ = nullptr;
-};
 
 QIcon toolIcon(int kind) {
     QPixmap image(24, 24);
