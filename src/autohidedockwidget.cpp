@@ -128,14 +128,17 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     tabDock_->setTitleBarWidget(emptyTabTitleBar);
     auto *tabHost = new QWidget(tabDock_);
     auto *tabLayout = new QVBoxLayout(tabHost);
-    tabLayout->setContentsMargins(0, 2, 0, 0);
+    tabLayout->setContentsMargins(area_ == Qt::LeftDockWidgetArea ? 0 : 4,
+                                 2,
+                                 area_ == Qt::LeftDockWidgetArea ? 4 : 0,
+                                 0);
     tabLayout->setSpacing(0);
     edgeTab_ = new EdgeTabButton(title, area_, tabHost);
     edgeTab_->setObjectName(settingsKey_ + "AutoHideTab");
     tabLayout->addWidget(edgeTab_);
     tabLayout->addStretch();
     tabDock_->setWidget(tabHost);
-    tabDock_->setFixedWidth(edgeTab_->sizeHint().width() + 2);
+    tabDock_->setFixedWidth(edgeTab_->sizeHint().width() + 6);
     owner_->addDockWidget(area_, tabDock_);
     tabDock_->hide();
 

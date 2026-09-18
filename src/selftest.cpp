@@ -129,6 +129,10 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "unpinning the left panel did not reveal its edge tab");
     require(toolsStrip->geometry().right() < canvas->geometry().left(),
             "the left auto-hide tab must occupy a strip outside the canvas and its rulers");
+    require(canvas->mapTo(&window, QPoint()).x() -
+                    (toolsTab->mapTo(&window, QPoint()).x() + toolsTab->width()) >=
+                3,
+            "the left auto-hide tab must leave a small gap before the ruler");
     require(toolsToolbarToggle->isChecked(), "unpinning the left panel changed its View menu state");
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
@@ -308,6 +312,10 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "unpinning the perspective panel must leave its checked edge tab visible");
     require(perspectiveStrip->geometry().left() > canvas->geometry().right(),
             "the right auto-hide tab must occupy a strip outside the canvas and its rulers");
+    require(perspectiveTab->mapTo(&window, QPoint()).x() -
+                    (canvas->mapTo(&window, QPoint()).x() + canvas->width()) >=
+                3,
+            "the right auto-hide tab must leave a small gap after the ruler");
     perspectiveTab->click();
     QApplication::processEvents();
     require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
