@@ -130,7 +130,7 @@ private:
     bool rulerPercent_ = false;
     bool cursorInViewport_ = false;
     QPointF cursorView_;
-    void stroke(QPointF a, QPointF b);
+    void stroke(QPointF start, QPointF end);
     void commit(const DrawingState &before, const QString &label);
     void finish();
     bool isPaintTool() const;

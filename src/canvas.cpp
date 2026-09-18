@@ -582,13 +582,13 @@ void Canvas::setSelectedPointLocked(bool locked) {
 QRectF Canvas::viewportRect() const {
     return QRectF(rect()).adjusted(rulerSize, rulerSize, -rulerSize, -rulerSize);
 }
-QPointF Canvas::toImage(QPointF p) const {
-    return (p - viewportRect().center() - pan_) / zoom_ +
+QPointF Canvas::toImage(QPointF point) const {
+    return (point - viewportRect().center() - pan_) / zoom_ +
            QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0);
 }
-QPointF Canvas::toView(QPointF p) const {
-    return (p - QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0)) * zoom_ + viewportRect().center() +
-           pan_;
+QPointF Canvas::toView(QPointF point) const {
+    return (point - QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0)) * zoom_ +
+           viewportRect().center() + pan_;
 }
 void Canvas::setZoom(double zoom, QPointF anchor) {
     if (anchor.x() < 0)
@@ -819,17 +819,17 @@ void Canvas::drawRulers(QPainter &p) {
     p.restore();
 }
 
-void Canvas::stroke(QPointF a, QPointF b) {
-    QPainter p(&state_.image);
-    p.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
+void Canvas::stroke(QPointF start, QPointF end) {
+    QPainter painter(&state_.image);
+    painter.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
     QPen pen(tool_ == Eraser ? back_ : front_, width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p.setPen(pen);
-    if (a == b) {
-        p.setPen(Qt::NoPen);
-        p.setBrush(pen.color());
-        p.drawEllipse(a, width_ / 2.0, width_ / 2.0);
+    painter.setPen(pen);
+    if (start == end) {
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(pen.color());
+        painter.drawEllipse(start, width_ / 2.0, width_ / 2.0);
     } else
-        p.drawLine(a, b);
+        painter.drawLine(start, end);
     update();
 }
 bool Canvas::isPaintTool() const {

@@ -10,52 +10,52 @@ QString productName() {
 QIcon toolIcon(int kind) {
     QPixmap image(24, 24);
     image.fill(Qt::transparent);
-    QPainter p(&image);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(QColor("#364152"), 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#364152"), 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     if (kind == 0) {
-        p.drawPolygon(QPolygonF(
+        painter.drawPolygon(QPolygonF(
             QVector<QPointF>{QPointF(5, 15), QPointF(15, 5), QPointF(19, 9), QPointF(9, 19), QPointF(4, 20)}));
-        p.drawLine(13, 7, 17, 11);
+        painter.drawLine(13, 7, 17, 11);
     } else if (kind == 1) {
-        p.drawLine(6, 19, 17, 8);
-        p.drawLine(14, 5, 20, 11);
-        p.drawLine(17, 8, 14, 5);
-        p.setBrush(QColor("#364152"));
-        p.drawEllipse(QRectF(3, 16, 7, 5));
+        painter.drawLine(6, 19, 17, 8);
+        painter.drawLine(14, 5, 20, 11);
+        painter.drawLine(17, 8, 14, 5);
+        painter.setBrush(QColor("#364152"));
+        painter.drawEllipse(QRectF(3, 16, 7, 5));
     } else if (kind == 2) {
-        p.drawPolygon(QPolygonF(
+        painter.drawPolygon(QPolygonF(
             QVector<QPointF>{QPointF(4, 14), QPointF(13, 5), QPointF(20, 12), QPointF(12, 20), QPointF(9, 20)}));
-        p.drawLine(8, 10, 16, 17);
-        p.drawLine(11, 20, 21, 20);
+        painter.drawLine(8, 10, 16, 17);
+        painter.drawLine(11, 20, 21, 20);
     } else if (kind == 3) {
-        p.drawRoundedRect(QRectF(7, 9, 12, 12), 4, 4);
-        p.drawLine(7, 14, 4, 10);
-        p.drawLine(9, 10, 9, 4);
-        p.drawLine(12, 9, 12, 3);
-        p.drawLine(15, 10, 15, 4);
-        p.drawLine(18, 11, 18, 7);
+        painter.drawRoundedRect(QRectF(7, 9, 12, 12), 4, 4);
+        painter.drawLine(7, 14, 4, 10);
+        painter.drawLine(9, 10, 9, 4);
+        painter.drawLine(12, 9, 12, 3);
+        painter.drawLine(15, 10, 15, 4);
+        painter.drawLine(18, 11, 18, 7);
     } else {
-        p.drawEllipse(QPointF(12, 10), 3, 3);
-        p.drawLine(12, 1, 12, 6);
-        p.drawLine(12, 14, 12, 22);
-        p.drawLine(2, 10, 8, 10);
-        p.drawLine(16, 10, 22, 10);
-        p.drawLine(4, 22, 10, 13);
-        p.drawLine(20, 22, 14, 13);
+        painter.drawEllipse(QPointF(12, 10), 3, 3);
+        painter.drawLine(12, 1, 12, 6);
+        painter.drawLine(12, 14, 12, 22);
+        painter.drawLine(2, 10, 8, 10);
+        painter.drawLine(16, 10, 22, 10);
+        painter.drawLine(4, 22, 10, 13);
+        painter.drawLine(20, 22, 14, 13);
     }
     return QIcon(image);
 }
 QIcon actualSizeIcon() {
     QPixmap image(28, 20);
     image.fill(Qt::transparent);
-    QPainter p(&image);
-    p.setPen(QColor("#364152"));
-    QFont font = p.font();
+    QPainter painter(&image);
+    painter.setPen(QColor("#364152"));
+    QFont font = painter.font();
     font.setBold(true);
     font.setPixelSize(11);
-    p.setFont(font);
-    p.drawText(image.rect(), Qt::AlignCenter, QStringLiteral("1:1"));
+    painter.setFont(font);
+    painter.drawText(image.rect(), Qt::AlignCenter, QStringLiteral("1:1"));
     return QIcon(image);
 }
 QIcon eyeIcon(bool open) {
@@ -108,9 +108,9 @@ QIcon lockIcon(bool locked) {
 void colorSwatch(QPushButton *button, QColor color) {
     QPixmap swatch(22, 22);
     swatch.fill(color);
-    QPainter p(&swatch);
-    p.setPen(QColor("#8e949d"));
-    p.drawRect(0, 0, 21, 21);
+    QPainter painter(&swatch);
+    painter.setPen(QColor("#8e949d"));
+    painter.drawRect(0, 0, 21, 21);
     button->setIcon(QIcon(swatch));
     button->setIconSize(QSize(22, 22));
 }
@@ -393,16 +393,16 @@ void MainWindow::setupMenusAndToolbars() {
     backButton_->setFixedWidth(34);
     mainToolbar_->addWidget(backButton_);
     connect(frontColorAction, &QAction::triggered, this, [this] {
-        auto c = QColorDialog::getColor(front_, this, tr("Основной цвет — Front"));
-        if (c.isValid()) {
-            front_ = c;
+        const QColor color = QColorDialog::getColor(front_, this, tr("Основной цвет — Front"));
+        if (color.isValid()) {
+            front_ = color;
             updateColors();
         }
     });
     connect(backColorAction, &QAction::triggered, this, [this] {
-        auto c = QColorDialog::getColor(back_, this, tr("Цвет фона и ластика — Back"));
-        if (c.isValid()) {
-            back_ = c;
+        const QColor color = QColorDialog::getColor(back_, this, tr("Цвет фона и ластика — Back"));
+        if (color.isValid()) {
+            back_ = color;
             updateColors();
         }
     });
@@ -726,10 +726,10 @@ void MainWindow::connectPerspectiveControls() {
         statusBar()->showMessage(tr("Восстановлены настройки направляющих по умолчанию"), 3000);
     });
     connect(horizonColorButton_, &QPushButton::clicked, this, [this] {
-        auto c = QColorDialog::getColor(canvas_->state().horizonColor, this, tr("Цвет линии горизонта"));
-        if (c.isValid()) {
-            QSettings().setValue("perspective/view/horizonColor", c.name(QColor::HexArgb));
-            canvas_->setHorizonColor(c);
+        const QColor color = QColorDialog::getColor(canvas_->state().horizonColor, this, tr("Цвет линии горизонта"));
+        if (color.isValid()) {
+            QSettings().setValue("perspective/view/horizonColor", color.name(QColor::HexArgb));
+            canvas_->setHorizonColor(color);
         }
     });
     connect(horizonOpacity_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
@@ -756,10 +756,10 @@ void MainWindow::connectPerspectiveControls() {
         setCoordinateUnits(index == 0);
     });
     connect(verticalColorButton_, &QPushButton::clicked, this, [this] {
-        auto c = QColorDialog::getColor(canvas_->state().verticalColor, this, tr("Цвет главной вертикали"));
-        if (c.isValid()) {
-            QSettings().setValue("perspective/view/verticalColor", c.name(QColor::HexArgb));
-            canvas_->setVerticalColor(c);
+        const QColor color = QColorDialog::getColor(canvas_->state().verticalColor, this, tr("Цвет главной вертикали"));
+        if (color.isValid()) {
+            QSettings().setValue("perspective/view/verticalColor", color.name(QColor::HexArgb));
+            canvas_->setVerticalColor(color);
         }
     });
     connect(verticalOpacity_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
@@ -793,38 +793,39 @@ void MainWindow::connectPerspectiveControls() {
     });
     connect(addPointButton_, &QPushButton::clicked, this, [this] {
         canvas_->addVanishingPoint();
-        const int i = canvas_->selectedPointIndex();
-        if (i < 0)
+        const int pointIndex = canvas_->selectedPointIndex();
+        if (pointIndex < 0)
             return;
         QSettings settings;
         const QColor color(
-            settings.value(QString("perspective/points/%1/color").arg(i), defaultPointColor(i)).toString());
-        canvas_->setSelectedPointColor(color.isValid() ? color : defaultPointColor(i));
+            settings.value(QString("perspective/points/%1/color").arg(pointIndex), defaultPointColor(pointIndex))
+                .toString());
+        canvas_->setSelectedPointColor(color.isValid() ? color : defaultPointColor(pointIndex));
         canvas_->setSelectedPointVisible(
-            settings.value(QString("perspective/points/%1/visible").arg(i), true).toBool());
+            settings.value(QString("perspective/points/%1/visible").arg(pointIndex), true).toBool());
     });
     connect(removePointButton_, &QPushButton::clicked, canvas_, &Canvas::removeSelectedVanishingPoint);
     connect(selectedPointVisible_, &QCheckBox::toggled, this, [this](bool visible) {
-        const int i = canvas_->selectedPointIndex();
-        if (i < 0)
+        const int pointIndex = canvas_->selectedPointIndex();
+        if (pointIndex < 0)
             return;
-        QSettings().setValue(QString("perspective/points/%1/visible").arg(i), visible);
+        QSettings().setValue(QString("perspective/points/%1/visible").arg(pointIndex), visible);
         canvas_->setSelectedPointVisible(visible);
     });
     connect(selectedPointLocked_, &QCheckBox::toggled, canvas_, &Canvas::setSelectedPointLocked);
     connect(pointX_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-        const int i = canvas_->selectedPointIndex();
-        if (i < 0)
+        const int pointIndex = canvas_->selectedPointIndex();
+        if (pointIndex < 0)
             return;
-        QPointF position = canvas_->state().vanishingPoints[i].position;
+        QPointF position = canvas_->state().vanishingPoints[pointIndex].position;
         position.setX(imageX(value));
         canvas_->setSelectedPointPosition(position);
     });
     connect(pointY_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
-        const int i = canvas_->selectedPointIndex();
-        if (i < 0)
+        const int pointIndex = canvas_->selectedPointIndex();
+        if (pointIndex < 0)
             return;
-        QPointF position = canvas_->state().vanishingPoints[i].position;
+        QPointF position = canvas_->state().vanishingPoints[pointIndex].position;
         position.setY(imageY(value));
         canvas_->setSelectedPointPosition(position);
     });
@@ -838,13 +839,14 @@ void MainWindow::connectPerspectiveControls() {
                                                          : QString());
     });
     connect(gridColorButton_, &QPushButton::clicked, this, [this] {
-        const int i = canvas_->selectedPointIndex();
-        if (i < 0)
+        const int pointIndex = canvas_->selectedPointIndex();
+        if (pointIndex < 0)
             return;
-        auto c = QColorDialog::getColor(canvas_->state().vanishingPoints[i].color, this, tr("Цвет направляющих"));
-        if (c.isValid()) {
-            QSettings().setValue(QString("perspective/points/%1/color").arg(i), c.name(QColor::HexArgb));
-            canvas_->setSelectedPointColor(c);
+        const QColor color =
+            QColorDialog::getColor(canvas_->state().vanishingPoints[pointIndex].color, this, tr("Цвет направляющих"));
+        if (color.isValid()) {
+            QSettings().setValue(QString("perspective/points/%1/color").arg(pointIndex), color.name(QColor::HexArgb));
+            canvas_->setSelectedPointColor(color);
         }
     });
 }
@@ -907,9 +909,9 @@ void MainWindow::setupViewAndStatusBar() {
         QSignalBlocker block(zoom_);
         zoom_->setValue(canvas_->zoom() * 100);
     });
-    connect(canvas_, &Canvas::positionChanged, this, [this](QPointF p) {
-        const double xPixels = p.x() - canvas_->state().image.width() / 2.0,
-                     yPixels = canvas_->state().image.height() / 2.0 - p.y();
+    connect(canvas_, &Canvas::positionChanged, this, [this](QPointF position) {
+        const double xPixels = position.x() - canvas_->state().image.width() / 2.0,
+                     yPixels = canvas_->state().image.height() / 2.0 - position.y();
         const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().image.width() : xPixels,
                      y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().image.height() : yPixels;
         const QString suffix = rulerPercent_ ? QStringLiteral("%") : QStringLiteral(" px");
