@@ -88,6 +88,58 @@ void testGuideGeometry() {
             "common nearest-guide query did not select the closest geometry");
 }
 
+void testOrdinaryGuideCreation() {
+    Canvas canvas;
+    canvas.resize(800, 600);
+    canvas.show();
+    QApplication::processEvents();
+    canvas.fit();
+    QApplication::processEvents();
+    const auto dragGuide = [&canvas](QPointF start, QPointF end) {
+        mouse(&canvas, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+        mouse(&canvas, QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+        QApplication::processEvents();
+    };
+    QPointF target = canvas.toView(QPointF(120, 50));
+    dragGuide(QPointF(target.x(), 4), target);
+    target = canvas.toView(QPointF(180, 100));
+    dragGuide(QPointF(target.x(), canvas.height() - 4), target);
+    target = canvas.toView(QPointF(70, 140));
+    dragGuide(QPointF(4, target.y()), target);
+    target = canvas.toView(QPointF(160, 190));
+    dragGuide(QPointF(canvas.width() - 4, target.y()), target);
+    require(canvas.state().guides.size() == 4 && canvas.state().guides[0].type == GuideType::Horizontal &&
+                qAbs(canvas.state().guides[0].position - 50) < 0.01 &&
+                canvas.state().guides[1].type == GuideType::Horizontal &&
+                qAbs(canvas.state().guides[1].position - 100) < 0.01 &&
+                canvas.state().guides[2].type == GuideType::Vertical &&
+                qAbs(canvas.state().guides[2].position - 70) < 0.01 &&
+                canvas.state().guides[3].type == GuideType::Vertical &&
+                qAbs(canvas.state().guides[3].position - 160) < 0.01 && canvas.tool() == Canvas::Pan &&
+                canvas.undoStack()->count() == 4,
+            "guides were not created from all four rulers as undoable document objects");
+    const int beforeCancelled = canvas.state().guides.size();
+    const QPointF outsidePaper = canvas.toView(QPointF(-10, 10));
+    dragGuide(QPointF(canvas.width() / 2.0, 4), outsidePaper);
+    require(canvas.state().guides.size() == beforeCancelled,
+            "releasing a ruler guide outside the document must cancel creation");
+    const int historyBeforeVisibility = canvas.undoStack()->count();
+    canvas.setGuidesVisible(false);
+    require(!canvas.guidesVisible() && canvas.undoStack()->count() == historyBeforeVisibility,
+            "guide visibility must remain view state outside document history");
+    canvas.setGuidesVisible(true);
+    canvas.removeSelectedGuide();
+    require(canvas.state().guides.size() == 3, "selected guide removal failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "selected guide removal must be undoable");
+    canvas.removeAllGuides();
+    require(canvas.state().guides.isEmpty(), "remove-all guides failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "remove-all guides must be one undoable command");
+    canvas.close();
+}
+
 /// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
 QImage *editablePixels(DrawingState *state) {
     LayerEntry *entry = state->layers.activeEntry();
@@ -2106,6 +2158,7 @@ int runSelfTests(const QString &outputDirectory) {
         watchdog.start();
 
         testGuideGeometry();
+        testOrdinaryGuideCreation();
         testLayerArchitecture();
         testLayerPanel();
         testLayerAwareEraser();

@@ -60,6 +60,12 @@ public:
     Tool tool() const {
         return tool_;
     }
+    void setGuidesVisible(bool visible);
+    bool guidesVisible() const { return guidesVisible_; }
+    const GuideId &selectedGuideId() const { return selectedGuideId_; }
+    void addGuide(GuideType type, double position);
+    void removeSelectedGuide();
+    void removeAllGuides();
     /// Устанавливает основной цвет карандаша и кисти.
     void setFront(QColor color) {
         front_ = color;
@@ -182,6 +188,8 @@ signals:
     void selectedPointChanged(int index);
     /// Сообщает панели и инструментам об изменении структуры, выбора или свойств слоёв.
     void layersChanged();
+    void toolChanged(Canvas::Tool tool);
+    void selectedGuideChanged(const GuideId &id);
 
 protected:
     /// Рисует растр, перспективную оснастку, маркеры и линейки.
@@ -234,6 +242,11 @@ private:
     bool rulerPercent_ = false;
     bool cursorInViewport_ = false;
     QPointF cursorView_;
+    bool guidesVisible_ = true;
+    bool creatingGuide_ = false;
+    GuideType creatingGuideType_ = GuideType::Horizontal;
+    double guidePreviewPosition_ = 0;
+    GuideId selectedGuideId_;
     /// Рисует один растровый отрезок выбранным инструментом между двумя точками изображения.
     void stroke(QPointF start, QPointF end);
     /// Накладывает один круглый отпечаток активного инструмента на растровое изображение.
@@ -268,4 +281,6 @@ private:
     void drawRulers(QPainter &painter);
     /// Находит изменяемую запись слоя по идентификатору.
     LayerEntry *editableLayerEntry(const QString &id);
+    bool rulerGuideType(QPointF viewPosition, GuideType *type) const;
+    void finishGuideCreation(QPointF viewPosition);
 };

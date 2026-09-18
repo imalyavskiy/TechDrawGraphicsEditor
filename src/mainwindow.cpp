@@ -404,6 +404,15 @@ void MainWindow::setupMenusAndToolbars() {
         if (i == int(Canvas::Perspective))
             perspectiveAction_ = action;
     }
+    connect(canvas_, &Canvas::toolChanged, this, [this, names](Canvas::Tool tool) {
+        if (auto *action = findChild<QAction *>(QStringLiteral("tool%1").arg(int(tool))))
+            action->setChecked(true);
+        toolLabel_->setText(names.value(int(tool)));
+        const bool paints = tool <= Canvas::Eraser;
+        toolSettings_->setActiveTool(paints ? int(tool) : -1);
+        if (paints)
+            canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
+    });
     toolsMenu_->addSeparator();
     toolsMenu_->addAction(frontColorAction);
     toolsMenu_->addAction(backColorAction);
