@@ -40,8 +40,10 @@ private:
     Qt::DockWidgetArea area_;
 };
 
+/// Даёт закреплённой dock-панели одинаковую явную область изменения ширины с обеих сторон окна.
 class DockResizeHandle final : public QWidget {
 public:
+    /// Связывает область захвата с изменяемой панелью, её главным окном и стороной размещения.
     DockResizeHandle(QDockWidget *dock, QMainWindow *owner, Qt::DockWidgetArea area, QWidget *parent)
         : QWidget(parent), dock_(dock), owner_(owner), area_(area) {
         setCursor(Qt::SizeHorCursor);
@@ -50,12 +52,14 @@ public:
     }
 
 protected:
+    /// Показывает тонкую границу, на которой пользователь получает курсор горизонтального resize.
     void paintEvent(QPaintEvent *) override {
         QPainter painter(this);
         painter.setPen(palette().color(QPalette::Mid));
         painter.drawLine(width() / 2, 0, width() / 2, height());
     }
 
+    /// Начинает жест и запоминает исходные координату указателя и ширину панели.
     void mousePressEvent(QMouseEvent *event) override {
         if (event->button() != Qt::LeftButton)
             return;
@@ -66,6 +70,7 @@ protected:
         event->accept();
     }
 
+    /// Преобразует горизонтальное смещение указателя в требуемую ширину с учётом стороны панели.
     void mouseMoveEvent(QMouseEvent *event) override {
         if (!dragging_ || !(event->buttons() & Qt::LeftButton))
             return;
@@ -76,6 +81,7 @@ protected:
         event->accept();
     }
 
+    /// Завершает жест и освобождает захваченный указатель мыши.
     void mouseReleaseEvent(QMouseEvent *event) override {
         if (event->button() != Qt::LeftButton)
             return;
