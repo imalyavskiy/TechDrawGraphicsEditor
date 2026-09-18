@@ -150,6 +150,8 @@ void Canvas::setDocument(const DrawingHistory &history, bool clean) {
     hasPaintAnchor_ = hasHoverPoint_ = false;
     state_ = history.states.first();
     selectedGuideId_.clear();
+    hoveredGuideId_.clear();
+    activeStrokeGuideId_.clear();
     selectedPointIndex_ =
         state_.vanishingPoints.isEmpty() ? -1 : qBound(0, selectedPointIndex_, state_.vanishingPoints.size() - 1);
     undo_.clear();
@@ -388,6 +390,7 @@ void Canvas::setTool(Tool tool) {
     if (tool_ != tool)
         hasPaintAnchor_ = false;
     hoveredGuideId_.clear();
+    activeStrokeGuideId_.clear();
     tool_ = tool;
     setCursor(Qt::CrossCursor);
     emit toolChanged(tool_);
@@ -410,6 +413,12 @@ void Canvas::setGuidesVisible(bool visible) {
 }
 void Canvas::setSnapToGuides(bool enabled) {
     snapToGuides_ = enabled;
+    if (!enabled)
+        hoveredGuideId_.clear();
+    update();
+}
+void Canvas::setGuideSnapDistance(int pixels) {
+    guideSnapDistance_ = qBound(1, pixels, 50);
 }
 void Canvas::setPerspectiveGuideCreationEnabled(bool enabled) {
     if (perspectiveGuideCreationEnabled_ == enabled)
@@ -1087,14 +1096,23 @@ void Canvas::paintEvent(QPaintEvent *) {
         }
     }
     if (isPaintTool() && hasPaintAnchor_ && hasHoverPoint_ && shiftPressed_ && !dragging_) {
-        const QPointF endpoint = constrainedPoint(hoverPoint_, controlPressed_);
+        QPointF start = paintAnchor_;
+        QPointF endpoint = constrainedPoint(hoverPoint_, controlPressed_);
+        if (snapToGuides_ && !hoveredGuideId_.isEmpty()) {
+            const GuideProjection startProjection = projectToGuide(hoveredGuideId_, start);
+            const GuideProjection endProjection = projectToGuide(hoveredGuideId_, hoverPoint_);
+            if (startProjection.valid && endProjection.valid) {
+                start = startProjection.point;
+                endpoint = endProjection.point;
+            }
+        }
         p.save();
         p.setClipRect(paper);
         p.setRenderHint(QPainter::Antialiasing);
         QPen preview(QColor(40, 52, 68, 170), 1, Qt::DashLine);
         preview.setCosmetic(true);
         p.setPen(preview);
-        p.drawLine(toView(paintAnchor_), toView(endpoint));
+        p.drawLine(toView(start), toView(endpoint));
         p.restore();
     }
     p.restore();
@@ -1301,6 +1319,23 @@ QVector<int> Canvas::guideHits(QPointF viewPosition) const {
         result << nearest;
     return result;
 }
+int Canvas::nearestGuideIndex(QPointF imagePosition,
+                              double maximumDistance,
+                              GuideProjection *projection) const {
+    QHash<QString, QPointF> points;
+    for (const auto &point : state_.vanishingPoints)
+        points.insert(point.id, point.position);
+    return GuideGeometry::nearest(state_.guides, imagePosition, points, maximumDistance, projection);
+}
+GuideProjection Canvas::projectToGuide(const GuideId &id, QPointF imagePosition) const {
+    QHash<QString, QPointF> points;
+    for (const auto &point : state_.vanishingPoints)
+        points.insert(point.id, point.position);
+    for (const auto &guide : state_.guides)
+        if (guide.id == id)
+            return GuideGeometry::project(guide, imagePosition, points);
+    return {};
+}
 void Canvas::updateMoveCursor(QPointF viewPosition) {
     if (tool_ != Move || dragging_)
         return;
@@ -1421,15 +1456,35 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     QPointF point = toImage(e->localPos());
     if (!QRectF(QPointF(), state_.canvasSize).contains(point))
         return;
+    activeStrokeGuideId_.clear();
+    if (snapToGuides_) {
+        GuideProjection projection;
+        const int guideIndex = nearestGuideIndex(point, guideSnapDistance_ / zoom_, &projection);
+        if (guideIndex >= 0 && projection.valid) {
+            activeStrokeGuideId_ = state_.guides[guideIndex].id;
+            hoveredGuideId_ = activeStrokeGuideId_;
+            point = projection.point;
+        }
+    }
     before_ = state_;
     dragging_ = true;
     distanceToNextStamp_ = 0;
     const bool straight = (e->modifiers() & Qt::ShiftModifier) || shiftPressed_;
     if (straight && hasPaintAnchor_) {
-        point = constrainedPoint(point, (e->modifiers() & Qt::ControlModifier) || controlPressed_);
+        QPointF start = paintAnchor_;
+        if (!activeStrokeGuideId_.isEmpty()) {
+            const GuideProjection startProjection = projectToGuide(activeStrokeGuideId_, start);
+            const GuideProjection endProjection = projectToGuide(activeStrokeGuideId_, point);
+            if (startProjection.valid && endProjection.valid) {
+                start = startProjection.point;
+                point = endProjection.point;
+            }
+        } else {
+            point = constrainedPoint(point, (e->modifiers() & Qt::ControlModifier) || controlPressed_);
+        }
         straightStroke_ = true;
         last_ = point;
-        stroke(paintAnchor_, point);
+        stroke(start, point);
     } else {
         straightStroke_ = false;
         last_ = point;
@@ -1448,6 +1503,10 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
             const QVector<int> hits = guideHits(e->localPos());
             if (!hits.isEmpty())
                 hoveredGuideId_ = state_.guides[hits.first()].id;
+        } else if (isPaintTool() && snapToGuides_) {
+            const int guideIndex = nearestGuideIndex(hoverPoint_, guideSnapDistance_ / zoom_);
+            if (guideIndex >= 0)
+                hoveredGuideId_ = state_.guides[guideIndex].id;
         }
         updatePerspectiveCursor(e->localPos());
         updateMoveCursor(e->localPos());
@@ -1543,8 +1602,14 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
             entry->offset = original->offset + toImage(e->localPos()) - moveStartImage_;
         update();
     } else if (!straightStroke_) {
-        stroke(last_, hoverPoint_);
-        last_ = hoverPoint_;
+        QPointF point = hoverPoint_;
+        if (!activeStrokeGuideId_.isEmpty()) {
+            const GuideProjection projection = projectToGuide(activeStrokeGuideId_, point);
+            if (projection.valid)
+                point = projection.point;
+        }
+        stroke(last_, point);
+        last_ = point;
     }
 }
 
@@ -1609,6 +1674,7 @@ void Canvas::finish() {
     movingPointIndex_ = movingSymmetricPointIndex_ = -1;
     movingGuideIds_.clear();
     movingLayerId_.clear();
+    activeStrokeGuideId_.clear();
     perspectiveGuideCandidateId_.clear();
     deleteMovedGuides_ = false;
     setCursor(Qt::CrossCursor);
@@ -1651,6 +1717,7 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
         movingPointIndex_ = -1;
         movingGuideIds_.clear();
         movingLayerId_.clear();
+        activeStrokeGuideId_.clear();
         perspectiveGuideCandidateId_.clear();
         deleteMovedGuides_ = false;
         before_ = DrawingState();

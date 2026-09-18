@@ -74,6 +74,8 @@ public:
     void setSnapToGuides(bool enabled);
     /// Возвращает состояние единого режима прилипания к направляющим.
     bool snapToGuides() const { return snapToGuides_; }
+    void setGuideSnapDistance(int pixels);
+    int guideSnapDistance() const { return guideSnapDistance_; }
     /// Включает или завершает режим жестового создания перспективного луча.
     void setPerspectiveGuideCreationEnabled(bool enabled);
     /// Возвращает состояние режима создания перспективного луча.
@@ -277,6 +279,7 @@ private:
     QPointF cursorView_;
     bool guidesVisible_ = true;
     bool snapToGuides_ = true;
+    int guideSnapDistance_ = 8;
     bool creatingGuide_ = false;
     bool perspectiveGuideCreationEnabled_ = false;
     bool creatingPerspectiveGuide_ = false;
@@ -288,6 +291,7 @@ private:
     QString perspectiveGuideCandidateId_;
     GuideId selectedGuideId_;
     GuideId hoveredGuideId_;
+    GuideId activeStrokeGuideId_;
     QVector<GuideId> movingGuideIds_;
     QString movingLayerId_;
     QPointF moveStartImage_;
@@ -324,6 +328,10 @@ private:
     QVector<int> guideHits(QPointF viewPosition) const;
     /// Показывает курсор захвата или запрета согласно явной цели инструмента перемещения.
     void updateMoveCursor(QPointF viewPosition);
+    int nearestGuideIndex(QPointF imagePosition,
+                          double maximumDistance,
+                          GuideProjection *projection = nullptr) const;
+    GuideProjection projectToGuide(const GuideId &id, QPointF imagePosition) const;
     /// Возвращает прямоугольник внутри четырёх линеек, доступный для холста и оснастки.
     QRectF viewportRect() const;
     /// Рисует четыре линейки и проекции текущего положения курсора.

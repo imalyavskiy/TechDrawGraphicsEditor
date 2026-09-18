@@ -189,6 +189,95 @@ void testOrdinaryGuideCreation() {
     canvas.close();
 }
 
+void testGuideDrawing() {
+    DrawingState state;
+    QImage image(640, 400, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    state.setSingleRasterImage(image, QStringLiteral("Background"));
+    state.vanishingPoints.append({QStringLiteral("vp-draw"), QPointF(500, 300)});
+    state.guides.append({QStringLiteral("guide-horizontal"), GuideType::Horizontal, 100, QString(), 0});
+    state.guides.append({QStringLiteral("guide-vertical"), GuideType::Vertical, 200, QString(), 0});
+    Guide perspective;
+    perspective.id = QStringLiteral("guide-perspective");
+    perspective.type = GuideType::Perspective;
+    perspective.vanishingPointId = QStringLiteral("vp-draw");
+    perspective.angleRadians = 3.14159265358979323846;
+    state.guides.append(perspective);
+
+    Canvas canvas;
+    canvas.resize(900, 700);
+    canvas.setDocument(state);
+    canvas.show();
+    QApplication::processEvents();
+    canvas.fit();
+    canvas.setSnapToGuides(true);
+    canvas.setGuideSnapDistance(8);
+    canvas.setTool(Canvas::Pencil);
+    canvas.setFront(Qt::black);
+    canvas.setStrokeWidth(3);
+
+    int history = canvas.undoStack()->count();
+    drag(&canvas, QPointF(100, 105), QPointF(300, 107));
+    require(pixels(canvas.state()).pixelColor(200, 100) == QColor(Qt::black) &&
+                pixels(canvas.state()).pixelColor(200, 106) == QColor(Qt::white) &&
+                canvas.undoStack()->count() == history + 1,
+            "pencil stroke did not snap to the captured horizontal guide as one undo command");
+
+    history = canvas.undoStack()->count();
+    canvas.setFront(QColor("#225588"));
+    drag(&canvas, QPointF(150, 103), QPointF(202, 180));
+    require(pixels(canvas.state()).pixelColor(190, 100) == QColor("#225588"),
+            "captured horizontal guide did not receive the second pencil stroke");
+    require(pixels(canvas.state()).pixelColor(200, 150) == QColor(Qt::white),
+            "captured guide changed during a pencil stroke");
+    require(canvas.undoStack()->count() == history + 1,
+            "guide-constrained pencil stroke must create one undo command");
+
+    canvas.setFront(QColor("#397a42"));
+    click(&canvas, QPointF(320, 105));
+    click(&canvas, QPointF(380, 106), Qt::ShiftModifier);
+    require(pixels(canvas.state()).pixelColor(350, 100) == QColor("#397a42"),
+            "connected pencil segment did not follow its captured guide");
+
+    history = canvas.undoStack()->count();
+    canvas.setFront(Qt::black);
+    drag(&canvas, QPointF(400, 304), QPointF(600, 300));
+    require(pixels(canvas.state()).pixelColor(450, 300) == QColor(Qt::black) &&
+                pixels(canvas.state()).pixelColor(550, 300) == QColor(Qt::white) &&
+                canvas.undoStack()->count() == history + 1,
+            "perspective guide stroke crossed the vanishing point onto the opposite half-line");
+
+    DrawingToolSettings brush;
+    brush.width = 5;
+    brush.opacity = 100;
+    brush.hardness = 100;
+    brush.spacing = 15;
+    canvas.setTool(Canvas::Brush);
+    canvas.setFront(QColor("#cc3344"));
+    canvas.setStrokeSettings(brush);
+    drag(&canvas, QPointF(205, 220), QPointF(207, 270));
+    require(pixels(canvas.state()).pixelColor(200, 245) == QColor("#cc3344"),
+            "brush did not use the common guide projection");
+
+    DrawingToolSettings eraser = brush;
+    eraser.strength = 100;
+    canvas.setTool(Canvas::Eraser);
+    canvas.setBack(Qt::white);
+    canvas.setStrokeSettings(eraser);
+    drag(&canvas, QPointF(150, 104), QPointF(250, 103));
+    require(pixels(canvas.state()).pixelColor(200, 100) == QColor(Qt::white),
+            "eraser did not use the common guide projection");
+
+    canvas.setSnapToGuides(false);
+    canvas.setTool(Canvas::Pencil);
+    canvas.setFront(QColor("#315fab"));
+    canvas.setStrokeWidth(3);
+    drag(&canvas, QPointF(100, 120), QPointF(180, 120));
+    require(pixels(canvas.state()).pixelColor(140, 120) == QColor("#315fab"),
+            "disabled guide snapping did not preserve a free pencil stroke");
+    canvas.close();
+}
+
 /// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
 QImage *editablePixels(DrawingState *state) {
     LayerEntry *entry = state->layers.activeEntry();
@@ -1168,14 +1257,18 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         auto *tabs = dialog ? dialog->findChild<QTabWidget *>("settingsTabs") : nullptr;
         auto *rulerUnits = dialog ? dialog->findChild<QComboBox *>("rulerUnits") : nullptr;
         auto *guideThreshold = dialog ? dialog->findChild<QDoubleSpinBox *>("perspectiveGuideAngleThreshold") : nullptr;
+        auto *snapDistance = dialog ? dialog->findChild<QSpinBox *>("guideSnapDistance") : nullptr;
         settingsDialogChecked = tabs && tabs->count() == 3 && tabs->tabText(0) == QStringLiteral("Вид") &&
                                 tabs->tabText(1) == QStringLiteral("Система") &&
                                 tabs->tabText(2) == QStringLiteral("Файлы") && rulerUnits &&
-                                rulerUnits->currentIndex() == 0 && guideThreshold && guideThreshold->value() == 12;
+                                rulerUnits->currentIndex() == 0 && guideThreshold && guideThreshold->value() == 12 &&
+                                snapDistance && snapDistance->value() == 8;
         if (rulerUnits)
             rulerUnits->setCurrentIndex(1);
         if (guideThreshold)
             guideThreshold->setValue(15);
+        if (snapDistance)
+            snapDistance->setValue(11);
         if (dialog)
             dialog->accept();
     });
@@ -1183,7 +1276,8 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     settingsAction->trigger();
     require(settingsDialogChecked && canvas->rulerPercent() && QSettings().value("view/rulers/percent").toBool() &&
                 pointUnits->currentIndex() == 1 && canvas->perspectiveGuideAngleThreshold() == 15 &&
-                QSettings().value("view/guides/perspectiveAngleThreshold").toDouble() == 15,
+                QSettings().value("view/guides/perspectiveAngleThreshold").toDouble() == 15 &&
+                canvas->guideSnapDistance() == 11 && QSettings().value("view/guides/snapDistance").toInt() == 11,
             "settings dialog did not persist independent ruler units");
     pointX->setValue(-300);
     require(canvas->state().vanishingPoints[0].position == QPointF(200, 240),
@@ -2334,6 +2428,7 @@ int runSelfTests(const QString &outputDirectory) {
 
         testGuideGeometry();
         testOrdinaryGuideCreation();
+        testGuideDrawing();
         testGuideMenus();
         testLayerArchitecture();
         testLayerPanel();

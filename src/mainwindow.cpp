@@ -279,6 +279,7 @@ void MainWindow::initializeWindow() {
     canvas_->setRulerPercent(rulerPercent_);
     canvas_->setGuidesVisible(QSettings().value("view/guides/visible", true).toBool());
     canvas_->setSnapToGuides(QSettings().value("view/guides/snap", true).toBool());
+    canvas_->setGuideSnapDistance(QSettings().value("view/guides/snapDistance", 8).toInt());
     canvas_->setPerspectiveGuideAngleThreshold(
         QSettings().value("view/guides/perspectiveAngleThreshold", 12.0).toDouble());
     canvas_->setMoveTarget(Canvas::MoveTarget(qBound(0, QSettings().value("tools/moveTarget", 0).toInt(), 1)));
@@ -1398,6 +1399,12 @@ void MainWindow::showSettings() {
     perspectiveGuideThreshold->setSuffix(tr("°"));
     perspectiveGuideThreshold->setValue(canvas_->perspectiveGuideAngleThreshold());
     viewForm->addRow(tr("Порог выбора точки схода"), perspectiveGuideThreshold);
+    auto *guideSnapDistance = new QSpinBox;
+    guideSnapDistance->setObjectName("guideSnapDistance");
+    guideSnapDistance->setRange(1, 50);
+    guideSnapDistance->setSuffix(tr(" px"));
+    guideSnapDistance->setValue(canvas_->guideSnapDistance());
+    viewForm->addRow(tr("Расстояние прилипания"), guideSnapDistance);
     viewForm->addRow(
         new QLabel(tr("Единицы числовых координат точек схода и горизонта выбираются отдельно в панели перспективы.")));
     tabs->addTab(viewPage, tr("Вид"));
@@ -1425,8 +1432,10 @@ void MainWindow::showSettings() {
     rulerPercent_ = rulerUnits->currentIndex() == 1;
     QSettings().setValue("view/rulers/percent", rulerPercent_);
     QSettings().setValue("view/guides/perspectiveAngleThreshold", perspectiveGuideThreshold->value());
+    QSettings().setValue("view/guides/snapDistance", guideSnapDistance->value());
     canvas_->setRulerPercent(rulerPercent_);
     canvas_->setPerspectiveGuideAngleThreshold(perspectiveGuideThreshold->value());
+    canvas_->setGuideSnapDistance(guideSnapDistance->value());
     positionLabel_->clear();
 }
 void MainWindow::showAbout() {
