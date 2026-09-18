@@ -532,20 +532,27 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 layersResizeHandle->cursor().shape() == Qt::SizeHorCursor,
             "dock panels do not expose horizontal mouse resize handles");
     const int toolsWidth = toolsDock->width();
+    const QPointF toolsScreenPosition = toolsResizeHandle->mapToGlobal(QPoint(3, 10));
     QMouseEvent toolsResizePress(QEvent::MouseButtonPress,
                                  QPointF(3, 10),
+                                 QPointF(3, 10),
+                                 toolsScreenPosition,
                                  Qt::LeftButton,
                                  Qt::LeftButton,
                                  Qt::NoModifier);
     QApplication::sendEvent(toolsResizeHandle, &toolsResizePress);
     QMouseEvent toolsResizeMove(QEvent::MouseMove,
-                                QPointF(63, 10),
+                                QPointF(3, 10),
+                                QPointF(3, 10),
+                                toolsScreenPosition + QPointF(60, 0),
                                 Qt::NoButton,
                                 Qt::LeftButton,
                                 Qt::NoModifier);
     QApplication::sendEvent(toolsResizeHandle, &toolsResizeMove);
     QMouseEvent toolsResizeRelease(QEvent::MouseButtonRelease,
-                                   QPointF(63, 10),
+                                   QPointF(3, 10),
+                                   QPointF(3, 10),
+                                   toolsScreenPosition + QPointF(60, 0),
                                    Qt::LeftButton,
                                    Qt::NoButton,
                                    Qt::NoModifier);
@@ -553,20 +560,27 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     QApplication::processEvents();
     require(toolsDock->width() > toolsWidth, "left panel width could not be increased with its mouse handle");
     const int layersWidth = layersDock->width();
+    const QPointF layersScreenPosition = layersResizeHandle->mapToGlobal(QPoint(3, 10));
     QMouseEvent layersResizePress(QEvent::MouseButtonPress,
                                   QPointF(3, 10),
+                                  QPointF(3, 10),
+                                  layersScreenPosition,
                                   Qt::LeftButton,
                                   Qt::LeftButton,
                                   Qt::NoModifier);
     QApplication::sendEvent(layersResizeHandle, &layersResizePress);
     QMouseEvent layersResizeMove(QEvent::MouseMove,
-                                 QPointF(-57, 10),
+                                 QPointF(3, 10),
+                                 QPointF(3, 10),
+                                 layersScreenPosition - QPointF(60, 0),
                                  Qt::NoButton,
                                  Qt::LeftButton,
                                  Qt::NoModifier);
     QApplication::sendEvent(layersResizeHandle, &layersResizeMove);
     QMouseEvent layersResizeRelease(QEvent::MouseButtonRelease,
-                                    QPointF(-57, 10),
+                                    QPointF(3, 10),
+                                    QPointF(3, 10),
+                                    layersScreenPosition - QPointF(60, 0),
                                     Qt::LeftButton,
                                     Qt::NoButton,
                                     Qt::NoModifier);

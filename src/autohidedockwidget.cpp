@@ -64,7 +64,7 @@ protected:
         if (event->button() != Qt::LeftButton)
             return;
         dragging_ = true;
-        startMouseX_ = event->pos().x();
+        startScreenX_ = qRound(event->screenPos().x());
         startWidth_ = dock_->width();
         grabMouse();
         event->accept();
@@ -74,7 +74,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override {
         if (!dragging_ || !(event->buttons() & Qt::LeftButton))
             return;
-        const int delta = event->pos().x() - startMouseX_;
+        const int delta = qRound(event->screenPos().x()) - startScreenX_;
         const int requestedWidth =
             qMax(dock_->minimumWidth(), startWidth_ + (area_ == Qt::LeftDockWidgetArea ? delta : -delta));
         owner_->resizeDocks({dock_}, {requestedWidth}, Qt::Horizontal);
@@ -96,7 +96,7 @@ private:
     QMainWindow *owner_ = nullptr;
     Qt::DockWidgetArea area_ = Qt::LeftDockWidgetArea;
     bool dragging_ = false;
-    int startMouseX_ = 0;
+    int startScreenX_ = 0;
     int startWidth_ = 0;
 };
 
