@@ -29,13 +29,15 @@ function detectDefaultLanguage()
     return uiLanguage.indexOf("ru") === 0 ? "Russian" : "English";
 }
 
-function bannerProductTitle()
+function applyLocalizedBanner(page)
 {
-    var text = selectedRussian() ? "Технический Рисунок" : "Technical Drawing";
-    return "<table width='528' cellspacing='0' cellpadding='0'><tr>"
-        + "<td width='25'></td><td align='left'>"
-        + "<span style='font-size:22pt; font-weight:600; color:#123B67;'>"
-        + text + "</span></td></tr></table>";
+    if (!page)
+        return;
+    var watermarkPixmap = 0;
+    var bannerPixmap = 2;
+    var backgroundPixmap = 3;
+    page.setPixmap(bannerPixmap, page.pixmap(selectedRussian() ? backgroundPixmap : watermarkPixmap));
+    page.title = " ";
 }
 
 function setDynamicPageIdentity(objectName, pageListTitle)
@@ -43,7 +45,7 @@ function setDynamicPageIdentity(objectName, pageListTitle)
     var page = gui.pageByObjectName(objectName);
     if (!page)
         return;
-    page.title = bannerProductTitle();
+    applyLocalizedBanner(page);
     page.setPageListTitle(pageListTitle);
 }
 
@@ -152,6 +154,12 @@ Component.prototype.loaded = function()
         var readyPage = gui.pageById(QInstaller.ReadyForInstallation);
         if (readyPage)
             readyPage.entered.connect(this, Component.prototype.readyPageEntered);
+        var performPage = gui.pageById(QInstaller.PerformInstallation);
+        if (performPage)
+            performPage.entered.connect(this, Component.prototype.nativePageEntered);
+        var finishedPage = gui.pageById(QInstaller.InstallationFinished);
+        if (finishedPage)
+            finishedPage.entered.connect(this, Component.prototype.nativePageEntered);
         gui.interrupted.connect(this, Component.prototype.restoreExistingIfw);
     } else if (installer.isUninstaller()) {
         installer.addWizardPageItem(component, "UninstallOptions", QInstaller.ReadyForInstallation);
@@ -180,15 +188,15 @@ Component.prototype.retranslateNativePages = function()
     var perform = gui.pageById(QInstaller.PerformInstallation);
     var finished = gui.pageById(QInstaller.InstallationFinished);
     if (ready) {
-        ready.title = bannerProductTitle();
+        applyLocalizedBanner(ready);
         ready.setPageListTitle(ru ? "Сводка установки" : "Installation summary");
     }
     if (perform) {
-        perform.title = bannerProductTitle();
+        applyLocalizedBanner(perform);
         perform.setPageListTitle(ru ? "Установка" : "Installing");
     }
     if (finished) {
-        finished.title = bannerProductTitle();
+        applyLocalizedBanner(finished);
         finished.setPageListTitle(ru ? "Завершение установки" : "Finished");
     }
     gui.setWizardPageButtonText(QInstaller.ReadyForInstallation, buttons.CommitButton,
@@ -365,6 +373,7 @@ Component.prototype.retranslateUninstallPage = function()
 
 Component.prototype.readyPageEntered = function()
 {
+    this.retranslateNativePages();
     this.updateReadySummary();
     if (existingDecisionChecked)
         return;
@@ -403,6 +412,11 @@ Component.prototype.readyPageEntered = function()
     if ((comparison <= 0 || installer.value("TechDrawAllowDowngrade", "false") === "true") &&
             existing.technology === "QtIFW")
         this.prepareExistingIfw(existing.directory);
+};
+
+Component.prototype.nativePageEntered = function()
+{
+    this.retranslateNativePages();
 };
 
 Component.prototype.updateReadySummary = function()
