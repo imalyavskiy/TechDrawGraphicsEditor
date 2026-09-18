@@ -7,6 +7,8 @@
     <InstallerApplicationIcon>techdraw</InstallerApplicationIcon>
     <InstallerWindowIcon>techdraw.ico</InstallerWindowIcon>
     <Logo>techdraw.png</Logo>
+    <WizardDefaultWidth>660</WizardDefaultWidth>
+    <WizardDefaultHeight>490</WizardDefaultHeight>
     <StartMenuDir>Technical Drawing</StartMenuDir>
     <TargetDir>@HomeDir@/AppData/Local/Programs/Technical Drawing</TargetDir>
     <MaintenanceToolName>@MAINTENANCE_TOOL@</MaintenanceToolName>
