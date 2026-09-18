@@ -896,6 +896,18 @@ void MainWindow::setupViewAndStatusBar() {
     zoom_->setSuffix(tr(" %"));
     zoom_->setKeyboardTracking(false);
     statusBar()->addPermanentWidget(zoom_);
+    auto *collapsePanels = new QToolButton;
+    collapsePanels->setObjectName("collapsePanelsButton");
+    collapsePanels->setIcon(style()->standardIcon(QStyle::SP_TitleBarUnshadeButton));
+    collapsePanels->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    collapsePanels->setToolTip(tr("Открепить все открытые панели и вписать холст"));
+    statusBar()->addPermanentWidget(collapsePanels);
+    connect(collapsePanels, &QToolButton::clicked, this, [this] {
+        toolsDock_->collapseToTab();
+        perspectiveDock_->collapseToTab();
+        layersDock_->collapseToTab();
+        QTimer::singleShot(0, canvas_, &Canvas::fit);
+    });
     connect(zoom_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
         canvas_->setZoom(value / 100.0);
     });

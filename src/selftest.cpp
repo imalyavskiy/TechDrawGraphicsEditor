@@ -1070,6 +1070,28 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 !QSettings().contains("perspective/common/rayStepDegrees") && !saveSavedDefaults->isEnabled(),
             "reset common perspective settings did not restore factory values outside project history");
     defaultsWindow.close();
+    auto *collapsePanels = window.findChild<QToolButton *>("collapsePanelsButton");
+    auto *layersTab = window.findChild<QToolButton *>("layersAutoHideTab");
+    auto *zoomPercent = window.findChild<QDoubleSpinBox *>("zoomPercent");
+    require(collapsePanels && layersTab && zoomPercent && !collapsePanels->toolTip().isEmpty() &&
+                collapsePanels->mapTo(&window, QPoint()).x() > zoomPercent->mapTo(&window, QPoint()).x(),
+            "bottom-right collapse-panels button is missing or misplaced");
+    toolsToolbarToggle->setChecked(true);
+    perspectivePanelToggle->setChecked(true);
+    layersPanelToggle->setChecked(true);
+    QApplication::processEvents();
+    const int canvasWidthBeforeCollapse = canvas->width();
+    canvas->setZoom(16);
+    collapsePanels->click();
+    QApplication::processEvents();
+    QApplication::processEvents();
+    require(!toolsDock->isPinned() && !perspectiveDock->isPinned() && !layersDock->isPinned() &&
+                toolsToolbarToggle->isChecked() && perspectivePanelToggle->isChecked() &&
+                layersPanelToggle->isChecked() && toolsTab->isVisible() && perspectiveTab->isVisible() &&
+                layersTab->isVisible(),
+            "collapse-panels button did not move every open panel to its edge tab");
+    require(canvas->width() > canvasWidthBeforeCollapse && canvas->zoom() < 16,
+            "collapse-panels button did not refit the canvas in the released workspace");
     QSettings().remove("perspective/view");
 }
 

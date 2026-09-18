@@ -264,6 +264,15 @@ bool AutoHideDockWidget::isPinned() const {
     return pinned_;
 }
 
+void AutoHideDockWidget::collapseToTab() {
+    if (!visibilityAction_->isChecked())
+        return;
+    if (pinned_)
+        setPinned(false);
+    else
+        hideOverlay();
+}
+
 bool AutoHideDockWidget::eventFilter(QObject *watched, QEvent *event) {
     if (watched == owner_ &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Move || event->type() == QEvent::Show ||
