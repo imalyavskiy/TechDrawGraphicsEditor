@@ -128,6 +128,20 @@ LayerPanel::LayerPanel(Canvas *canvas, QWidget *parent) : QWidget(parent), canva
     opacity_->setSuffix(tr(" %"));
     opacity_->setKeyboardTracking(false);
     form->addRow(tr("Непрозрачность"), opacity_);
+    offsetX_ = new QDoubleSpinBox(this);
+    offsetX_->setObjectName("layerOffsetX");
+    offsetX_->setRange(-1000000, 1000000);
+    offsetX_->setDecimals(1);
+    offsetX_->setSuffix(tr(" px"));
+    offsetX_->setKeyboardTracking(false);
+    form->addRow(tr("Смещение X"), offsetX_);
+    offsetY_ = new QDoubleSpinBox(this);
+    offsetY_->setObjectName("layerOffsetY");
+    offsetY_->setRange(-1000000, 1000000);
+    offsetY_->setDecimals(1);
+    offsetY_->setSuffix(tr(" px"));
+    offsetY_->setKeyboardTracking(false);
+    form->addRow(tr("Смещение Y"), offsetY_);
     addTransparency_ = new QPushButton(tr("Добавить прозрачность"), this);
     addTransparency_->setObjectName("addLayerTransparency");
     form->addRow(addTransparency_);
@@ -149,6 +163,13 @@ LayerPanel::LayerPanel(Canvas *canvas, QWidget *parent) : QWidget(parent), canva
         if (!updating_)
             canvas_->setLayerOpacity(canvas_->state().layers.activeLayerId(), opacity_->value());
     });
+    auto applyOffset = [this] {
+        if (!updating_)
+            canvas_->setLayerOffset(canvas_->state().layers.activeLayerId(),
+                                    QPointF(offsetX_->value(), offsetY_->value()));
+    };
+    connect(offsetX_, &QDoubleSpinBox::editingFinished, this, applyOffset);
+    connect(offsetY_, &QDoubleSpinBox::editingFinished, this, applyOffset);
     connect(addTransparency_, &QPushButton::clicked, this, [this] {
         canvas_->addLayerTransparency(canvas_->state().layers.activeLayerId());
     });
@@ -223,6 +244,10 @@ void LayerPanel::updateFromState() {
     const LayerEntry *active = layers.activeEntry();
     opacity_->setEnabled(active);
     opacity_->setValue(active ? active->opacity : 100);
+    offsetX_->setEnabled(active);
+    offsetY_->setEnabled(active);
+    offsetX_->setValue(active ? active->offset.x() : 0);
+    offsetY_->setValue(active ? active->offset.y() : 0);
     remove_->setEnabled(layers.entries().size() > 1);
     duplicate_->setEnabled(active);
     int activeIndex = -1;

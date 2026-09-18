@@ -4,6 +4,7 @@
 
 class Canvas;
 class QCheckBox;
+class QDoubleSpinBox;
 class QListWidget;
 class QPushButton;
 class QSpinBox;
@@ -21,6 +22,8 @@ private:
     Canvas *canvas_ = nullptr;
     QListWidget *list_ = nullptr;
     QSpinBox *opacity_ = nullptr;
+    QDoubleSpinBox *offsetX_ = nullptr;
+    QDoubleSpinBox *offsetY_ = nullptr;
     QPushButton *addTransparency_ = nullptr;
     QCheckBox *alphaLocked_ = nullptr;
     QToolButton *add_ = nullptr;

@@ -277,6 +277,18 @@ void Canvas::setLayerOpacity(const QString &id, int opacity) {
     emit stateChanged();
 }
 
+void Canvas::setLayerOffset(const QString &id, QPointF offset) {
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || !std::isfinite(offset.x()) || !std::isfinite(offset.y()) || std::abs(offset.x()) > 1000000 ||
+        std::abs(offset.y()) > 1000000 || entry->offset == offset)
+        return;
+    const DrawingState before = state_;
+    entry->offset = offset;
+    commit(before, tr("смещение слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
 void Canvas::addLayerTransparency(const QString &id) {
     LayerEntry *entry = editableLayerEntry(id);
     if (!entry || entry->typeId != LayerTypes::raster() || !entry->content)

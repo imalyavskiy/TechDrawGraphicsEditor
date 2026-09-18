@@ -141,9 +141,11 @@ void testLayerPanel() {
     auto *up = panel.findChild<QToolButton *>("raiseLayer");
     auto *down = panel.findChild<QToolButton *>("lowerLayer");
     auto *opacity = panel.findChild<QSpinBox *>("layerOpacity");
+    auto *offsetX = panel.findChild<QDoubleSpinBox *>("layerOffsetX");
+    auto *offsetY = panel.findChild<QDoubleSpinBox *>("layerOffsetY");
     auto *addTransparency = panel.findChild<QPushButton *>("addLayerTransparency");
-    require(list && add && remove && duplicate && up && down && opacity && addTransparency && list->count() == 1 &&
-                !remove->isEnabled(),
+    require(list && add && remove && duplicate && up && down && opacity && offsetX && offsetY && addTransparency &&
+                list->count() == 1 && !remove->isEnabled(),
             "layers panel or its initial layer is incomplete");
     add->click();
     QApplication::processEvents();
@@ -170,6 +172,10 @@ void testLayerPanel() {
     opacity->setValue(63);
     QMetaObject::invokeMethod(opacity, "editingFinished");
     require(canvas.state().layers.activeEntry()->opacity == 63, "layer opacity control failed");
+    offsetX->setValue(12.5);
+    offsetY->setValue(-8);
+    QMetaObject::invokeMethod(offsetY, "editingFinished");
+    require(canvas.state().layers.activeEntry()->offset == QPointF(12.5, -8), "layer offset controls failed");
     duplicate->click();
     require(canvas.state().layers.entries().size() == 3 && down->isEnabled(), "layer duplication failed in panel");
     down->click();
