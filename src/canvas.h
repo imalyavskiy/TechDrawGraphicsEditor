@@ -64,6 +64,8 @@ public:
     void setGuidesVisible(bool visible);
     /// Возвращает текущее состояние отображения направляющих.
     bool guidesVisible() const { return guidesVisible_; }
+    void setSnapToGuides(bool enabled);
+    bool snapToGuides() const { return snapToGuides_; }
     /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
     const GuideId &selectedGuideId() const { return selectedGuideId_; }
     /// Создаёт обычную направляющую в точной координате документа и добавляет команду истории.
@@ -251,6 +253,7 @@ private:
     bool cursorInViewport_ = false;
     QPointF cursorView_;
     bool guidesVisible_ = true;
+    bool snapToGuides_ = true;
     bool creatingGuide_ = false;
     GuideType creatingGuideType_ = GuideType::Horizontal;
     double guidePreviewPosition_ = 0;

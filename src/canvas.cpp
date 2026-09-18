@@ -384,6 +384,9 @@ void Canvas::setGuidesVisible(bool visible) {
     guidesVisible_ = visible;
     update();
 }
+void Canvas::setSnapToGuides(bool enabled) {
+    snapToGuides_ = enabled;
+}
 void Canvas::addGuide(GuideType type, double position) {
     if ((type != GuideType::Horizontal && type != GuideType::Vertical) || !std::isfinite(position) ||
         std::abs(position) > 1000000)

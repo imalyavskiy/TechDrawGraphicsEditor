@@ -567,6 +567,80 @@ DrawingState initialDrawingState() {
     return initial;
 }
 
+void testGuideMenus() {
+    MainWindow window;
+    window.show();
+    QApplication::processEvents();
+    auto *canvas = window.canvas();
+    auto *imageMenu = window.findChild<QMenu *>("imageMenu");
+    auto *guidesMenu = window.findChild<QMenu *>("guidesMenu");
+    auto *newHorizontal = window.findChild<QAction *>("newHorizontalGuideAction");
+    auto *newVertical = window.findChild<QAction *>("newVerticalGuideAction");
+    auto *removeSelected = window.findChild<QAction *>("removeSelectedGuideAction");
+    auto *removeAll = window.findChild<QAction *>("removeAllGuidesAction");
+    auto *showGuides = window.findChild<QAction *>("showGuidesAction");
+    auto *snapGuides = window.findChild<QAction *>("snapGuidesAction");
+    auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
+    require(imageMenu && guidesMenu && newHorizontal && newVertical && removeSelected && removeAll && showGuides &&
+                snapGuides && mainToolbar && imageMenu->actions().contains(guidesMenu->menuAction()) &&
+                mainToolbar->actions().contains(snapGuides),
+            "guide menu or shared toolbar snapping action is missing");
+
+    bool horizontalDialogChecked = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *position = dialog ? dialog->findChild<QDoubleSpinBox *>("guidePosition") : nullptr;
+        auto *units = dialog ? dialog->findChild<QComboBox *>("guideUnits") : nullptr;
+        horizontalDialogChecked = dialog && position && units && units->count() == 2;
+        if (position)
+            position->setValue(123);
+        if (dialog)
+            dialog->accept();
+    });
+    newHorizontal->trigger();
+    require(horizontalDialogChecked && canvas->state().guides.size() == 1 &&
+                canvas->state().guides[0].type == GuideType::Horizontal &&
+                qAbs(canvas->state().guides[0].position - 123) < 0.01,
+            "horizontal guide dialog did not create an exact pixel position");
+
+    bool verticalDialogChecked = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *position = dialog ? dialog->findChild<QDoubleSpinBox *>("guidePosition") : nullptr;
+        auto *units = dialog ? dialog->findChild<QComboBox *>("guideUnits") : nullptr;
+        verticalDialogChecked = dialog && position && units;
+        if (units)
+            units->setCurrentIndex(1);
+        if (position)
+            position->setValue(25);
+        if (dialog)
+            dialog->accept();
+    });
+    newVertical->trigger();
+    require(verticalDialogChecked && canvas->state().guides.size() == 2 &&
+                canvas->state().guides[1].type == GuideType::Vertical &&
+                qAbs(canvas->state().guides[1].position - 250) < 0.01,
+            "vertical guide dialog did not convert percent from the left edge");
+    require(removeSelected->isEnabled() && removeAll->isEnabled(), "guide removal actions were not enabled");
+    removeSelected->trigger();
+    require(canvas->state().guides.size() == 1, "remove selected guide menu action failed");
+    canvas->undoStack()->undo();
+    removeAll->trigger();
+    require(canvas->state().guides.isEmpty(), "remove all guides menu action failed");
+    canvas->undoStack()->undo();
+
+    showGuides->setChecked(false);
+    snapGuides->setChecked(false);
+    require(!canvas->guidesVisible() && !canvas->snapToGuides() &&
+                !QSettings().value("view/guides/visible", true).toBool() &&
+                !QSettings().value("view/guides/snap", true).toBool(),
+            "guide view settings were not applied or persisted");
+    showGuides->setChecked(true);
+    snapGuides->setChecked(true);
+    canvas->undoStack()->setClean();
+    window.close();
+}
+
 /// Проверяет компоновку, меню, настройки и основные диалоги главного окна.
 void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(QCoreApplication::translate("TranslationProbe", "catalog-loaded") == QStringLiteral("catalog-loaded-ru"),
@@ -2160,6 +2234,7 @@ int runSelfTests(const QString &outputDirectory) {
 
         testGuideGeometry();
         testOrdinaryGuideCreation();
+        testGuideMenus();
         testLayerArchitecture();
         testLayerPanel();
         testLayerAwareEraser();

@@ -65,6 +65,20 @@ QIcon actualSizeIcon() {
     painter.drawText(image.rect(), Qt::AlignCenter, QCoreApplication::translate("MainWindow", "1:1"));
     return QIcon(image);
 }
+QIcon snapIcon() {
+    QPixmap image(24, 24);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#364152"), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawArc(QRectF(5, 3, 14, 16), 0, 180 * 16);
+    painter.drawLine(5, 11, 5, 17);
+    painter.drawLine(19, 11, 19, 17);
+    painter.setPen(QPen(QColor("#2f86c7"), 2));
+    painter.drawLine(3, 19, 9, 19);
+    painter.drawLine(15, 19, 21, 19);
+    return QIcon(image);
+}
 /// Строит открытый или закрытый глаз для переключателя видимости точки.
 QIcon eyeIcon(bool open) {
     QPixmap image(20, 20);
@@ -244,6 +258,8 @@ void MainWindow::initializeWindow() {
     coordinatePercent_ = QSettings().value("perspective/coordinatePercent", true).toBool();
     rulerPercent_ = QSettings().value("view/rulers/percent", false).toBool();
     canvas_->setRulerPercent(rulerPercent_);
+    canvas_->setGuidesVisible(QSettings().value("view/guides/visible", true).toBool());
+    canvas_->setSnapToGuides(QSettings().value("view/guides/snap", true).toBool());
     DrawingState initialState = canvas_->state();
     applySavedPerspectiveDefaults(&initialState);
     applySavedViewSettings(&initialState);
@@ -275,6 +291,8 @@ void MainWindow::setupMenusAndToolbars() {
     edit->setObjectName("editMenu");
     viewMenu_ = menuBar()->addMenu(tr("&Вид"));
     viewMenu_->setObjectName("viewMenu");
+    auto *imageMenu = menuBar()->addMenu(tr("&Изображение"));
+    imageMenu->setObjectName("imageMenu");
     toolsMenu_ = menuBar()->addMenu(tr("&Инструменты"));
     toolsMenu_->setObjectName("toolsMenu");
     helpMenu_ = menuBar()->addMenu(tr("&Справка"));
@@ -319,6 +337,38 @@ void MainWindow::setupMenusAndToolbars() {
     edit->addSeparator();
     auto *settingsAction = edit->addAction(tr("Настройки…"), this, &MainWindow::showSettings);
     settingsAction->setObjectName("settingsAction");
+    auto *guidesMenu = imageMenu->addMenu(tr("Направляющие"));
+    guidesMenu->setObjectName("guidesMenu");
+    auto *newHorizontalGuide = guidesMenu->addAction(tr("Новая горизонтальная…"), this, [this] {
+        newGuide(GuideType::Horizontal);
+    });
+    newHorizontalGuide->setObjectName("newHorizontalGuideAction");
+    auto *newVerticalGuide = guidesMenu->addAction(tr("Новая вертикальная…"), this, [this] {
+        newGuide(GuideType::Vertical);
+    });
+    newVerticalGuide->setObjectName("newVerticalGuideAction");
+    guidesMenu->addSeparator();
+    removeSelectedGuideAction_ = guidesMenu->addAction(tr("Удалить выбранную"), canvas_, &Canvas::removeSelectedGuide);
+    removeSelectedGuideAction_->setObjectName("removeSelectedGuideAction");
+    removeAllGuidesAction_ = guidesMenu->addAction(tr("Удалить все"), canvas_, &Canvas::removeAllGuides);
+    removeAllGuidesAction_->setObjectName("removeAllGuidesAction");
+    viewMenu_->addSeparator();
+    showGuidesAction_ = viewMenu_->addAction(tr("Показывать направляющие"));
+    showGuidesAction_->setObjectName("showGuidesAction");
+    showGuidesAction_->setCheckable(true);
+    showGuidesAction_->setChecked(canvas_->guidesVisible());
+    connect(showGuidesAction_, &QAction::toggled, this, [this](bool visible) {
+        QSettings().setValue("view/guides/visible", visible);
+        canvas_->setGuidesVisible(visible);
+    });
+    snapGuidesAction_ = viewMenu_->addAction(snapIcon(), tr("Прилипание к направляющим"));
+    snapGuidesAction_->setObjectName("snapGuidesAction");
+    snapGuidesAction_->setCheckable(true);
+    snapGuidesAction_->setChecked(canvas_->snapToGuides());
+    connect(snapGuidesAction_, &QAction::toggled, this, [this](bool enabled) {
+        QSettings().setValue("view/guides/snap", enabled);
+        canvas_->setSnapToGuides(enabled);
+    });
     newAction->setToolTip(tr("Создать (Ctrl+N)"));
     openAction->setToolTip(tr("Открыть (Ctrl+O)"));
     saveAction->setToolTip(tr("Сохранить проект (Ctrl+S)"));
@@ -334,6 +384,8 @@ void MainWindow::setupMenusAndToolbars() {
     mainToolbar_->addSeparator();
     mainToolbar_->addAction(undoAction);
     mainToolbar_->addAction(redoAction);
+    mainToolbar_->addSeparator();
+    mainToolbar_->addAction(snapGuidesAction_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -939,6 +991,7 @@ void MainWindow::setupViewAndStatusBar() {
                                     .arg(suffix));
     });
     connect(canvas_, &Canvas::stateChanged, this, &MainWindow::updateState);
+    connect(canvas_, &Canvas::selectedGuideChanged, this, &MainWindow::updateState);
     connect(canvas_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateState);
     updateState();
     QTimer::singleShot(0, canvas_, &Canvas::fit);
@@ -948,6 +1001,42 @@ void MainWindow::updateColors() {
     toolProperties_->setColors(front_, back_);
     canvas_->setFront(front_);
     canvas_->setBack(back_);
+}
+void MainWindow::newGuide(GuideType type) {
+    const bool horizontal = type == GuideType::Horizontal;
+    const double dimension = horizontal ? canvas_->state().canvasSize.height() : canvas_->state().canvasSize.width();
+    QDialog dialog(this);
+    dialog.setWindowTitle(horizontal ? tr("Новая горизонтальная направляющая")
+                                     : tr("Новая вертикальная направляющая"));
+    auto *layout = new QFormLayout(&dialog);
+    auto *position = new QDoubleSpinBox(&dialog);
+    position->setObjectName("guidePosition");
+    position->setDecimals(2);
+    position->setRange(0, dimension);
+    position->setValue(dimension / 2.0);
+    position->setSuffix(tr(" px"));
+    auto *units = new QComboBox(&dialog);
+    units->setObjectName("guideUnits");
+    units->addItems({tr("Пиксели"), tr("Проценты")});
+    layout->addRow(horizontal ? tr("От верхнего края") : tr("От левого края"), position);
+    layout->addRow(tr("Единицы"), units);
+    int previousUnits = 0;
+    connect(units, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, [=, &previousUnits](int index) {
+        const double pixels = previousUnits == 0 ? position->value() : position->value() * dimension / 100.0;
+        QSignalBlocker blocker(position);
+        position->setRange(0, index == 0 ? dimension : 100.0);
+        position->setSuffix(index == 0 ? tr(" px") : tr(" %"));
+        position->setValue(index == 0 ? pixels : pixels * 100.0 / dimension);
+        previousUnits = index;
+    });
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addRow(buttons);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    const double pixels = units->currentIndex() == 0 ? position->value() : position->value() * dimension / 100.0;
+    canvas_->addGuide(type, pixels);
 }
 void MainWindow::activateTool(Canvas::Tool tool, const QString &name) {
     canvas_->setTool(tool);
@@ -1026,6 +1115,10 @@ void MainWindow::updateState() {
     else if (activeLayer->locked)
         target.unavailableReason = tr("Активный слой зафиксирован");
     toolSettings_->setTargetContext(target);
+    if (removeSelectedGuideAction_)
+        removeSelectedGuideAction_->setEnabled(!canvas_->selectedGuideId().isEmpty());
+    if (removeAllGuidesAction_)
+        removeAllGuidesAction_->setEnabled(!canvas_->state().guides.isEmpty());
     // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
