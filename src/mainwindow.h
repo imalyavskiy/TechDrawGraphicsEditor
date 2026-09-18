@@ -11,6 +11,7 @@ class QDockWidget;
 class QMenu;
 class QListWidget;
 class QComboBox;
+class QToolBar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -35,16 +36,23 @@ private:
     QCheckBox *gridVisible_, *selectedPointVisible_, *selectedPointLocked_, *horizonVisible_, *horizonLocked_,
         *horizonSymmetry_, *verticalVisible_, *verticalLocked_, *verticalSymmetry_, *axesVisible_, *markersVisible_;
     QPushButton *frontButton_, *backButton_, *gridColorButton_, *horizonColorButton_, *verticalColorButton_,
-        *savePerspectiveDefaultsButton_, *removePointButton_;
+        *savePerspectiveDefaultsButton_, *resetPerspectiveDefaultsButton_, *addPointButton_, *removePointButton_;
     QListWidget *vanishingPointsList_;
     QComboBox *horizonUnits_, *verticalUnits_, *pointUnits_, *pointAttachment_, *rayPattern_;
     QColor front_ = QColor("#2c3441"), back_ = Qt::white;
     QDockWidget *perspectiveDock_;
     QAction *perspectiveAction_;
+    QMenu *viewMenu_, *toolsMenu_, *helpMenu_;
+    QToolBar *mainToolbar_, *toolsToolbar_;
     QMenu *recentFilesMenu_;
     QStringList recentFiles_;
     QVector<int> toolWidths_{3, 3, 3};
     bool coordinatePercent_ = true, rulerPercent_ = false;
+    void initializeWindow();
+    void setupMenusAndToolbars();
+    void setupPerspectivePanel();
+    void connectPerspectiveControls();
+    void setupViewAndStatusBar();
     void newDocument();
     void openDocument();
     bool saveDocument(bool saveAs = false);

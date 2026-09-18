@@ -213,6 +213,14 @@ bool matchesPerspectiveDefaults(const DrawingState &state) {
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
+    initializeWindow();
+    setupMenusAndToolbars();
+    setupPerspectivePanel();
+    connectPerspectiveControls();
+    setupViewAndStatusBar();
+}
+
+void MainWindow::initializeWindow() {
     coordinatePercent_ = QSettings().value("perspective/coordinatePercent", true).toBool();
     rulerPercent_ = QSettings().value("view/rulers/percent", false).toBool();
     canvas_->setRulerPercent(rulerPercent_);
@@ -238,15 +246,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
                   " QFrame#rolloutHeader { background: #eef1f5; border: 0; border-bottom: 1px solid #b9c0ca; } "
                   "QFrame#rolloutHeader QToolButton { padding: 0; border: 0; background: transparent; } "
                   "QFrame#rolloutHeader QToolButton:hover { background: #dce7f5; border-radius: 2px; }");
+}
+
+void MainWindow::setupMenusAndToolbars() {
     auto *file = menuBar()->addMenu(tr("&Файл"));
     file->setObjectName("fileMenu");
     auto *edit = menuBar()->addMenu(tr("&Правка"));
     edit->setObjectName("editMenu");
-    auto *view = menuBar()->addMenu(tr("&Вид"));
-    view->setObjectName("viewMenu");
-    auto *toolsMenu = menuBar()->addMenu(tr("&Инструменты"));
-    toolsMenu->setObjectName("toolsMenu");
-    auto *help = menuBar()->addMenu(tr("&Справка"));
+    viewMenu_ = menuBar()->addMenu(tr("&Вид"));
+    viewMenu_->setObjectName("viewMenu");
+    toolsMenu_ = menuBar()->addMenu(tr("&Инструменты"));
+    toolsMenu_->setObjectName("toolsMenu");
+    helpMenu_ = menuBar()->addMenu(tr("&Справка"));
     auto *newAction = file->addAction(
         style()->standardIcon(QStyle::SP_FileIcon), tr("Создать…"), this, &MainWindow::newDocument, QKeySequence::New);
     newAction->setObjectName("newAction");
@@ -293,28 +304,28 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     saveAction->setToolTip(tr("Сохранить проект (Ctrl+S)"));
     undoAction->setToolTip(tr("Отменить (Ctrl+Z)"));
     redoAction->setToolTip(tr("Повторить (Ctrl+Y)"));
-    auto *bar = addToolBar(tr("Файл и параметры"));
-    bar->setObjectName("mainToolbar");
-    bar->setMovable(false);
-    bar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    bar->addAction(newAction);
-    bar->addAction(openAction);
-    bar->addAction(saveAction);
-    bar->addSeparator();
-    bar->addAction(undoAction);
-    bar->addAction(redoAction);
-    bar->addSeparator();
-    bar->addWidget(new QLabel(tr(" Ширина "), bar));
+    mainToolbar_ = addToolBar(tr("Файл и параметры"));
+    mainToolbar_->setObjectName("mainToolbar");
+    mainToolbar_->setMovable(false);
+    mainToolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    mainToolbar_->addAction(newAction);
+    mainToolbar_->addAction(openAction);
+    mainToolbar_->addAction(saveAction);
+    mainToolbar_->addSeparator();
+    mainToolbar_->addAction(undoAction);
+    mainToolbar_->addAction(redoAction);
+    mainToolbar_->addSeparator();
+    mainToolbar_->addWidget(new QLabel(tr(" Ширина "), mainToolbar_));
     QSettings widthSettings;
     for (int i = 0; i < toolWidths_.size(); ++i)
         toolWidths_[i] = qBound(1, widthSettings.value(widthSetting(i), 3).toInt(), 200);
-    strokeWidth_ = new QSpinBox(bar);
+    strokeWidth_ = new QSpinBox(mainToolbar_);
     strokeWidth_->setObjectName("strokeWidth");
     strokeWidth_->setRange(1, 200);
     strokeWidth_->setValue(toolWidths_[Canvas::Pencil]);
     strokeWidth_->setSuffix(tr(" px"));
     strokeWidth_->setKeyboardTracking(false);
-    bar->addWidget(strokeWidth_);
+    mainToolbar_->addWidget(strokeWidth_);
     canvas_->setStrokeWidth(strokeWidth_->value());
     connect(strokeWidth_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
         const int tool = int(canvas_->tool());
@@ -361,12 +372,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
             canvas_->setStrokeWidth(toolWidths_[active]);
         }
     });
-    bar->addSeparator();
-    frontButton_ = new QPushButton(bar);
+    mainToolbar_->addSeparator();
+    frontButton_ = new QPushButton(mainToolbar_);
     frontButton_->setToolTip(tr("Основной цвет (Front)"));
     frontButton_->setObjectName("frontColor");
     frontButton_->setFixedWidth(34);
-    bar->addWidget(frontButton_);
+    mainToolbar_->addWidget(frontButton_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -375,12 +386,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     swap->setObjectName("swapColorsAction");
     swap->setToolTip(tr("Поменять цвета местами (X)"));
     swap->setShortcut(QKeySequence("X"));
-    bar->addAction(swap);
-    backButton_ = new QPushButton(bar);
+    mainToolbar_->addAction(swap);
+    backButton_ = new QPushButton(mainToolbar_);
     backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)"));
     backButton_->setObjectName("backColor");
     backButton_->setFixedWidth(34);
-    bar->addWidget(backButton_);
+    mainToolbar_->addWidget(backButton_);
     connect(frontColorAction, &QAction::triggered, this, [this] {
         auto c = QColorDialog::getColor(front_, this, tr("Основной цвет — Front"));
         if (c.isValid()) {
@@ -402,12 +413,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
         updateColors();
     });
     updateColors();
-    auto *toolBar = new QToolBar(tr("Инструменты"), this);
-    toolBar->setObjectName("toolsToolbar");
-    toolBar->setMovable(false);
-    toolBar->setIconSize(QSize(24, 24));
-    toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    addToolBar(Qt::LeftToolBarArea, toolBar);
+    toolsToolbar_ = new QToolBar(tr("Инструменты"), this);
+    toolsToolbar_->setObjectName("toolsToolbar");
+    toolsToolbar_->setMovable(false);
+    toolsToolbar_->setIconSize(QSize(24, 24));
+    toolsToolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    addToolBar(Qt::LeftToolBarArea, toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
     QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Точка схода")};
@@ -419,20 +430,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
         action->setShortcut(QKeySequence(shortcuts[i]));
         action->setToolTip(names[i] + " (" + shortcuts[i] + ")");
         group->addAction(action);
-        toolBar->addAction(action);
-        toolsMenu->addAction(action);
+        toolsToolbar_->addAction(action);
+        toolsMenu_->addAction(action);
         if (i == 0)
             action->setChecked(true);
         connect(action, &QAction::triggered, this, [this, i, names] { activateTool(Canvas::Tool(i), names[i]); });
         if (i == 4)
             perspectiveAction_ = action;
     }
-    toolsMenu->addSeparator();
-    toolsMenu->addAction(strokeWidthAction);
-    toolsMenu->addSeparator();
-    toolsMenu->addAction(frontColorAction);
-    toolsMenu->addAction(backColorAction);
-    toolsMenu->addAction(swap);
+    toolsMenu_->addSeparator();
+    toolsMenu_->addAction(strokeWidthAction);
+    toolsMenu_->addSeparator();
+    toolsMenu_->addAction(frontColorAction);
+    toolsMenu_->addAction(backColorAction);
+    toolsMenu_->addAction(swap);
+}
+
+void MainWindow::setupPerspectivePanel() {
     perspectiveDock_ = new QDockWidget(tr("Перспектива"), this);
     perspectiveDock_->setObjectName("perspectiveDock");
     perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
@@ -506,11 +520,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     savePerspectiveDefaultsButton_ = new QPushButton(tr("Сохранить"));
     savePerspectiveDefaultsButton_->setObjectName("savePerspectiveDefaults");
     savePerspectiveDefaultsButton_->setToolTip(tr("Сохранить пять числовых параметров и шаблон линии"));
-    auto *resetDefaults = new QPushButton(tr("Сбросить"));
-    resetDefaults->setObjectName("resetPerspectiveDefaults");
-    resetDefaults->setToolTip(tr("Вернуть заводские значения"));
+    resetPerspectiveDefaultsButton_ = new QPushButton(tr("Сбросить"));
+    resetPerspectiveDefaultsButton_->setObjectName("resetPerspectiveDefaults");
+    resetPerspectiveDefaultsButton_->setToolTip(tr("Вернуть заводские значения"));
     defaultButtons->addWidget(savePerspectiveDefaultsButton_);
-    defaultButtons->addWidget(resetDefaults);
+    defaultButtons->addWidget(resetPerspectiveDefaultsButton_);
     commonForm->addRow(defaultButtons);
     auto *horizonGroup = new RolloutSection(tr("Линия горизонта"), "horizonSettings");
     auto *horizonForm = new QFormLayout(horizonGroup->contentWidget());
@@ -603,11 +617,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     vanishingPointsList_->setSpacing(3);
     pointsListLayout->addWidget(vanishingPointsList_);
     auto *pointButtons = new QHBoxLayout;
-    auto *addPointButton = new QPushButton(tr("Добавить"));
-    addPointButton->setObjectName("addVanishingPoint");
+    addPointButton_ = new QPushButton(tr("Добавить"));
+    addPointButton_->setObjectName("addVanishingPoint");
     removePointButton_ = new QPushButton(tr("Удалить"));
     removePointButton_->setObjectName("removeVanishingPoint");
-    pointButtons->addWidget(addPointButton);
+    pointButtons->addWidget(addPointButton_);
     pointButtons->addWidget(removePointButton_);
     pointsListLayout->addLayout(pointButtons);
     auto *pointGroup = new RolloutSection(tr("Свойства выбранной точки"), "selectedVanishingPointSettings");
@@ -661,19 +675,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
     perspectiveDock_->setWidget(panelScroll);
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);
     perspectiveDock_->hide();
-    auto *mainToolbarToggle = bar->toggleViewAction();
+}
+
+void MainWindow::connectPerspectiveControls() {
+    auto *mainToolbarToggle = mainToolbar_->toggleViewAction();
     mainToolbarToggle->setObjectName("mainToolbarToggle");
     mainToolbarToggle->setText(tr("Панель команд"));
-    view->addAction(mainToolbarToggle);
-    auto *toolsToolbarToggle = toolBar->toggleViewAction();
+    viewMenu_->addAction(mainToolbarToggle);
+    auto *toolsToolbarToggle = toolsToolbar_->toggleViewAction();
     toolsToolbarToggle->setObjectName("toolsToolbarToggle");
     toolsToolbarToggle->setText(tr("Панель инструментов"));
-    view->addAction(toolsToolbarToggle);
+    viewMenu_->addAction(toolsToolbarToggle);
     auto *perspectivePanelToggle = perspectiveDock_->toggleViewAction();
     perspectivePanelToggle->setObjectName("perspectivePanelToggle");
     perspectivePanelToggle->setText(tr("Панель перспективы"));
-    view->addAction(perspectivePanelToggle);
-    view->addSeparator();
+    viewMenu_->addAction(perspectivePanelToggle);
+    viewMenu_->addSeparator();
     connect(gridVisible_, &QCheckBox::toggled, canvas_, &Canvas::setGridVisible);
     connect(axesVisible_, &QCheckBox::toggled, this, [this](bool value) {
         QSettings().setValue("perspective/view/axesVisible", value);
@@ -702,7 +719,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
         updateState();
         statusBar()->showMessage(tr("Общие настройки направляющих сохранены"), 3000);
     });
-    connect(resetDefaults, &QPushButton::clicked, this, [this] {
+    connect(resetPerspectiveDefaultsButton_, &QPushButton::clicked, this, [this] {
         clearPerspectiveDefaults();
         canvas_->setRayAppearance(10, 12, 10, 70, 50, 0);
         updateState();
@@ -774,7 +791,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
         vanishingPointsList_->setCurrentRow(index);
         updateState();
     });
-    connect(addPointButton, &QPushButton::clicked, this, [this] {
+    connect(addPointButton_, &QPushButton::clicked, this, [this] {
         canvas_->addVanishingPoint();
         const int i = canvas_->selectedPointIndex();
         if (i < 0)
@@ -830,18 +847,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
             canvas_->setSelectedPointColor(c);
         }
     });
-    auto *fitAction = view->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),
-                                      tr("Вписать холст"),
-                                      canvas_,
-                                      &Canvas::fit,
-                                      QKeySequence("Ctrl+0"));
+}
+
+void MainWindow::setupViewAndStatusBar() {
+    auto *fitAction = viewMenu_->addAction(style()->standardIcon(QStyle::SP_TitleBarMaxButton),
+                                           tr("Вписать холст"),
+                                           canvas_,
+                                           &Canvas::fit,
+                                           QKeySequence("Ctrl+0"));
     fitAction->setToolTip(tr("Вписать холст (Ctrl+0)"));
-    auto *actualAction = view->addAction(
+    auto *actualAction = viewMenu_->addAction(
         actualSizeIcon(), tr("Масштаб 100%"), this, [this] { canvas_->setZoom(1); }, QKeySequence("Ctrl+1"));
     actualAction->setToolTip(tr("Масштаб 100% (Ctrl+1)"));
-    view->addAction(tr("Увеличить"), this, [this] { canvas_->setZoom(canvas_->zoom() * 1.2); }, QKeySequence("Ctrl++"));
-    view->addAction(tr("Уменьшить"), this, [this] { canvas_->setZoom(canvas_->zoom() / 1.2); }, QKeySequence("Ctrl+-"));
-    help->addAction(tr("Управление"), this, [this] {
+    viewMenu_->addAction(
+        tr("Увеличить"), this, [this] { canvas_->setZoom(canvas_->zoom() * 1.2); }, QKeySequence("Ctrl++"));
+    viewMenu_->addAction(
+        tr("Уменьшить"), this, [this] { canvas_->setZoom(canvas_->zoom() / 1.2); }, QKeySequence("Ctrl+-"));
+    helpMenu_->addAction(tr("Управление"), this, [this] {
         QMessageBox::information(
             this,
             productName() + tr(" — управление"),
@@ -851,7 +873,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canva
                "отмена / повтор\nCtrl+0 — вписать, Ctrl+1 — 100%\n\nПроект .drw хранит PNG, координаты точек схода, их "
                "фиксацию и горизонт.\nЭкспорт PNG сохраняет только рисунок."));
     });
-    auto *aboutAction = help->addAction(tr("О программе…"), this, &MainWindow::showAbout);
+    auto *aboutAction = helpMenu_->addAction(tr("О программе…"), this, &MainWindow::showAbout);
     aboutAction->setObjectName("aboutAction");
     toolLabel_ = new QLabel(tr("Карандаш"));
     sizeLabel_ = new QLabel;
