@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SummaryDetails</class>
+ <widget class="QWidget" name="SummaryDetails">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item>
+    <widget class="QTextBrowser" name="summaryText">
+     <property name="frameShape"><enum>QFrame::StyledPanel</enum></property>
+     <property name="openExternalLinks"><bool>false</bool></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

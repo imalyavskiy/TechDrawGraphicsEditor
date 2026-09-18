@@ -12,6 +12,7 @@
         <UserInterface>language.ui</UserInterface>
         <UserInterface>prototype-notice.ui</UserInterface>
         <UserInterface>options.ui</UserInterface>
+        <UserInterface>summary.ui</UserInterface>
         <UserInterface>uninstall-options.ui</UserInterface>
     </UserInterfaces>
 </Package>

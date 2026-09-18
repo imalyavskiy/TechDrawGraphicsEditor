@@ -14,6 +14,7 @@ var existingInstallations = {};
 var optionsWidget = null;
 var languageWidget = null;
 var noticeWidget = null;
+var summaryWidget = null;
 var existingDecisionChecked = false;
 var existingIfwBackup = "";
 var existingIfwRoot = "";
@@ -143,17 +144,24 @@ Component.prototype.loaded = function()
         if (clean)
             installer.addWizardPage(component, "PrototypeNoticePage", QInstaller.TargetDirectory);
         installer.addWizardPage(component, "OptionsPage", QInstaller.ReadyForInstallation);
+        installer.addWizardPageItem(component, "SummaryDetails", QInstaller.ReadyForInstallation, 0);
 
         languageWidget = gui.pageWidgetByObjectName("DynamicLanguagePage");
         noticeWidget = gui.pageWidgetByObjectName("DynamicPrototypeNoticePage");
         optionsWidget = gui.pageWidgetByObjectName("DynamicOptionsPage");
+        summaryWidget = component.userInterface("SummaryDetails");
         this.configureLanguagePage();
         this.configureNoticePage();
         this.configureOptionsPage(scope);
 
         var readyPage = gui.pageById(QInstaller.ReadyForInstallation);
-        if (readyPage)
+        if (readyPage) {
+            if (readyPage.ComponentSummaryScrollArea)
+                readyPage.ComponentSummaryScrollArea.visible = false;
+            if (readyPage.RemoveAllMsgLabel)
+                readyPage.RemoveAllMsgLabel.visible = false;
             readyPage.entered.connect(this, Component.prototype.readyPageEntered);
+        }
         var performPage = gui.pageById(QInstaller.PerformInstallation);
         if (performPage)
             performPage.entered.connect(this, Component.prototype.nativePageEntered);
@@ -422,7 +430,7 @@ Component.prototype.nativePageEntered = function()
 Component.prototype.updateReadySummary = function()
 {
     var page = gui.pageById(QInstaller.ReadyForInstallation);
-    if (!page || !page.InstallComponentsTreeview || !page.InstallMsgLabel)
+    if (!page || !summaryWidget)
         return;
 
     var ru = selectedRussian();
@@ -443,23 +451,28 @@ Component.prototype.updateReadySummary = function()
 
     var yes = ru ? "да" : "yes";
     var no = ru ? "нет" : "no";
-    var items = [
-        action,
-        (ru ? "Компонент: " : "Component: ") + productDisplayName + " (" + productArchitecture + ")",
-        (ru ? "Каталог: " : "Folder: ") + installer.value("TargetDir"),
-        (ru ? "Область: " : "Scope: ") + (scope === "AllUsers"
-            ? (ru ? "для всех пользователей" : "all users")
-            : (ru ? "только для текущего пользователя" : "current user only")),
-        (ru ? "Ярлык в меню «Пуск»: " : "Start menu shortcut: ") + yes,
-        (ru ? "Ярлык на рабочем столе: " : "Desktop shortcut: ")
-            + (installer.value("TechDrawDesktopShortcut") === "true" ? yes : no),
-        (ru ? "Ассоциация файлов .drw: " : "Associate .drw files: ")
-            + (installer.value("TechDrawAssociateDrw") !== "false" ? yes : no),
-        (ru ? "Запуск после установки: " : "Launch after installation: ")
-            + (installer.value("TechDrawLaunch") !== "false" ? yes : no)
+    var target = installer.value("TargetDir").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    var scopeText = scope === "AllUsers"
+        ? (ru ? "для всех пользователей" : "all users")
+        : (ru ? "только для текущего пользователя" : "current user only");
+    var rows = [
+        [ru ? "Действие" : "Action", action],
+        [ru ? "Компонент" : "Component", productDisplayName + " (" + productArchitecture + ")"],
+        [ru ? "Каталог" : "Folder", target],
+        [ru ? "Область" : "Scope", scopeText],
+        [ru ? "Ярлык в меню «Пуск»" : "Start menu shortcut", yes],
+        [ru ? "Ярлык на рабочем столе" : "Desktop shortcut",
+            installer.value("TechDrawDesktopShortcut") === "true" ? yes : no],
+        [ru ? "Ассоциация файлов .drw" : "Associate .drw files",
+            installer.value("TechDrawAssociateDrw") !== "false" ? yes : no],
+        [ru ? "Запуск после установки" : "Launch after installation",
+            installer.value("TechDrawLaunch") !== "false" ? yes : no]
     ];
-    page.InstallMsgLabel.text = ru ? "Будут применены следующие параметры:" : "The following settings will be applied:";
-    gui.setTextItems(page.InstallComponentsTreeview, items);
+    var html = "<h3>" + (ru ? "Выбранные параметры" : "Selected settings") + "</h3><table cellspacing='6'>";
+    for (var i = 0; i < rows.length; ++i)
+        html += "<tr><td><b>" + rows[i][0] + ":</b></td><td>" + rows[i][1] + "</td></tr>";
+    html += "</table>";
+    summaryWidget.summaryText.html = html;
 };
 
 Component.prototype.prepareExistingIfw = function(root)
