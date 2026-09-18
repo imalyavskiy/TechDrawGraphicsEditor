@@ -61,11 +61,12 @@ for %%F in (libstdc++-6.dll libwinpthread-1.dll) do (
     copy /y "%MINGW_ROOT%\bin\%%F" "%DEPLOY_DIR%\%%F" >nul || exit /b 1
 )
 
-rem Deploy the native and offscreen platforms used by the application and its self-tests.
-for %%D in (platforms styles) do mkdir "%DEPLOY_DIR%\%%D" || exit /b 1
+rem Deploy the native and offscreen platforms, the Windows style, and JPEG export support.
+for %%D in (platforms styles imageformats) do mkdir "%DEPLOY_DIR%\%%D" || exit /b 1
 copy /y "%QT_ROOT%\plugins\platforms\qwindows.dll" "%DEPLOY_DIR%\platforms\qwindows.dll" >nul || exit /b 1
 copy /y "%QT_ROOT%\plugins\platforms\qoffscreen.dll" "%DEPLOY_DIR%\platforms\qoffscreen.dll" >nul || exit /b 1
 copy /y "%QT_ROOT%\plugins\styles\qwindowsvistastyle.dll" "%DEPLOY_DIR%\styles\qwindowsvistastyle.dll" >nul || exit /b 1
+copy /y "%QT_ROOT%\plugins\imageformats\qjpeg.dll" "%DEPLOY_DIR%\imageformats\qjpeg.dll" >nul || exit /b 1
 
 rem Force Qt to resolve plugins from the portable directory instead of the development machine.
 >"%DEPLOY_DIR%\qt.conf" echo [Paths]

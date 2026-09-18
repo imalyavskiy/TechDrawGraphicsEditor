@@ -1,4 +1,5 @@
 #include "selftest.h"
+#include "autohidedockwidget.h"
 #include "mainwindow.h"
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
@@ -89,13 +90,15 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     Canvas *canvas = window.canvas();
     auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
     auto *toolsToolbar = window.findChild<QToolBar *>("toolsToolbar");
+    auto *toolsDock = window.findChild<AutoHideDockWidget *>("toolsDock");
     auto *fileMenu = window.findChild<QMenu *>("fileMenu");
     auto *editMenu = window.findChild<QMenu *>("editMenu");
     auto *viewMenu = window.findChild<QMenu *>("viewMenu");
     auto *toolsMenu = window.findChild<QMenu *>("toolsMenu");
-    require(mainToolbar && toolsToolbar && mainToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
-                toolsToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly,
-            "toolbars must show icons only");
+    require(mainToolbar && toolsToolbar && toolsDock && mainToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
+                toolsToolbar->toolButtonStyle() == Qt::ToolButtonIconOnly &&
+                toolsToolbar->orientation() == Qt::Horizontal,
+            "toolbars must show icons only and drawing tools must be horizontal");
     auto *mainToolbarToggle = window.findChild<QAction *>("mainToolbarToggle");
     auto *toolsToolbarToggle = window.findChild<QAction *>("toolsToolbarToggle");
     require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle &&
@@ -110,26 +113,87 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(!toolsToolbar->isVisible(), "tools toolbar could not be hidden through View menu");
     toolsToolbarToggle->trigger();
     QApplication::processEvents();
+    auto *toolsPin = window.findChild<QToolButton *>("toolsPanelPin");
+    auto *toolsTitle = window.findChild<QLabel *>("toolsPanelTitle");
+    auto *toolsStrip = window.findChild<QDockWidget *>("toolsAutoHideStrip");
+    auto *toolsTab = window.findChild<QToolButton *>("toolsAutoHideTab");
+    auto *toolsOverlay = window.findChild<QWidget *>("toolsAutoHideOverlay");
+    require(toolsPin && toolsTitle && toolsStrip && toolsTab && toolsOverlay && toolsDock->isPinned() &&
+                toolsPin->mapTo(&window, QPoint()).x() > toolsTitle->mapTo(&window, QPoint()).x(),
+            "left panel pin or auto-hide controls are missing");
+    toolsPin->click();
+    QApplication::processEvents();
+    require(!toolsDock->isPinned(), "left panel did not switch to auto-hide mode");
+    require(!toolsToolbar->isVisible(), "unpinning the left panel did not remove it from the layout");
+    require(toolsStrip->isVisible() && toolsTab->isVisible(),
+            "unpinning the left panel did not reveal its edge tab");
+    require(toolsStrip->geometry().right() < canvas->geometry().left(),
+            "the left auto-hide tab must occupy a strip outside the canvas and its rulers");
+    require(canvas->mapTo(&window, QPoint()).x() -
+                    (toolsTab->mapTo(&window, QPoint()).x() + toolsTab->width()) >=
+                3,
+            "the left auto-hide tab must leave a small gap before the ruler");
+    require(toolsToolbarToggle->isChecked(), "unpinning the left panel changed its View menu state");
+    toolsToolbarToggle->trigger();
+    QApplication::processEvents();
+    require(!toolsStrip->isVisible(), "the View menu did not hide the unpinned left panel and its tab");
+    toolsToolbarToggle->trigger();
+    QApplication::processEvents();
+    require(toolsStrip->isVisible() && toolsTab->isVisible(),
+            "the View menu did not restore the unpinned left panel tab");
+    toolsTab->click();
+    QApplication::processEvents();
+    require(toolsOverlay->isVisible() && toolsToolbar->isVisible(),
+            "the left edge tab must reveal the drawing panel over the workspace");
+    QMouseEvent outsideTools(QEvent::MouseButtonPress,
+                             QPointF(2, 2),
+                             Qt::LeftButton,
+                             Qt::LeftButton,
+                             Qt::NoModifier);
+    QApplication::sendEvent(mainToolbar, &outsideTools);
+    QApplication::processEvents();
+    require(!toolsOverlay->isVisible() && toolsTab->isVisible(),
+            "clicking outside an unpinned panel must hide it without hiding its tab");
+    toolsTab->click();
+    toolsPin->click();
+    QApplication::processEvents();
+    require(toolsDock->isPinned() && toolsToolbar->isVisible() && !toolsTab->isVisible(),
+            "pinning the open left panel must restore it to the window layout");
     auto *newMenuAction = window.findChild<QAction *>("newAction");
     auto *openMenuAction = window.findChild<QAction *>("openAction");
     auto *saveMenuAction = window.findChild<QAction *>("saveAction");
     auto *undoMenuAction = window.findChild<QAction *>("undoAction");
     auto *redoMenuAction = window.findChild<QAction *>("redoAction");
-    auto *widthMenuAction = window.findChild<QAction *>("strokeWidthAction");
     auto *frontMenuAction = window.findChild<QAction *>("frontColorAction");
     auto *backMenuAction = window.findChild<QAction *>("backColorAction");
     auto *swapMenuAction = window.findChild<QAction *>("swapColorsAction");
-    require(newMenuAction && openMenuAction && saveMenuAction && undoMenuAction && redoMenuAction && widthMenuAction &&
+    require(newMenuAction && openMenuAction && saveMenuAction && undoMenuAction && redoMenuAction &&
                 frontMenuAction && backMenuAction && swapMenuAction && fileMenu->actions().contains(newMenuAction) &&
                 fileMenu->actions().contains(openMenuAction) && fileMenu->actions().contains(saveMenuAction) &&
                 editMenu->actions().contains(undoMenuAction) && editMenu->actions().contains(redoMenuAction) &&
-                toolsMenu->actions().contains(widthMenuAction) && toolsMenu->actions().contains(frontMenuAction) &&
-                toolsMenu->actions().contains(backMenuAction) && toolsMenu->actions().contains(swapMenuAction),
+                toolsMenu->actions().contains(frontMenuAction) && toolsMenu->actions().contains(backMenuAction) &&
+                toolsMenu->actions().contains(swapMenuAction),
             "main toolbar commands are not all available through menus");
     for (int i = 0; i < 5; ++i) {
         auto *toolAction = window.findChild<QAction *>(QString("tool%1").arg(i));
         require(toolAction && toolsMenu->actions().contains(toolAction), "drawing tool is missing from Tools menu");
     }
+    auto *perspectiveAction = window.findChild<QAction *>("tool4");
+    require(perspectiveAction && perspectiveAction->text() == QStringLiteral("Перспектива") &&
+                mainToolbar->actions().contains(perspectiveAction) && !toolsToolbar->actions().contains(perspectiveAction),
+            "perspective mode must be available from the main toolbar, not the drawing tools toolbar");
+    auto *toolProperties = window.findChild<QWidget *>("toolPropertiesPanel");
+    auto *toolPropertiesTitle = window.findChild<QLabel *>("toolPropertiesTitle");
+    auto *widthControl = window.findChild<QSpinBox *>("strokeWidth");
+    auto *opacityControl = window.findChild<QSpinBox *>("strokeOpacity");
+    auto *hardnessControl = window.findChild<QSpinBox *>("strokeHardness");
+    auto *spacingControl = window.findChild<QSpinBox *>("strokeSpacing");
+    auto *strengthControl = window.findChild<QSpinBox *>("eraserStrength");
+    auto *strokePreview = window.findChild<QWidget *>("strokePreview");
+    require(toolProperties && toolPropertiesTitle && widthControl && opacityControl && hardnessControl &&
+                spacingControl && strengthControl && strokePreview && toolsDock->isAncestorOf(toolProperties) &&
+                toolPropertiesTitle->text() == QStringLiteral("Карандаш"),
+            "the shared drawing tool properties panel is missing from below the tool selector");
     auto *frontButton = window.findChild<QPushButton *>("frontColor");
     auto *backButton = window.findChild<QPushButton *>("backColor");
     require(frontButton && backButton && frontButton->text().isEmpty() && backButton->text().isEmpty() &&
@@ -209,7 +273,13 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 perspectiveLayout->indexOf(verticalSettings) < perspectiveLayout->indexOf(vanishingPointSettings) &&
                 perspectiveLayout->indexOf(vanishingPointSettings) < perspectiveLayout->indexOf(vanishingPointsList),
             "perspective blocks must be ordered as horizon, main vertical, point settings, and point list");
-    auto *perspectiveDock = window.findChild<QDockWidget *>("perspectiveDock");
+    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
+    auto *perspectivePanelToggle = window.findChild<QAction *>("perspectivePanelToggle");
+    auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
+    auto *perspectiveTitle = window.findChild<QLabel *>("perspectivePanelTitle");
+    auto *perspectiveStrip = window.findChild<QDockWidget *>("perspectiveAutoHideStrip");
+    auto *perspectiveTab = window.findChild<QToolButton *>("perspectiveAutoHideTab");
+    auto *perspectiveOverlay = window.findChild<QWidget *>("perspectiveAutoHideOverlay");
     auto *horizonToggle = window.findChild<QToolButton *>("horizonSettingsToggle");
     auto *horizonContent = window.findChild<QWidget *>("horizonSettingsContent");
     auto *verticalToggle = window.findChild<QToolButton *>("mainVerticalSettingsToggle");
@@ -221,7 +291,10 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *commonFrame = qobject_cast<QFrame *>(vanishingPointSettings);
     auto *pointsFrame = qobject_cast<QFrame *>(vanishingPointsList);
     auto *selectedPointFrame = qobject_cast<QFrame *>(selectedPointSettings);
-    require(perspectiveDock && perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
+    require(perspectiveDock && perspectivePanelToggle && viewMenu->actions().contains(perspectivePanelToggle) &&
+                perspectivePin && perspectiveTitle && perspectiveStrip && perspectiveTab && perspectiveOverlay &&
+                perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x() &&
+                perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&
                 horizonContent && verticalToggle && commonToggle && pointsToggle && selectedPointToggle &&
                 horizonFrame && verticalFrame && commonFrame && pointsFrame && selectedPointFrame &&
                 horizonFrame->frameShape() == QFrame::StyledPanel &&
@@ -230,6 +303,37 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 selectedPointFrame->frameShape() == QFrame::StyledPanel &&
                 horizonToggle->arrowType() == Qt::DownArrow && horizonSettings->property("expanded").toBool(),
             "perspective rollout headers, borders, or panel title are invalid");
+    perspectivePanelToggle->setChecked(true);
+    QApplication::processEvents();
+    perspectivePin->click();
+    QApplication::processEvents();
+    require(!perspectiveDock->isPinned() && perspectiveStrip->isVisible() && perspectiveTab->isVisible() &&
+                perspectivePanelToggle->isChecked(),
+            "unpinning the perspective panel must leave its checked edge tab visible");
+    require(perspectiveStrip->geometry().left() > canvas->geometry().right(),
+            "the right auto-hide tab must occupy a strip outside the canvas and its rulers");
+    require(perspectiveTab->mapTo(&window, QPoint()).x() -
+                    (canvas->mapTo(&window, QPoint()).x() + canvas->width()) >=
+                3,
+            "the right auto-hide tab must leave a small gap after the ruler");
+    perspectiveTab->click();
+    QApplication::processEvents();
+    require(perspectiveOverlay->isVisible(), "the right edge tab must reveal the perspective panel");
+    QMouseEvent outsidePerspective(QEvent::MouseButtonPress,
+                                   QPointF(2, 2),
+                                   Qt::LeftButton,
+                                   Qt::LeftButton,
+                                   Qt::NoModifier);
+    QApplication::sendEvent(mainToolbar, &outsidePerspective);
+    QApplication::processEvents();
+    require(!perspectiveOverlay->isVisible() && perspectiveTab->isVisible(),
+            "clicking outside the perspective panel must return it to its edge tab");
+    perspectiveTab->click();
+    perspectivePin->click();
+    perspectivePanelToggle->setChecked(false);
+    QApplication::processEvents();
+    require(perspectiveDock->isPinned() && !perspectiveDock->isVisible() && !perspectiveTab->isVisible(),
+            "the View menu must completely hide a pinned perspective panel");
     horizonToggle->click();
     QApplication::processEvents();
     require(horizonContent->isHidden() && horizonToggle->arrowType() == Qt::RightArrow &&
@@ -714,15 +818,31 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
     QImage cursorProjection(rulerCanvas.size(), QImage::Format_ARGB32_Premultiplied);
     cursorProjection.fill(Qt::transparent);
     rulerCanvas.render(&cursorProjection);
-    int changedPixels = 0;
+    int changedPixels = 0, topProjection = 0, bottomProjection = 0, leftProjection = 0, rightProjection = 0,
+        cursorLabels = 0;
     for (int y = 0; y < cursorProjection.height(); ++y)
-        if (cursorProjection.pixelColor(250, y) != rulersOnly.pixelColor(250, y))
+        if (cursorProjection.pixelColor(250, y) != rulersOnly.pixelColor(250, y)) {
             ++changedPixels;
+            if (y < 28)
+                ++topProjection;
+            if (y >= cursorProjection.height() - 28)
+                ++bottomProjection;
+        }
     for (int x = 0; x < cursorProjection.width(); ++x)
-        if (cursorProjection.pixelColor(x, 200) != rulersOnly.pixelColor(x, 200))
+        if (cursorProjection.pixelColor(x, 200) != rulersOnly.pixelColor(x, 200)) {
             ++changedPixels;
-    require(changedPixels > 20 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
-            "cursor projection must reach all rulers without editing the document");
+            if (x < 28)
+                ++leftProjection;
+            if (x >= cursorProjection.width() - 28)
+                ++rightProjection;
+        }
+    for (int y = 0; y < cursorProjection.height(); ++y)
+        for (int x = 0; x < cursorProjection.width(); ++x)
+            if (cursorProjection.pixelColor(x, y) == QColor("#fff4b5"))
+                ++cursorLabels;
+    require(changedPixels > 20 && topProjection && bottomProjection && leftProjection && rightProjection &&
+                cursorLabels == 0 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
+            "dashed cursor projections must cross all rulers without numeric badges or document edits");
     DrawingState lockState = initial;
     lockState.gridVisible = true;
     lockState.vanishingPoints[0].attachmentTargetIds = QStringList{PerspectiveTarget::horizon()};
@@ -810,8 +930,31 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeWidth(11);
     drag(canvas, {110, 180}, {210, 180});
     require(canvas->state().image.pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
+    DrawingToolSettings softBrush;
+    softBrush.width = 20;
+    softBrush.opacity = 50;
+    softBrush.hardness = 0;
+    softBrush.spacing = 50;
+    canvas->setStrokeSettings(softBrush);
+    click(canvas, {260, 180});
+    const QColor softCenter = canvas->state().image.pixelColor(260, 180);
+    const QColor softEdge = canvas->state().image.pixelColor(269, 180);
+    require(softCenter != QColor(Qt::white) && softCenter != QColor("#6c3f88") && softEdge != softCenter,
+            "brush opacity and soft hardness must affect the round stamp");
+    softBrush.opacity = 100;
+    softBrush.hardness = 100;
+    softBrush.spacing = 50;
+    canvas->setStrokeSettings(softBrush);
+    drag(canvas, {260, 220}, {360, 220});
+    require(canvas->state().image.pixelColor(310, 220) == QColor("#6c3f88"),
+            "stamp interpolation must keep a fast brush stroke continuous");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
+    DrawingToolSettings eraserSettings;
+    eraserSettings.width = 11;
+    eraserSettings.hardness = 100;
+    eraserSettings.strength = 100;
+    canvas->setStrokeSettings(eraserSettings);
     click(canvas, {110, 180});
     click(canvas, {210, 180}, Qt::ShiftModifier);
     require(canvas->state().image.pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
@@ -1099,71 +1242,80 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     return {pixels, loaded, projectPath};
 }
 
-/// Проверяет независимое сохранение ширины карандаша, кисти и ластика в QSettings.
+/// Проверяет единую панель и независимое сохранение параметров карандаша, кисти и ластика.
 void testToolWidthPersistence() {
     MainWindow widthsWindow;
     auto *widthControl = widthsWindow.findChild<QSpinBox *>("strokeWidth");
+    auto *opacityControl = widthsWindow.findChild<QSpinBox *>("strokeOpacity");
+    auto *hardnessControl = widthsWindow.findChild<QSpinBox *>("strokeHardness");
+    auto *spacingControl = widthsWindow.findChild<QSpinBox *>("strokeSpacing");
+    auto *strengthControl = widthsWindow.findChild<QSpinBox *>("eraserStrength");
+    auto *toolTitle = widthsWindow.findChild<QLabel *>("toolPropertiesTitle");
+    auto *eraserMode = widthsWindow.findChild<QLabel *>("eraserMode");
     auto *pencilAction = widthsWindow.findChild<QAction *>("tool0");
     auto *brushAction = widthsWindow.findChild<QAction *>("tool1");
     auto *eraserAction = widthsWindow.findChild<QAction *>("tool2");
     auto *panAction = widthsWindow.findChild<QAction *>("tool3");
-    require(widthControl && pencilAction && brushAction && eraserAction && panAction,
-            "per-tool width controls are missing");
+    require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl && toolTitle &&
+                eraserMode && pencilAction && brushAction && eraserAction && panAction,
+            "shared per-tool controls are missing");
     widthControl->setValue(4);
+    opacityControl->setValue(80);
+    spacingControl->setValue(12);
     brushAction->trigger();
-    require(widthControl->value() == 3, "brush must start with its own width");
+    require(toolTitle->text() == QStringLiteral("Кисть") && widthControl->value() == 3 &&
+                opacityControl->value() == 100 && hardnessControl->value() == 70 && spacingControl->value() == 15 &&
+                !opacityControl->isHidden() && !hardnessControl->isHidden() && strengthControl->isHidden(),
+            "brush must expose its own width, opacity, hardness, and spacing");
     widthControl->setValue(11);
+    opacityControl->setValue(65);
+    hardnessControl->setValue(40);
+    spacingControl->setValue(20);
     eraserAction->trigger();
-    require(widthControl->value() == 3, "eraser must start with its own width");
+    require(toolTitle->text() == QStringLiteral("Ластик") && widthControl->value() == 3 &&
+                hardnessControl->value() == 100 && spacingControl->value() == 15 && strengthControl->value() == 100 &&
+                opacityControl->isHidden() && !hardnessControl->isHidden() && !strengthControl->isHidden() &&
+                eraserMode->text() == QStringLiteral("Цветом Back"),
+            "eraser must expose hardness and strength and report the current Back-color behavior");
     widthControl->setValue(17);
+    hardnessControl->setValue(25);
+    spacingControl->setValue(30);
+    strengthControl->setValue(55);
     pencilAction->trigger();
-    require(widthControl->value() == 4, "pencil width was not restored");
+    require(toolTitle->text() == QStringLiteral("Карандаш") && widthControl->value() == 4 &&
+                opacityControl->value() == 80 && spacingControl->value() == 12 && hardnessControl->isHidden(),
+            "pencil settings were not restored");
     brushAction->trigger();
-    require(widthControl->value() == 11, "brush width was not restored");
+    require(widthControl->value() == 11 && opacityControl->value() == 65 && hardnessControl->value() == 40 &&
+                spacingControl->value() == 20,
+            "brush settings were not restored");
     eraserAction->trigger();
-    require(widthControl->value() == 17, "eraser width was not restored");
+    require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
+                strengthControl->value() == 55,
+            "eraser settings were not restored");
     panAction->trigger();
-    require(!widthControl->isEnabled(), "width control must be disabled for a non-paint tool");
-    auto *widthDialogAction = widthsWindow.findChild<QAction *>("strokeWidthAction");
-    bool widthDialogShown = false;
-    QTimer::singleShot(0, &widthsWindow, [&] {
-        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-        auto *pencil = dialog ? dialog->findChild<QSpinBox *>("pencilWidthSetting") : nullptr;
-        auto *brush = dialog ? dialog->findChild<QSpinBox *>("brushWidthSetting") : nullptr;
-        auto *eraser = dialog ? dialog->findChild<QSpinBox *>("eraserWidthSetting") : nullptr;
-        widthDialogShown = dialog && pencil && brush && eraser && pencil->value() == 4 && brush->value() == 11 &&
-                           eraser->value() == 17;
-        if (pencil)
-            pencil->setValue(6);
-        if (brush)
-            brush->setValue(12);
-        if (eraser)
-            eraser->setValue(18);
-        if (dialog)
-            dialog->accept();
-    });
-    require(widthDialogAction, "stroke width menu action is missing");
-    widthDialogAction->trigger();
-    require(widthDialogShown && QSettings().value("tools/pencilWidth").toInt() == 6 &&
-                QSettings().value("tools/brushWidth").toInt() == 12 &&
-                QSettings().value("tools/eraserWidth").toInt() == 18 && !widthControl->isEnabled(),
-            "stroke width menu did not work while a non-paint tool was active");
-    pencilAction->trigger();
-    require(widthControl->value() == 6, "menu did not update pencil width");
-    brushAction->trigger();
-    require(widthControl->value() == 12, "menu did not update brush width");
-    eraserAction->trigger();
-    require(widthControl->value() == 18, "menu did not update eraser width");
+    require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
+            "drawing controls must be disabled for a non-paint mode");
     widthsWindow.close();
     MainWindow persistedWidthsWindow;
     widthControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeWidth");
+    opacityControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeOpacity");
+    hardnessControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeHardness");
+    spacingControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeSpacing");
+    strengthControl = persistedWidthsWindow.findChild<QSpinBox *>("eraserStrength");
     brushAction = persistedWidthsWindow.findChild<QAction *>("tool1");
     eraserAction = persistedWidthsWindow.findChild<QAction *>("tool2");
-    require(widthControl && widthControl->value() == 6, "pencil width did not persist");
+    require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl &&
+                widthControl->value() == 4 && opacityControl->value() == 80 && spacingControl->value() == 12,
+            "pencil settings did not persist");
     brushAction->trigger();
-    require(widthControl->value() == 12, "brush width did not persist");
+    require(widthControl->value() == 11 && opacityControl->value() == 65 && hardnessControl->value() == 40 &&
+                spacingControl->value() == 20,
+            "brush settings did not persist");
     eraserAction->trigger();
-    require(widthControl->value() == 18, "eraser width did not persist");
+    require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
+                strengthControl->value() == 55,
+            "eraser settings did not persist");
     persistedWidthsWindow.close();
 }
 
@@ -1178,6 +1330,18 @@ void testExportValidationAndScreenshots(
     QImage png;
     require(Project::loadPng(out.filePath("export.png"), &png, &error), qPrintable(error));
     require(png == pixels, "grid leaked into exported PNG");
+    QImage alphaExport(32, 24, QImage::Format_ARGB32_Premultiplied);
+    alphaExport.fill(Qt::transparent);
+    alphaExport.setPixelColor(16, 12, QColor(40, 80, 120, 128));
+    require(Project::exportImage(out.filePath("export.jpg"), alphaExport, "JPEG", 87, &error), qPrintable(error));
+    require(Project::exportImage(out.filePath("export.bmp"), alphaExport, "BMP", -1, &error), qPrintable(error));
+    const QImage jpeg(out.filePath("export.jpg")), bmp(out.filePath("export.bmp"));
+    require(!jpeg.isNull() && !bmp.isNull() && jpeg.size() == alphaExport.size() && bmp.size() == alphaExport.size() &&
+                !jpeg.hasAlphaChannel() && !bmp.hasAlphaChannel() && jpeg.pixelColor(0, 0).lightness() > 240 &&
+                bmp.pixelColor(0, 0) == QColor(Qt::white),
+            "JPEG and BMP export must flatten transparency onto white and remain readable");
+    require(!Project::exportImage(out.filePath("export.invalid"), alphaExport, "GIF", -1, &error),
+            "an unsupported export format must be rejected");
     DrawingState transparent = loaded;
     transparent.image.fill(Qt::transparent);
     transparent.image.setPixelColor(7, 8, QColor(40, 80, 120, 128));

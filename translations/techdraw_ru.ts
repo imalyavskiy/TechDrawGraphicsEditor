@@ -165,8 +165,8 @@
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="286" />
-            <source>Экспортировать PNG…</source>
-            <translation>Экспортировать PNG…</translation>
+            <source>Экспортировать изображение…</source>
+            <translation>Экспортировать изображение…</translation>
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="288" />
@@ -958,18 +958,32 @@ Technical Draw</translation>
         </message>
         <message>
             <location filename="../src/mainwindow.cpp" line="1434" />
-            <source>PNG (*.png)</source>
-            <translation>PNG (*.png)</translation>
+            <source>PNG — без потерь (*.png)</source>
+            <translation>PNG — без потерь (*.png)</translation>
         </message>
         <message>
-            <location filename="../src/mainwindow.cpp" line="1439" />
-            <source>Заменить существующий PNG?</source>
-            <translation>Заменить существующий PNG?</translation>
+            <source>JPEG — фотография (*.jpg *.jpeg)</source>
+            <translation>JPEG — фотография (*.jpg *.jpeg)</translation>
         </message>
         <message>
-            <location filename="../src/mainwindow.cpp" line="1446" />
-            <source>PNG экспортирован; проект сохраняется отдельно</source>
-            <translation>PNG экспортирован; проект сохраняется отдельно</translation>
+            <source>BMP — без сжатия (*.bmp)</source>
+            <translation>BMP — без сжатия (*.bmp)</translation>
+        </message>
+        <message>
+            <source>Заменить существующее изображение?</source>
+            <translation>Заменить существующее изображение?</translation>
+        </message>
+        <message>
+            <source>Качество JPEG</source>
+            <translation>Качество JPEG</translation>
+        </message>
+        <message>
+            <source>Качество изображения</source>
+            <translation>Качество изображения</translation>
+        </message>
+        <message>
+            <source>Изображение экспортировано; проект сохраняется отдельно</source>
+            <translation>Изображение экспортировано; проект сохраняется отдельно</translation>
         </message>
     </context>
     <context>
@@ -1173,8 +1187,12 @@ Technical Draw</translation>
         </message>
         <message>
             <location filename="../src/project.cpp" line="446" />
-            <source>Не удалось записать PNG.</source>
-            <translation>Не удалось записать PNG.</translation>
+            <source>Неподдерживаемый формат экспорта.</source>
+            <translation>Неподдерживаемый формат экспорта.</translation>
+        </message>
+        <message>
+            <source>Не удалось записать изображение: %1</source>
+            <translation>Не удалось записать изображение: %1</translation>
         </message>
     </context>
     <context>
@@ -1189,6 +1207,42 @@ Technical Draw</translation>
             <location filename="../src/rolloutsection.cpp" line="57" />
             <source>Развернуть раздел</source>
             <translation>Развернуть раздел</translation>
+        </message>
+    </context>
+    <context>
+        <name>ToolPropertiesPanel</name>
+        <message><source>Основные параметры</source><translation>Основные параметры</translation></message>
+        <message><source> px</source><translation> px</translation></message>
+        <message><source>Ширина</source><translation>Ширина</translation></message>
+        <message><source> %</source><translation> %</translation></message>
+        <message><source>Непрозрачность</source><translation>Непрозрачность</translation></message>
+        <message><source>Основной цвет (Front)</source><translation>Основной цвет (Front)</translation></message>
+        <message><source>Фоновый цвет и цвет ластика (Back)</source><translation>Фоновый цвет и цвет ластика (Back)</translation></message>
+        <message><source>Поменять цвета местами (X)</source><translation>Поменять цвета местами (X)</translation></message>
+        <message><source>Цвет</source><translation>Цвет</translation></message>
+        <message><source>Наконечник</source><translation>Наконечник</translation></message>
+        <message><source>Жёсткость</source><translation>Жёсткость</translation></message>
+        <message><source>Расстояние между отпечатками в процентах диаметра</source><translation>Расстояние между отпечатками в процентах диаметра</translation></message>
+        <message><source>Шаг</source><translation>Шаг</translation></message>
+        <message><source>Сила</source><translation>Сила</translation></message>
+        <message><source>Результат</source><translation>Результат</translation></message>
+        <message><source>Параметры рисования</source><translation>Параметры рисования</translation></message>
+        <message><source>Выбран вспомогательный режим</source><translation>Выбран вспомогательный режим</translation></message>
+        <message><source>Карандаш</source><translation>Карандаш</translation></message>
+        <message><source>Кисть</source><translation>Кисть</translation></message>
+        <message><source>Ластик</source><translation>Ластик</translation></message>
+        <message><source>До прозрачности</source><translation>До прозрачности</translation></message>
+        <message><source>Цветом Back</source><translation>Цветом Back</translation></message>
+    </context>
+    <context>
+        <name>AutoHideDockWidget</name>
+        <message>
+            <source>Открепить панель</source>
+            <translation>Открепить панель</translation>
+        </message>
+        <message>
+            <source>Закрепить панель</source>
+            <translation>Закрепить панель</translation>
         </message>
     </context>
     <context>

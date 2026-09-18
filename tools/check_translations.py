@@ -5,11 +5,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE_FILES = (
+    "src/autohidedockwidget.cpp",
     "src/canvas.cpp",
+    "src/drawingtoolsettings.cpp",
     "src/main.cpp",
     "src/mainwindow.cpp",
     "src/project.cpp",
     "src/rolloutsection.cpp",
+    "src/toolpropertiespanel.cpp",
 )
 CYRILLIC = re.compile(r"[\u0400-\u04ff]")
 USER_TEXT_CALLS = {

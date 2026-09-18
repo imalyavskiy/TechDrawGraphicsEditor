@@ -1,5 +1,8 @@
 #include "mainwindow.h"
+#include "autohidedockwidget.h"
 #include "rolloutsection.h"
+#include "drawingtoolsettings.h"
+#include "toolpropertiespanel.h"
 #include <QtWidgets>
 
 namespace {
@@ -144,11 +147,6 @@ void rememberDirectory(const QString &key, const QString &filePath) {
 QString suggestedFile(const QString &key, const QString &name) {
     return QDir(rememberedDirectory(key)).filePath(name);
 }
-/// Возвращает отдельный ключ QSettings для ширины заданного рисующего инструмента.
-QString widthSetting(int tool) {
-    static const QStringList keys{"tools/pencilWidth", "tools/brushWidth", "tools/eraserWidth"};
-    return keys[tool];
-}
 /// Применяет проверенный пользовательский пресет общих параметров опорных лучей.
 void applySavedPerspectiveDefaults(DrawingState *state) {
     QSettings settings;
@@ -231,7 +229,8 @@ bool matchesPerspectiveDefaults(const DrawingState &state) {
 }
 } // namespace
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), canvas_(new Canvas(this)) {
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent), canvas_(new Canvas(this)), toolSettings_(new DrawingToolSettingsModel(this)) {
     initializeWindow();
     setupMenusAndToolbars();
     setupPerspectivePanel();
@@ -302,7 +301,7 @@ void MainWindow::setupMenusAndToolbars() {
     saveAction->setObjectName("saveAction");
     file->addAction(tr("Сохранить проект как…"), this, [this] { saveDocument(true); }, QKeySequence::SaveAs);
     file->addSeparator();
-    file->addAction(tr("Экспортировать PNG…"), this, &MainWindow::exportImage, QKeySequence("Ctrl+Shift+E"));
+    file->addAction(tr("Экспортировать изображение…"), this, &MainWindow::exportImage, QKeySequence("Ctrl+Shift+E"));
     file->addSeparator();
     file->addAction(tr("Выход"), this, &QWidget::close, QKeySequence("Alt+F4"));
     auto *undoAction = canvas_->undoStack()->createUndoAction(this, tr("Отменить"));
@@ -333,70 +332,6 @@ void MainWindow::setupMenusAndToolbars() {
     mainToolbar_->addSeparator();
     mainToolbar_->addAction(undoAction);
     mainToolbar_->addAction(redoAction);
-    mainToolbar_->addSeparator();
-    mainToolbar_->addWidget(new QLabel(tr(" Ширина "), mainToolbar_));
-    QSettings widthSettings;
-    for (int i = 0; i < toolWidths_.size(); ++i)
-        toolWidths_[i] = qBound(1, widthSettings.value(widthSetting(i), 3).toInt(), 200);
-    strokeWidth_ = new QSpinBox(mainToolbar_);
-    strokeWidth_->setObjectName("strokeWidth");
-    strokeWidth_->setRange(1, 200);
-    strokeWidth_->setValue(toolWidths_[Canvas::Pencil]);
-    strokeWidth_->setSuffix(tr(" px"));
-    strokeWidth_->setKeyboardTracking(false);
-    mainToolbar_->addWidget(strokeWidth_);
-    canvas_->setStrokeWidth(strokeWidth_->value());
-    connect(strokeWidth_, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
-        const int tool = int(canvas_->tool());
-        if (tool <= int(Canvas::Eraser)) {
-            toolWidths_[tool] = value;
-            QSettings().setValue(widthSetting(tool), value);
-            canvas_->setStrokeWidth(value);
-        }
-    });
-    auto *strokeWidthAction = new QAction(tr("Толщина штриха…"), this);
-    strokeWidthAction->setObjectName("strokeWidthAction");
-    connect(strokeWidthAction, &QAction::triggered, this, [this] {
-        QDialog dialog(this);
-        dialog.setObjectName("strokeWidthDialog");
-        dialog.setWindowTitle(tr("Толщина штриха"));
-        auto *dialogLayout = new QVBoxLayout(&dialog);
-        auto *form = new QFormLayout;
-        dialogLayout->addLayout(form);
-        QSpinBox *controls[3];
-        const QStringList labels{tr("Карандаш"), tr("Кисть"), tr("Ластик")};
-        const QStringList objectNames{"pencilWidthSetting", "brushWidthSetting", "eraserWidthSetting"};
-        for (int i = 0; i < 3; ++i) {
-            controls[i] = new QSpinBox;
-            controls[i]->setObjectName(objectNames[i]);
-            controls[i]->setRange(1, 200);
-            controls[i]->setSuffix(tr(" px"));
-            controls[i]->setValue(toolWidths_[i]);
-            form->addRow(labels[i], controls[i]);
-        }
-        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-        dialogLayout->addWidget(buttons);
-        connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-        connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-        if (dialog.exec() != QDialog::Accepted)
-            return;
-        for (int i = 0; i < 3; ++i) {
-            toolWidths_[i] = controls[i]->value();
-            QSettings().setValue(widthSetting(i), toolWidths_[i]);
-        }
-        const int active = int(canvas_->tool());
-        if (active <= int(Canvas::Eraser)) {
-            QSignalBlocker block(strokeWidth_);
-            strokeWidth_->setValue(toolWidths_[active]);
-            canvas_->setStrokeWidth(toolWidths_[active]);
-        }
-    });
-    mainToolbar_->addSeparator();
-    frontButton_ = new QPushButton(mainToolbar_);
-    frontButton_->setToolTip(tr("Основной цвет (Front)"));
-    frontButton_->setObjectName("frontColor");
-    frontButton_->setFixedWidth(34);
-    mainToolbar_->addWidget(frontButton_);
     auto *frontColorAction = new QAction(tr("Основной цвет (Front)…"), this);
     frontColorAction->setObjectName("frontColorAction");
     auto *backColorAction = new QAction(tr("Фоновый цвет (Back)…"), this);
@@ -405,12 +340,6 @@ void MainWindow::setupMenusAndToolbars() {
     swap->setObjectName("swapColorsAction");
     swap->setToolTip(tr("Поменять цвета местами (X)"));
     swap->setShortcut(QKeySequence("X"));
-    mainToolbar_->addAction(swap);
-    backButton_ = new QPushButton(mainToolbar_);
-    backButton_->setToolTip(tr("Фоновый цвет и цвет ластика (Back)"));
-    backButton_->setObjectName("backColor");
-    backButton_->setFixedWidth(34);
-    mainToolbar_->addWidget(backButton_);
     connect(frontColorAction, &QAction::triggered, this, [this] {
         const QColor color = QColorDialog::getColor(front_, this, tr("Основной цвет — Front"));
         if (color.isValid()) {
@@ -425,22 +354,33 @@ void MainWindow::setupMenusAndToolbars() {
             updateColors();
         }
     });
-    connect(frontButton_, &QPushButton::clicked, frontColorAction, &QAction::trigger);
-    connect(backButton_, &QPushButton::clicked, backColorAction, &QAction::trigger);
     connect(swap, &QAction::triggered, this, [this] {
         qSwap(front_, back_);
         updateColors();
     });
-    updateColors();
-    toolsToolbar_ = new QToolBar(tr("Инструменты"), this);
+    toolsDock_ = new AutoHideDockWidget(tr("Инструменты"),
+                                        Qt::LeftDockWidgetArea,
+                                        "tools",
+                                        true,
+                                        250,
+                                        this);
+    toolsDock_->setObjectName("toolsDock");
+    addDockWidget(Qt::LeftDockWidgetArea, toolsDock_);
+    auto *toolsPanel = new QWidget(toolsDock_);
+    auto *toolsPanelLayout = new QVBoxLayout(toolsPanel);
+    toolsPanelLayout->setContentsMargins(4, 4, 4, 4);
+    toolsPanelLayout->setSpacing(4);
+    toolsToolbar_ = new QToolBar(tr("Инструменты"), toolsPanel);
     toolsToolbar_->setObjectName("toolsToolbar");
     toolsToolbar_->setMovable(false);
+    toolsToolbar_->setFloatable(false);
+    toolsToolbar_->setOrientation(Qt::Horizontal);
     toolsToolbar_->setIconSize(QSize(24, 24));
     toolsToolbar_->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    addToolBar(Qt::LeftToolBarArea, toolsToolbar_);
+    toolsPanelLayout->addWidget(toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
-    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Точка схода")};
+    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Перспектива")};
     QStringList shortcuts{"B", "K", "E", "H", "P"};
     for (int i = 0; i < 5; ++i) {
         auto *action = new QAction(toolIcon(i), names[i], this);
@@ -449,27 +389,46 @@ void MainWindow::setupMenusAndToolbars() {
         action->setShortcut(QKeySequence(shortcuts[i]));
         action->setToolTip(tr("%1 (%2)").arg(names[i], shortcuts[i]));
         group->addAction(action);
-        toolsToolbar_->addAction(action);
+        if (i == int(Canvas::Perspective)) {
+            mainToolbar_->addSeparator();
+            mainToolbar_->addAction(action);
+        } else {
+            toolsToolbar_->addAction(action);
+        }
         toolsMenu_->addAction(action);
         if (i == 0)
             action->setChecked(true);
         connect(action, &QAction::triggered, this, [this, i, names] { activateTool(Canvas::Tool(i), names[i]); });
-        if (i == 4)
+        if (i == int(Canvas::Perspective))
             perspectiveAction_ = action;
     }
-    toolsMenu_->addSeparator();
-    toolsMenu_->addAction(strokeWidthAction);
     toolsMenu_->addSeparator();
     toolsMenu_->addAction(frontColorAction);
     toolsMenu_->addAction(backColorAction);
     toolsMenu_->addAction(swap);
+
+    toolProperties_ = new ToolPropertiesPanel(toolSettings_, toolsPanel);
+    toolsPanelLayout->addWidget(toolProperties_, 1);
+    toolsDock_->setPanelWidget(toolsPanel);
+    connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
+    connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
+    connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
+    connect(toolSettings_, &DrawingToolSettingsModel::settingsChanged, this, [this] {
+        if (toolSettings_->activeTool() >= 0)
+            canvas_->setStrokeSettings(toolSettings_->settingsFor(toolSettings_->activeTool()));
+    });
+    canvas_->setStrokeSettings(toolSettings_->settingsFor(DrawingToolSettingsModel::Pencil));
+    updateColors();
 }
 
 void MainWindow::setupPerspectivePanel() {
-    perspectiveDock_ = new QDockWidget(tr("Перспектива"), this);
+    perspectiveDock_ = new AutoHideDockWidget(tr("Перспектива"),
+                                              Qt::RightDockWidgetArea,
+                                              "perspective",
+                                              false,
+                                              330,
+                                              this);
     perspectiveDock_->setObjectName("perspectiveDock");
-    perspectiveDock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-    perspectiveDock_->setFeatures(QDockWidget::DockWidgetClosable);
     auto *panel = new QWidget;
     auto *layout = new QVBoxLayout(panel);
     layout->setContentsMargins(14, 14, 14, 14);
@@ -691,9 +650,8 @@ void MainWindow::setupPerspectivePanel() {
     panelScroll->setWidgetResizable(true);
     panelScroll->setFrameShape(QFrame::NoFrame);
     panelScroll->setWidget(panel);
-    perspectiveDock_->setWidget(panelScroll);
+    perspectiveDock_->setPanelWidget(panelScroll);
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);
-    perspectiveDock_->hide();
 }
 
 void MainWindow::connectPerspectiveControls() {
@@ -701,11 +659,11 @@ void MainWindow::connectPerspectiveControls() {
     mainToolbarToggle->setObjectName("mainToolbarToggle");
     mainToolbarToggle->setText(tr("Панель команд"));
     viewMenu_->addAction(mainToolbarToggle);
-    auto *toolsToolbarToggle = toolsToolbar_->toggleViewAction();
+    auto *toolsToolbarToggle = toolsDock_->visibilityAction();
     toolsToolbarToggle->setObjectName("toolsToolbarToggle");
     toolsToolbarToggle->setText(tr("Панель инструментов"));
     viewMenu_->addAction(toolsToolbarToggle);
-    auto *perspectivePanelToggle = perspectiveDock_->toggleViewAction();
+    auto *perspectivePanelToggle = perspectiveDock_->visibilityAction();
     perspectivePanelToggle->setObjectName("perspectivePanelToggle");
     perspectivePanelToggle->setText(tr("Панель перспективы"));
     viewMenu_->addAction(perspectivePanelToggle);
@@ -946,8 +904,7 @@ void MainWindow::setupViewAndStatusBar() {
 }
 
 void MainWindow::updateColors() {
-    colorSwatch(frontButton_, front_);
-    colorSwatch(backButton_, back_);
+    toolProperties_->setColors(front_, back_);
     canvas_->setFront(front_);
     canvas_->setBack(back_);
 }
@@ -955,14 +912,11 @@ void MainWindow::activateTool(Canvas::Tool tool, const QString &name) {
     canvas_->setTool(tool);
     toolLabel_->setText(name);
     const bool paints = tool <= Canvas::Eraser;
-    strokeWidth_->setEnabled(paints);
-    if (paints) {
-        QSignalBlocker block(strokeWidth_);
-        strokeWidth_->setValue(toolWidths_[int(tool)]);
-        canvas_->setStrokeWidth(toolWidths_[int(tool)]);
-    }
+    toolSettings_->setActiveTool(paints ? int(tool) : -1);
+    if (paints)
+        canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
     if (tool == Canvas::Perspective) {
-        perspectiveDock_->show();
+        perspectiveDock_->reveal();
         canvas_->setGridVisible(true);
     }
     canvas_->setFocus();
@@ -1448,22 +1402,74 @@ bool MainWindow::saveDocument(bool saveAs) {
     return true;
 }
 void MainWindow::exportImage() {
+    const QString pngFilter = tr("PNG — без потерь (*.png)"), jpegFilter = tr("JPEG — фотография (*.jpg *.jpeg)"),
+                  bmpFilter = tr("BMP — без сжатия (*.bmp)"), filters = pngFilter + ";;" + jpegFilter + ";;" + bmpFilter;
+    QSettings settings;
+    QString selectedFilter = settings.value("export/filter", pngFilter).toString();
+    if (selectedFilter != pngFilter && selectedFilter != jpegFilter && selectedFilter != bmpFilter)
+        selectedFilter = pngFilter;
     QString target = QFileDialog::getSaveFileName(this,
                                                   tr("Экспортировать рисунок без направляющих"),
-                                                  suggestedFile("files/saveDirectory", tr("Рисунок.png")),
-                                                  tr("PNG (*.png)"));
+                                                  suggestedFile("files/exportDirectory", tr("Рисунок.png")),
+                                                  filters,
+                                                  &selectedFilter);
     if (target.isEmpty())
         return;
-    QString suffixed = withSuffix(target, ".png");
-    if (suffixed != target && QFileInfo::exists(suffixed) &&
-        QMessageBox::question(this, tr("Заменить файл?"), tr("Заменить существующий PNG?")) != QMessageBox::Yes)
+
+    QByteArray format;
+    QString suffix;
+    const QString enteredSuffix = QFileInfo(target).suffix().toLower();
+    if (enteredSuffix == "jpg" || enteredSuffix == "jpeg") {
+        format = "JPEG";
+        suffix = ".jpg";
+        selectedFilter = jpegFilter;
+    } else if (enteredSuffix == "bmp") {
+        format = "BMP";
+        suffix = ".bmp";
+        selectedFilter = bmpFilter;
+    } else if (enteredSuffix == "png") {
+        format = "PNG";
+        suffix = ".png";
+        selectedFilter = pngFilter;
+    } else if (selectedFilter == jpegFilter) {
+        format = "JPEG";
+        suffix = ".jpg";
+    } else if (selectedFilter == bmpFilter) {
+        format = "BMP";
+        suffix = ".bmp";
+    } else {
+        format = "PNG";
+        suffix = ".png";
+    }
+    if (enteredSuffix != "png" && enteredSuffix != "jpg" && enteredSuffix != "jpeg" && enteredSuffix != "bmp")
+        target += suffix;
+    if (QFileInfo::exists(target) &&
+        QMessageBox::question(this, tr("Заменить файл?"), tr("Заменить существующее изображение?")) !=
+            QMessageBox::Yes)
         return;
+
+    int quality = -1;
+    if (format == QByteArrayLiteral("JPEG")) {
+        bool accepted = false;
+        quality = QInputDialog::getInt(this,
+                                       tr("Качество JPEG"),
+                                       tr("Качество изображения"),
+                                       qBound(1, settings.value("export/jpegQuality", 90).toInt(), 100),
+                                       1,
+                                       100,
+                                       1,
+                                       &accepted);
+        if (!accepted)
+            return;
+        settings.setValue("export/jpegQuality", quality);
+    }
     QString error;
-    if (!Project::exportPng(suffixed, canvas_->state().image, &error))
+    if (!Project::exportImage(target, canvas_->state().image, format, quality, &error))
         showError(error);
     else {
-        rememberDirectory("files/saveDirectory", suffixed);
-        statusBar()->showMessage(tr("PNG экспортирован; проект сохраняется отдельно"), 4000);
+        rememberDirectory("files/exportDirectory", target);
+        settings.setValue("export/filter", selectedFilter);
+        statusBar()->showMessage(tr("Изображение экспортировано; проект сохраняется отдельно"), 4000);
     }
 }
 void MainWindow::closeEvent(QCloseEvent *event) {
