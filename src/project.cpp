@@ -78,7 +78,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                         QCoreApplication::translate("Project", "Положение горизонта вне допустимого диапазона."));
         if (formatVersion >= 5 && !horizon.value("locked").isBool())
             return fail(error, QCoreApplication::translate("Project", "Некорректное состояние фиксации горизонта."));
-        double verticalX = state->image.width() / 2.0;
+        double verticalX = state->canvasSize.width() / 2.0;
         bool verticalLocked = false;
         if (formatVersion >= 6) {
             if (!perspective.value("vertical").isObject())
@@ -185,16 +185,26 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
     if (qFuzzyCompare(y + 1, horizonY + 1))
         point.attachmentTargetIds.append(PerspectiveTarget::horizon());
     state->horizonY = horizonY;
-    state->verticalX = state->image.width() / 2.0;
+    state->verticalX = state->canvasSize.width() / 2.0;
     state->vanishingPoints = {point};
     return true;
 }
 /// Проверяет полный снимок перед сохранением, включая пределы геометрии и оформления.
 bool validState(const DrawingState &state) {
-    if (!Project::validSize(state.image.size()) || state.image.isNull() || !std::isfinite(state.horizonY) ||
+    if (!Project::validSize(state.canvasSize) || state.layers.entries().isEmpty() ||
+        state.layers.activeEntry() == nullptr || !std::isfinite(state.horizonY) ||
         std::abs(state.horizonY) > 1000000 || !std::isfinite(state.verticalX) || std::abs(state.verticalX) > 1000000 ||
         state.vanishingPoints.size() > 32)
         return false;
+    QSet<QString> layerIds;
+    for (const auto &layer : state.layers.entries()) {
+        if (layer.id.isEmpty() || layerIds.contains(layer.id) || layer.name.size() > 120 || layer.opacity < 0 ||
+            layer.opacity > 100 || !std::isfinite(layer.offset.x()) || !std::isfinite(layer.offset.y()) ||
+            !layer.content || layer.content->typeId() != layer.typeId ||
+            !LayerTypeRegistry::instance().type(layer.typeId))
+            return false;
+        layerIds.insert(layer.id);
+    }
     QSet<QString> ids;
     for (const auto &point : state.vanishingPoints) {
         if (point.id.isEmpty() || point.id.size() > 80 || point.name.size() > 120 || ids.contains(point.id) ||
@@ -224,7 +234,9 @@ bool validState(const DrawingState &state) {
 }
 /// Сравнивает только данные проекта, которые должны влиять на сериализованную историю.
 bool samePersistentState(const DrawingState &a, const DrawingState &b) {
-    if (a.image != b.image || !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) || a.horizonLocked != b.horizonLocked ||
+    if (a.canvasSize != b.canvasSize || a.flattenedImage() != b.flattenedImage() ||
+        !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) ||
+        a.horizonLocked != b.horizonLocked ||
         !qFuzzyCompare(a.verticalX + 1, b.verticalX + 1) || a.verticalLocked != b.verticalLocked ||
         a.vanishingPoints.size() != b.vanishingPoints.size())
         return false;
@@ -252,14 +264,18 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
     if (history.states.isEmpty() || history.states.size() > 31 || history.labels.size() != history.states.size() - 1 ||
         history.index < 0 || history.index >= history.states.size())
         return fail(error, QCoreApplication::translate("Project", "Некорректная история документа."));
-    const QSize size = history.states[history.index].image.size();
+    const QSize size = history.states[history.index].canvasSize;
     for (const auto &state : history.states)
-        if (!validState(state) || state.image.size() != size)
+        if (!validState(state) || state.canvasSize != size)
             return fail(error,
                         QCoreApplication::translate("Project", "История содержит недопустимое состояние документа."));
 
+    QVector<QImage> stateImages;
+    stateImages.reserve(history.states.size());
+    for (const auto &state : history.states)
+        stateImages.append(state.flattenedImage());
     QByteArray currentPng;
-    if (!encode(history.states[history.index].image, &currentPng, error))
+    if (!encode(stateImages[history.index], &currentPng, error))
         return false;
     QVector<QPair<QString, QByteArray>> historyImages;
     QJsonArray states;
@@ -269,12 +285,12 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
         QString imagePath;
         if (i == history.index)
             imagePath = QStringLiteral("drawing.png");
-        else if (i > 0 && history.states[i].image == history.states[i - 1].image)
+        else if (i > 0 && stateImages[i] == stateImages[i - 1])
             imagePath = previousImage;
         else {
             imagePath = QStringLiteral("history/state-%1.png").arg(i, 4, 10, QChar('0'));
             QByteArray png;
-            if (!encode(history.states[i].image, &png, error))
+            if (!encode(stateImages[i], &png, error))
                 return false;
             historyImages.append(qMakePair(imagePath, png));
         }
@@ -399,8 +415,12 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     };
 
     DrawingState current;
-    if (!loadImage("drawing.png", &current.image) ||
-        !parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
+    QImage currentImage;
+    if (!loadImage("drawing.png", &currentImage))
+        return false;
+    current.setSingleRasterImage(
+        currentImage, QCoreApplication::translate("Project", "Фон"), currentImage.hasAlphaChannel(), true);
+    if (!parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
         return false;
     DrawingHistory result;
     // Версия 1 предшествует сохраняемой истории и поэтому разворачивается в единственный снимок.
@@ -425,8 +445,12 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
             return fail(error, QCoreApplication::translate("Project", "Некорректное состояние истории."));
         const auto stateObject = value.toObject();
         DrawingState state;
-        if (!loadImage(stateObject.value("image").toString(), &state.image) ||
-            !parsePerspective(stateObject.value("perspective"), &state, error, int(versionValue)))
+        QImage stateImage;
+        if (!loadImage(stateObject.value("image").toString(), &stateImage))
+            return false;
+        state.setSingleRasterImage(
+            stateImage, QCoreApplication::translate("Project", "Фон"), stateImage.hasAlphaChannel(), true);
+        if (!parsePerspective(stateObject.value("perspective"), &state, error, int(versionValue)))
             return false;
         result.states.append(state);
     }

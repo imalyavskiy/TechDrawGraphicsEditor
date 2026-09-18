@@ -101,8 +101,9 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     setMinimumSize(200, 160);
     setObjectName("drawingCanvas");
     DrawingState initial;
-    initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
-    initial.image.fill(Qt::white);
+    QImage initialImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
+    initialImage.fill(Qt::white);
+    initial.setSingleRasterImage(initialImage, tr("Фон"));
     initial.horizonY = 240;
     initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"),
@@ -128,7 +129,7 @@ void Canvas::setDocument(const DrawingHistory &history, bool clean) {
     selectedPointIndex_ =
         state_.vanishingPoints.isEmpty() ? -1 : qBound(0, selectedPointIndex_, state_.vanishingPoints.size() - 1);
     undo_.clear();
-    const int memoryLimit = qBound(1, int(128000000 / qMax(qint64(1), qint64(state_.image.sizeInBytes()))), 30);
+    const int memoryLimit = qBound(1, int(128000000 / qMax(qint64(1), state_.layers.estimatedBytes())), 30);
     undo_.setUndoLimit(qMax(memoryLimit, history.labels.size()));
     for (int i = 0; i < history.labels.size(); ++i)
         undo_.push(new StateCommand(this, history.states[i], history.states[i + 1], history.labels[i]));
@@ -418,7 +419,7 @@ void Canvas::addVanishingPoint() {
     DrawingState before = state_;
     VanishingPoint point;
     point.id = QStringLiteral("vp-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
-    point.position = QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0);
+    point.position = QPointF(state_.canvasSize.width() / 2.0, state_.canvasSize.height() / 2.0);
     constexpr double placementStep = 40.0;
     auto occupied = [this](QPointF candidate) {
         for (const auto &existing : state_.vanishingPoints)
@@ -593,10 +594,10 @@ QRectF Canvas::viewportRect() const {
 }
 QPointF Canvas::toImage(QPointF point) const {
     return (point - viewportRect().center() - pan_) / zoom_ +
-           QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0);
+           QPointF(state_.canvasSize.width() / 2.0, state_.canvasSize.height() / 2.0);
 }
 QPointF Canvas::toView(QPointF point) const {
-    return (point - QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0)) * zoom_ +
+    return (point - QPointF(state_.canvasSize.width() / 2.0, state_.canvasSize.height() / 2.0)) * zoom_ +
            viewportRect().center() + pan_;
 }
 void Canvas::setZoom(double zoom, QPointF anchor) {
@@ -613,7 +614,8 @@ void Canvas::fit() {
     const QRectF viewport = viewportRect();
     zoom_ = qBound(
         0.05,
-        qMin((viewport.width() - 60.0) / state_.image.width(), (viewport.height() - 60.0) / state_.image.height()),
+        qMin((viewport.width() - 60.0) / state_.canvasSize.width(),
+             (viewport.height() - 60.0) / state_.canvasSize.height()),
         16.0);
     emit viewChanged();
     update();
@@ -624,16 +626,18 @@ void Canvas::paintEvent(QPaintEvent *) {
     p.fillRect(rect(), QColor("#dce0e5"));
     p.save();
     p.setClipRect(viewportRect());
-    const QRectF paper(toView(QPointF()), QSizeF(state_.image.size()) * zoom_);
+    const QRectF paper(toView(QPointF()), QSizeF(state_.canvasSize) * zoom_);
     p.fillRect(paper.translated(3, 4), QColor(0, 0, 0, 35));
     p.fillRect(paper, Qt::white);
-    p.save();
-    p.setClipRect(paper);
-    p.translate(toView(QPointF()));
-    p.scale(zoom_, zoom_);
     p.setRenderHint(QPainter::SmoothPixmapTransform, zoom_ < 1);
-    p.drawImage(QPointF(), state_.image);
-    p.restore();
+    LayerRenderContext layerContext;
+    layerContext.documentToDevice.translate(toView(QPointF()).x(), toView(QPointF()).y());
+    layerContext.documentToDevice.scale(zoom_, zoom_);
+    layerContext.deviceClip = paper.intersected(viewportRect()).toAlignedRect();
+    layerContext.scale = zoom_;
+    layerContext.dpi = logicalDpiX();
+    layerContext.quality = LayerRenderContext::Interactive;
+    LayerCompositor::render(p, state_.layers, layerContext);
     if (state_.gridVisible) {
         p.setRenderHint(QPainter::Antialiasing);
         const QLineF edges[] = {QLineF(paper.topLeft(), paper.topRight()),
@@ -644,7 +648,8 @@ void Canvas::paintEvent(QPaintEvent *) {
             QPen axis(QColor(70, 80, 92, 95), 1, Qt::DashLine);
             axis.setCosmetic(true);
             p.setPen(axis);
-            const QPointF center = toView(QPointF(state_.image.width() / 2.0, state_.image.height() / 2.0));
+            const QPointF center =
+                toView(QPointF(state_.canvasSize.width() / 2.0, state_.canvasSize.height() / 2.0));
             p.drawLine(QPointF(center.x(), 0), QPointF(center.x(), height()));
             p.drawLine(QPointF(0, center.y()), QPointF(width(), center.y()));
         }
@@ -761,16 +766,18 @@ void Canvas::drawRulers(QPainter &p) {
     font.setPixelSize(9);
     p.setFont(font);
     p.setPen(ink);
-    const double horizontalUnitPixels = rulerPercent_ ? state_.image.width() / 100.0 : 1.0;
-    const double verticalUnitPixels = rulerPercent_ ? state_.image.height() / 100.0 : 1.0;
+    const double horizontalUnitPixels = rulerPercent_ ? state_.canvasSize.width() / 100.0 : 1.0;
+    const double verticalUnitPixels = rulerPercent_ ? state_.canvasSize.height() / 100.0 : 1.0;
     const double horizontalStep = niceStep(72.0 / (zoom_ * horizontalUnitPixels));
     const double verticalStep = niceStep(54.0 / (zoom_ * verticalUnitPixels));
-    const double leftValue = (toImage(viewport.topLeft()).x() - state_.image.width() / 2.0) / horizontalUnitPixels;
-    const double rightValue = (toImage(viewport.topRight()).x() - state_.image.width() / 2.0) / horizontalUnitPixels;
+    const double leftValue =
+        (toImage(viewport.topLeft()).x() - state_.canvasSize.width() / 2.0) / horizontalUnitPixels;
+    const double rightValue =
+        (toImage(viewport.topRight()).x() - state_.canvasSize.width() / 2.0) / horizontalUnitPixels;
     for (double value = std::ceil(qMin(leftValue, rightValue) / horizontalStep) * horizontalStep;
          value <= qMax(leftValue, rightValue) + horizontalStep * 0.01;
          value += horizontalStep) {
-        const double x = toView(QPointF(state_.image.width() / 2.0 + value * horizontalUnitPixels, 0)).x();
+        const double x = toView(QPointF(state_.canvasSize.width() / 2.0 + value * horizontalUnitPixels, 0)).x();
         if (x < viewport.left() - 1 || x > viewport.right() + 1)
             continue;
         p.drawLine(QPointF(x, viewport.top()), QPointF(x, viewport.top() - 7));
@@ -779,12 +786,14 @@ void Canvas::drawRulers(QPainter &p) {
         p.drawText(QRectF(x + 2, 2, 70, rulerSize - 9), Qt::AlignLeft | Qt::AlignVCenter, label);
         p.drawText(QRectF(x + 2, height() - rulerSize + 7, 70, rulerSize - 9), Qt::AlignLeft | Qt::AlignVCenter, label);
     }
-    const double topValue = (state_.image.height() / 2.0 - toImage(viewport.topLeft()).y()) / verticalUnitPixels;
-    const double bottomValue = (state_.image.height() / 2.0 - toImage(viewport.bottomLeft()).y()) / verticalUnitPixels;
+    const double topValue =
+        (state_.canvasSize.height() / 2.0 - toImage(viewport.topLeft()).y()) / verticalUnitPixels;
+    const double bottomValue =
+        (state_.canvasSize.height() / 2.0 - toImage(viewport.bottomLeft()).y()) / verticalUnitPixels;
     for (double value = std::ceil(qMin(topValue, bottomValue) / verticalStep) * verticalStep;
          value <= qMax(topValue, bottomValue) + verticalStep * 0.01;
          value += verticalStep) {
-        const double y = toView(QPointF(0, state_.image.height() / 2.0 - value * verticalUnitPixels)).y();
+        const double y = toView(QPointF(0, state_.canvasSize.height() / 2.0 - value * verticalUnitPixels)).y();
         if (y < viewport.top() - 1 || y > viewport.bottom() + 1)
             continue;
         p.drawLine(QPointF(viewport.left(), y), QPointF(viewport.left() - 7, y));
@@ -820,7 +829,13 @@ void Canvas::stroke(QPointF start, QPointF end) {
 }
 
 void Canvas::stamp(QPointF center) {
-    QPainter painter(&state_.image);
+    LayerEntry *entry = state_.layers.activeEntry();
+    LayerContent *content = state_.layers.editableActiveContent(LayerCapability::RasterPainting);
+    const LayerType *type = entry ? LayerTypeRegistry::instance().type(entry->typeId) : nullptr;
+    QImage *image = content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
+    if (!image)
+        return;
+    QPainter painter(image);
     const bool softEdge = tool_ != Pencil && strokeSettings_.hardness < 100;
     painter.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
     painter.setPen(Qt::NoPen);
@@ -936,7 +951,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         return;
     }
     QPointF point = toImage(e->localPos());
-    if (!QRectF(QPointF(), state_.image.size()).contains(point))
+    if (!QRectF(QPointF(), state_.canvasSize).contains(point))
         return;
     before_ = state_;
     dragging_ = true;
@@ -957,7 +972,7 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     cursorView_ = e->localPos();
     cursorInViewport_ = viewportRect().contains(cursorView_);
     hoverPoint_ = toImage(cursorView_);
-    hasHoverPoint_ = QRectF(QPointF(), state_.image.size()).contains(hoverPoint_);
+    hasHoverPoint_ = QRectF(QPointF(), state_.canvasSize).contains(hoverPoint_);
     emit positionChanged(hoverPoint_);
     if (!dragging_) {
         updatePerspectiveCursor(e->localPos());
@@ -1030,7 +1045,7 @@ void Canvas::finish() {
     if (!panning_ && (movingPoint_      ? state_.vanishingPoints != before_.vanishingPoints
                       : movingHorizon_  ? state_.horizonY != before_.horizonY
                       : movingVertical_ ? state_.verticalX != before_.verticalX
-                                        : state_.image != before_.image))
+                                        : state_.layers != before_.layers))
         commit(before_,
                movingPoint_      ? tr("точку схода")
                : movingHorizon_  ? tr("горизонт")

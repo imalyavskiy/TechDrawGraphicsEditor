@@ -52,6 +52,17 @@ struct ProjectFixture {
     QString projectPath;
 };
 
+QImage pixels(const DrawingState &state) {
+    return state.flattenedImage();
+}
+
+QImage *editablePixels(DrawingState *state) {
+    LayerEntry *entry = state->layers.activeEntry();
+    LayerContent *content = state->layers.editableActiveContent(LayerCapability::RasterPainting);
+    const LayerType *type = entry ? LayerTypeRegistry::instance().type(entry->typeId) : nullptr;
+    return content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
+}
+
 /// Проверяет реестр типов, copy-on-write, композицию, миниатюру и кодек растрового слоя.
 void testLayerArchitecture() {
     QImage source(24, 16, QImage::Format_ARGB32_Premultiplied);
@@ -97,8 +108,9 @@ void testLayerArchitecture() {
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
-    initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
-    initial.image.fill(Qt::white);
+    QImage image(1000, 620, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::white);
+    initial.setSingleRasterImage(image, QStringLiteral("Background"));
     initial.horizonY = 240;
     initial.verticalX = 500;
     initial.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(650, 240), QString(), QString()});
@@ -524,7 +536,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
         }
     });
     newAction->trigger();
-    require(window.canvas()->state().image.size() == QSize(640, 480) &&
+    require(window.canvas()->state().canvasSize == QSize(640, 480) &&
                 QSettings().value("canvas/newWidth").toInt() == 640 &&
                 QSettings().value("canvas/newHeight").toInt() == 480,
             "new canvas size was not remembered after creation");
@@ -856,7 +868,7 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
     }
     require(topRuler > 250 && bottomRuler > 250 && leftRuler > 170 && rightRuler > 170,
             "four fixed viewport rulers were not rendered");
-    const QImage rulerPixels = rulerCanvas.state().image;
+    const QImage rulerPixels = pixels(rulerCanvas.state());
     mouse(&rulerCanvas, QEvent::MouseMove, QPointF(250, 200), Qt::NoButton, Qt::NoButton);
     QImage cursorProjection(rulerCanvas.size(), QImage::Format_ARGB32_Premultiplied);
     cursorProjection.fill(Qt::transparent);
@@ -884,7 +896,7 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
             if (cursorProjection.pixelColor(x, y) == QColor("#fff4b5"))
                 ++cursorLabels;
     require(changedPixels > 20 && topProjection && bottomProjection && leftProjection && rightProjection &&
-                cursorLabels == 0 && rulerCanvas.state().image == rulerPixels && rulerCanvas.undoStack()->isClean(),
+                cursorLabels == 0 && pixels(rulerCanvas.state()) == rulerPixels && rulerCanvas.undoStack()->isClean(),
             "dashed cursor projections must cross all rulers without numeric badges or document edits");
     DrawingState lockState = initial;
     lockState.gridVisible = true;
@@ -938,17 +950,17 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeWidth(9);
     canvas->setFront(QColor("#26364a"));
     drag(canvas, QPointF(120, 100), QPointF(280, 100));
-    require(canvas->state().image.pixelColor(200, 100) == QColor("#26364a"), "pencil stroke did not reach image");
+    require(pixels(canvas->state()).pixelColor(200, 100) == QColor("#26364a"), "pencil stroke did not reach image");
     require(!canvas->undoStack()->isClean(), "stroke must make document dirty");
     canvas->undoStack()->undo();
-    require(canvas->state().image == initial.image, "undo must restore pixels");
+    require(pixels(canvas->state()) == pixels(initial), "undo must restore pixels");
     require(canvas->undoStack()->isClean(), "undo back to saved image must be clean");
     canvas->undoStack()->redo();
-    require(canvas->state().image != initial.image, "redo must restore stroke");
+    require(pixels(canvas->state()) != pixels(initial), "redo must restore stroke");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
     drag(canvas, QPointF(190, 95), QPointF(190, 105));
-    require(canvas->state().image.pixelColor(190, 100) == QColor("#e8cf9b"), "eraser must use Back");
+    require(pixels(canvas->state()).pixelColor(190, 100) == QColor("#e8cf9b"), "eraser must use Back");
     canvas->setDocument(initial);
     canvas->setTool(Canvas::Pencil);
     canvas->setFront(QColor("#26364a"));
@@ -956,23 +968,23 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     click(canvas, {100, 200});
     click(canvas, {200, 200}, Qt::ShiftModifier);
     click(canvas, {200, 260}, Qt::ShiftModifier);
-    require(canvas->state().image.pixelColor(150, 200) == QColor("#26364a") &&
-                canvas->state().image.pixelColor(200, 230) == QColor("#26364a"),
+    require(pixels(canvas->state()).pixelColor(150, 200) == QColor("#26364a") &&
+                pixels(canvas->state()).pixelColor(200, 230) == QColor("#26364a"),
             "shift clicks must create connected segments");
     canvas->undoStack()->undo();
-    require(canvas->state().image.pixelColor(150, 200) == QColor("#26364a") &&
-                canvas->state().image.pixelColor(200, 230) == QColor(Qt::white),
+    require(pixels(canvas->state()).pixelColor(150, 200) == QColor("#26364a") &&
+                pixels(canvas->state()).pixelColor(200, 230) == QColor(Qt::white),
             "each connected segment must be separately undoable");
     canvas->undoStack()->redo();
     click(canvas, {300, 300});
     click(canvas, {390, 310}, Qt::ShiftModifier | Qt::ControlModifier);
-    require(canvas->state().image.pixelColor(350, 300) == QColor("#26364a"), "ctrl shift must constrain segment angle");
+    require(pixels(canvas->state()).pixelColor(350, 300) == QColor("#26364a"), "ctrl shift must constrain segment angle");
     canvas->setDocument(initial);
     canvas->setTool(Canvas::Brush);
     canvas->setFront(QColor("#6c3f88"));
     canvas->setStrokeWidth(11);
     drag(canvas, {110, 180}, {210, 180});
-    require(canvas->state().image.pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
+    require(pixels(canvas->state()).pixelColor(160, 180) == QColor("#6c3f88"), "brush stroke did not reach image");
     DrawingToolSettings softBrush;
     softBrush.width = 20;
     softBrush.opacity = 50;
@@ -980,8 +992,8 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     softBrush.spacing = 50;
     canvas->setStrokeSettings(softBrush);
     click(canvas, {260, 180});
-    const QColor softCenter = canvas->state().image.pixelColor(260, 180);
-    const QColor softEdge = canvas->state().image.pixelColor(269, 180);
+    const QColor softCenter = pixels(canvas->state()).pixelColor(260, 180);
+    const QColor softEdge = pixels(canvas->state()).pixelColor(269, 180);
     require(softCenter != QColor(Qt::white) && softCenter != QColor("#6c3f88") && softEdge != softCenter,
             "brush opacity and soft hardness must affect the round stamp");
     softBrush.opacity = 100;
@@ -989,7 +1001,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     softBrush.spacing = 50;
     canvas->setStrokeSettings(softBrush);
     drag(canvas, {260, 220}, {360, 220});
-    require(canvas->state().image.pixelColor(310, 220) == QColor("#6c3f88"),
+    require(pixels(canvas->state()).pixelColor(310, 220) == QColor("#6c3f88"),
             "stamp interpolation must keep a fast brush stroke continuous");
     canvas->setBack(QColor("#e8cf9b"));
     canvas->setTool(Canvas::Eraser);
@@ -1000,24 +1012,25 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     canvas->setStrokeSettings(eraserSettings);
     click(canvas, {110, 180});
     click(canvas, {210, 180}, Qt::ShiftModifier);
-    require(canvas->state().image.pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
+    require(pixels(canvas->state()).pixelColor(160, 180) == QColor("#e8cf9b"), "eraser straight segment must use Back");
     const int undoIndex = canvas->undoStack()->index();
-    const QImage pixels = canvas->state().image;
+    const QImage renderedPixels = pixels(canvas->state());
     canvas->setZoom(1.7, QPointF(100, 150));
-    require(canvas->state().image == pixels && canvas->undoStack()->index() == undoIndex,
+    require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
             "zoom must not edit document");
     QPointF point(100, 100);
     require(QLineF(canvas->toImage(canvas->toView(point)), point).length() < 0.001, "view coordinate roundtrip failed");
     canvas->setTool(Canvas::Pan);
     drag(canvas, QPointF(100, 100), QPointF(150, 130));
-    require(canvas->state().image == pixels && canvas->undoStack()->index() == undoIndex, "pan must not edit document");
+    require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
+            "pan must not edit document");
     canvas->fit();
     canvas->setGridVisible(true);
     canvas->setTool(Canvas::Perspective);
     drag(canvas, QPointF(650, 240), QPointF(600, 210));
     require(QLineF(canvas->state().vanishingPoints[0].position, QPointF(600, 210)).length() < 0.01,
             "perspective point must move freely away from the horizon");
-    require(canvas->state().image == pixels, "perspective must not alter pixels");
+    require(pixels(canvas->state()) == renderedPixels, "perspective must not alter pixels");
     QApplication::sendEvent(canvas, &leave);
     QImage freePointView(canvas->size(), QImage::Format_ARGB32_Premultiplied);
     freePointView.fill(Qt::transparent);
@@ -1039,7 +1052,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     require(gridView.pixelColor(qRound(snappedPoint.x()), qRound(snappedPoint.y())) ==
                 canvas->state().vanishingPoints[0].color,
             "snapped vanishing point must show its colored center");
-    const QRectF paper(canvas->toView(QPointF()), QSizeF(canvas->state().image.size()) * canvas->zoom());
+    const QRectF paper(canvas->toView(QPointF()), QSizeF(pixels(canvas->state()).size()) * canvas->zoom());
     const QPoint outsideHorizon(qRound(paper.right() + 12),
                                 qRound(canvas->toView(QPointF(0, canvas->state().horizonY)).y()));
     bool horizonOutsideCanvas = false;
@@ -1080,15 +1093,15 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     restored.undoStack()->undo();
     require(restored.state().vanishingPoints != restoredCurrent.vanishingPoints ||
                 restored.state().gridVisible != restoredCurrent.gridVisible ||
-                restored.state().image != restoredCurrent.image,
+                pixels(restored.state()) != pixels(restoredCurrent),
             "restored undo did not change state");
     restored.undoStack()->redo();
-    require(restored.state().image == restoredCurrent.image &&
+    require(pixels(restored.state()) == pixels(restoredCurrent) &&
                 restored.state().vanishingPoints == restoredCurrent.vanishingPoints && restored.undoStack()->isClean(),
             "restored redo did not return to saved state");
     DrawingState loaded;
     require(Project::load(projectPath, &loaded, &error), qPrintable(error));
-    require(loaded.image == canvas->state().image && loaded.vanishingPoints == canvas->state().vanishingPoints &&
+    require(pixels(loaded) == pixels(canvas->state()) && loaded.vanishingPoints == canvas->state().vanishingPoints &&
                 loaded.horizonY == canvas->state().horizonY && loaded.verticalX == canvas->state().verticalX &&
                 !loaded.gridVisible,
             "DRW geometry roundtrip mismatch");
@@ -1177,8 +1190,9 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
                 version6State.vanishingPoints.first().isAttachedTo(PerspectiveTarget::horizon()),
             "version 6 projects must receive default point names and restore their single attachment");
     Canvas styledCanvas;
-    styled.image = QImage(200, 200, QImage::Format_ARGB32_Premultiplied);
-    styled.image.fill(Qt::white);
+    QImage styledImage(200, 200, QImage::Format_ARGB32_Premultiplied);
+    styledImage.fill(Qt::white);
+    styled.setSingleRasterImage(styledImage, QStringLiteral("Background"));
     styled.vanishingPoints[0].position = QPointF(100, 100);
     styled.vanishingPoints[0].attachmentTargetIds.clear();
     styled.horizonY = 100;
@@ -1200,7 +1214,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     auto darkness = [](const QColor &color) { return 765 - color.red() - color.green() - color.blue(); };
     require(gapPixel == QColor(Qt::white) && darkness(endPixel) > darkness(startPixel),
             "perspective ray gap or opacity ramp was not rendered");
-    const QRectF styledPaper(styledCanvas.toView(QPointF()), QSizeF(styled.image.size()) * styledCanvas.zoom());
+    const QRectF styledPaper(styledCanvas.toView(QPointF()), QSizeF(styled.canvasSize) * styledCanvas.zoom());
     const QColor independentHorizon = styledView.pixelColor(
         qRound(styledPaper.right() + 20), qRound(styledCanvas.toView(QPointF(0, styled.horizonY)).y()));
     require(independentHorizon == styled.horizonColor, "horizon must use its own color, opacity, and line width");
@@ -1282,7 +1296,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
             "recent files did not persist between windows");
     recentWindow.close();
     persistedRecentWindow.close();
-    return {pixels, loaded, projectPath};
+    return {renderedPixels, loaded, projectPath};
 }
 
 /// Проверяет единую панель и независимое сохранение параметров карандаша, кисти и ластика.
@@ -1367,12 +1381,12 @@ void testExportValidationAndScreenshots(
     QString error;
     DrawingState loaded = fixture.loadedState;
     DrawingHistory loadedHistory;
-    const QImage &pixels = fixture.renderedPixels;
+    const QImage &expectedPixels = fixture.renderedPixels;
     const QString &projectPath = fixture.projectPath;
-    require(Project::exportPng(out.filePath("export.png"), canvas->state().image, &error), qPrintable(error));
+    require(Project::exportPng(out.filePath("export.png"), pixels(canvas->state()), &error), qPrintable(error));
     QImage png;
     require(Project::loadPng(out.filePath("export.png"), &png, &error), qPrintable(error));
-    require(png == pixels, "grid leaked into exported PNG");
+    require(png == expectedPixels, "grid leaked into exported PNG");
     QImage alphaExport(32, 24, QImage::Format_ARGB32_Premultiplied);
     alphaExport.fill(Qt::transparent);
     alphaExport.setPixelColor(16, 12, QColor(40, 80, 120, 128));
@@ -1386,18 +1400,20 @@ void testExportValidationAndScreenshots(
     require(!Project::exportImage(out.filePath("export.invalid"), alphaExport, "GIF", -1, &error),
             "an unsupported export format must be rejected");
     DrawingState transparent = loaded;
-    transparent.image.fill(Qt::transparent);
-    transparent.image.setPixelColor(7, 8, QColor(40, 80, 120, 128));
+    QImage *transparentPixels = editablePixels(&transparent);
+    require(transparentPixels, "transparent test layer is not editable");
+    transparentPixels->fill(Qt::transparent);
+    transparentPixels->setPixelColor(7, 8, QColor(40, 80, 120, 128));
     require(Project::save(out.filePath("alpha.drw"), transparent, &error), qPrintable(error));
     require(Project::load(out.filePath("alpha.drw"), &loaded, &error), qPrintable(error));
-    require(loaded.image == transparent.image, "alpha roundtrip failed");
+    require(pixels(loaded) == pixels(transparent), "alpha roundtrip failed");
     QFile bad(out.filePath("bad.drw"));
     bad.open(QIODevice::WriteOnly);
     bad.write("not a zip");
     bad.close();
     DrawingState unchanged = loaded;
     require(!Project::load(bad.fileName(), &loaded, &error), "bad project accepted");
-    require(loaded.image == unchanged.image, "failed load modified destination");
+    require(pixels(loaded) == pixels(unchanged), "failed load modified destination");
     require(!Project::save(out.filePath("missing/fail.drw"), loaded, &error), "save to missing directory should fail");
     QZipWriter invalid(out.filePath("version.drw"));
     invalid.addFile("drawing.png", QByteArray("bad"));
@@ -1407,7 +1423,7 @@ void testExportValidationAndScreenshots(
     QByteArray legacyPng;
     QBuffer legacyBuffer(&legacyPng);
     legacyBuffer.open(QIODevice::WriteOnly);
-    require(initial.image.save(&legacyBuffer, "PNG"), "legacy PNG encoding failed");
+    require(pixels(initial).save(&legacyBuffer, "PNG"), "legacy PNG encoding failed");
     QJsonObject legacyPerspective{
         {"visible", false}, {"x", 650.0}, {"y", 240.0}, {"rays", 16}, {"color", QStringLiteral("#ff628ed1")}};
     QJsonObject legacyMetadata{{"format", "Drawing"},
@@ -1449,13 +1465,13 @@ void testExportValidationAndScreenshots(
                 "opening saved project did not restore history");
         canvas->setTool(Canvas::Pencil);
         drag(canvas, {40, 40}, {90, 40});
-        const QImage beforeFailedOpen = canvas->state().image;
+        const QImage beforeFailedOpen = pixels(canvas->state());
         QTimer::singleShot(0, &window, [] {
             auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
             if (box)
                 box->accept();
         });
-        require(!window.openPath(bad.fileName()) && canvas->state().image == beforeFailedOpen &&
+        require(!window.openPath(bad.fileName()) && pixels(canvas->state()) == beforeFailedOpen &&
                     !canvas->undoStack()->isClean(),
                 "failed open must preserve dirty document");
         bool saveClicked = false;
@@ -1472,7 +1488,7 @@ void testExportValidationAndScreenshots(
             }
         });
         require(window.close() && saveClicked, "save before closing failed");
-        require(Project::load(projectPath, &loaded, &error) && loaded.image == beforeFailedOpen,
+        require(Project::load(projectPath, &loaded, &error) && pixels(loaded) == beforeFailedOpen,
                 "save on close lost changes");
         require(Project::load(projectPath, &loadedHistory, &error) &&
                     loadedHistory.index == loadedHistory.labels.size() && loadedHistory.labels.size() > 1,

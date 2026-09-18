@@ -184,6 +184,10 @@ LayerTypeRegistry::LayerTypeRegistry() {
     raster.factory = [] { return std::make_shared<RasterLayerContent>(); };
     raster.renderer = std::make_shared<RasterLayerRenderer>();
     raster.codec = std::make_shared<RasterLayerCodec>();
+    raster.rasterReader = [](const LayerContent &content) {
+        const auto *rasterContent = dynamic_cast<const RasterLayerContent *>(&content);
+        return rasterContent ? &rasterContent->image : nullptr;
+    };
     raster.rasterEditor = [](LayerContent &content) {
         auto *rasterContent = dynamic_cast<RasterLayerContent *>(&content);
         return rasterContent ? &rasterContent->image : nullptr;

@@ -139,6 +139,7 @@ struct LayerType {
     std::function<std::shared_ptr<LayerContent>()> factory;
     std::shared_ptr<const LayerRenderer> renderer;
     std::shared_ptr<const LayerCodec> codec;
+    std::function<const QImage *(const LayerContent &)> rasterReader;
     std::function<QImage *(LayerContent &)> rasterEditor;
 };
 

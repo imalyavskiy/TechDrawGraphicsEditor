@@ -887,10 +887,10 @@ void MainWindow::setupViewAndStatusBar() {
         zoom_->setValue(canvas_->zoom() * 100);
     });
     connect(canvas_, &Canvas::positionChanged, this, [this](QPointF position) {
-        const double xPixels = position.x() - canvas_->state().image.width() / 2.0,
-                     yPixels = canvas_->state().image.height() / 2.0 - position.y();
-        const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().image.width() : xPixels,
-                     y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().image.height() : yPixels;
+        const double xPixels = position.x() - canvas_->state().canvasSize.width() / 2.0,
+                     yPixels = canvas_->state().canvasSize.height() / 2.0 - position.y();
+        const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().canvasSize.width() : xPixels,
+                     y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().canvasSize.height() : yPixels;
         const QString suffix = rulerPercent_ ? tr("%") : tr(" px");
         positionLabel_->setText(tr("X: %1%3   Y: %2%3")
                                     .arg(x, 0, 'f', rulerPercent_ ? 1 : 0)
@@ -961,7 +961,8 @@ void MainWindow::updateState() {
     QString name = path_.isEmpty() ? tr("Без имени.drw") : QFileInfo(path_).fileName();
     setWindowTitle(tr("%1[*] — %2").arg(name, productName()));
     setWindowModified(!canvas_->undoStack()->isClean());
-    sizeLabel_->setText(tr("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
+    sizeLabel_->setText(
+        tr("%1 × %2 px").arg(canvas_->state().canvasSize.width()).arg(canvas_->state().canvasSize.height()));
     // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
@@ -1145,20 +1146,20 @@ void MainWindow::updateState() {
     colorSwatch(verticalColorButton_, canvas_->state().verticalColor);
 }
 double MainWindow::displayedX(double imageCoordinate) const {
-    const double pixels = imageCoordinate - canvas_->state().image.width() / 2.0;
-    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().image.width() : pixels;
+    const double pixels = imageCoordinate - canvas_->state().canvasSize.width() / 2.0;
+    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().canvasSize.width() : pixels;
 }
 double MainWindow::displayedY(double imageCoordinate) const {
-    const double pixels = canvas_->state().image.height() / 2.0 - imageCoordinate;
-    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().image.height() : pixels;
+    const double pixels = canvas_->state().canvasSize.height() / 2.0 - imageCoordinate;
+    return coordinatePercent_ ? pixels * 100.0 / canvas_->state().canvasSize.height() : pixels;
 }
 double MainWindow::imageX(double displayed) const {
-    return canvas_->state().image.width() / 2.0 +
-           (coordinatePercent_ ? displayed * canvas_->state().image.width() / 100.0 : displayed);
+    return canvas_->state().canvasSize.width() / 2.0 +
+           (coordinatePercent_ ? displayed * canvas_->state().canvasSize.width() / 100.0 : displayed);
 }
 double MainWindow::imageY(double displayed) const {
-    return canvas_->state().image.height() / 2.0 -
-           (coordinatePercent_ ? displayed * canvas_->state().image.height() / 100.0 : displayed);
+    return canvas_->state().canvasSize.height() / 2.0 -
+           (coordinatePercent_ ? displayed * canvas_->state().canvasSize.height() / 100.0 : displayed);
 }
 void MainWindow::setCoordinateUnits(bool percent) {
     if (coordinatePercent_ == percent) {
@@ -1295,12 +1296,13 @@ void MainWindow::newDocument() {
         return;
     }
     DrawingState state;
-    state.image = QImage(w.value(), h.value(), QImage::Format_ARGB32_Premultiplied);
-    if (state.image.isNull()) {
+    QImage image(w.value(), h.value(), QImage::Format_ARGB32_Premultiplied);
+    if (image.isNull()) {
         showError(tr("Не удалось выделить память для холста."));
         return;
     }
-    state.image.fill(back_);
+    image.fill(back_);
+    state.setSingleRasterImage(image, tr("Фон"));
     state.horizonY = h.value() / 2.0;
     state.verticalX = w.value() / 2.0;
     state.vanishingPoints.append({QStringLiteral("vp-1"),
@@ -1344,14 +1346,16 @@ bool MainWindow::openPath(const QString &path) {
             applySavedPointAppearance(&historyState);
         }
     } else {
-        if (!Project::loadPng(path, &state.image, &error)) {
+        QImage image;
+        if (!Project::loadPng(path, &image, &error)) {
             showError(error);
             return false;
         }
-        state.horizonY = state.image.height() / 2.0;
-        state.verticalX = state.image.width() / 2.0;
+        state.setSingleRasterImage(image, tr("Импорт PNG"), image.hasAlphaChannel(), false);
+        state.horizonY = state.canvasSize.height() / 2.0;
+        state.verticalX = state.canvasSize.width() / 2.0;
         state.vanishingPoints.append({QStringLiteral("vp-1"),
-                                      QPointF(state.image.width() / 2.0, state.image.height() / 2.0),
+                                      QPointF(state.canvasSize.width() / 2.0, state.canvasSize.height() / 2.0),
                                       PerspectiveTarget::constructionType(),
                                       PerspectiveTarget::horizon()});
         state.vanishingPoints.last().name = tr("Точка схода 1");
@@ -1464,7 +1468,7 @@ void MainWindow::exportImage() {
         settings.setValue("export/jpegQuality", quality);
     }
     QString error;
-    if (!Project::exportImage(target, canvas_->state().image, format, quality, &error))
+    if (!Project::exportImage(target, canvas_->state().flattenedImage(), format, quality, &error))
         showError(error);
     else {
         rememberDirectory("files/exportDirectory", target);
