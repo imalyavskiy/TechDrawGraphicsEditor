@@ -14,6 +14,7 @@ SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40),
 
 
 def main():
+    """Build a temporary Qt SVG renderer and write the tracked PNG and ICO assets."""
     parser = argparse.ArgumentParser(description="Render the TechDraw SVG into PNG and multi-size ICO files.")
     parser.add_argument("--qt-root", default=os.environ.get("QT_ROOT"))
     parser.add_argument("--compiler-root", default=os.environ.get("MINGW_ROOT"))
@@ -34,6 +35,7 @@ def main():
 #include <QPainter>
 #include <QSvgRenderer>
 int main(int argc,char **argv) {
+    // This helper keeps Qt SVG rendering identical to the application toolchain.
     QCoreApplication app(argc,argv);
     if (argc!=3) return 2;
     QSvgRenderer renderer(QString::fromLocal8Bit(argv[1]));

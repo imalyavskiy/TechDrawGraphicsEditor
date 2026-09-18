@@ -38,6 +38,7 @@ USER_TEXT_CALLS = {
 
 
 def tokens(text):
+    """Yield the C++ tokens needed to track calls and user-facing string literals."""
     index = 0
     line = 1
     while index < len(text):
@@ -87,6 +88,7 @@ def tokens(text):
 
 
 def audit(path):
+    """Return string literals that bypass the supported Qt translation calls."""
     stack = []
     previous = None
     violations = []
@@ -107,6 +109,7 @@ def audit(path):
 
 
 def main():
+    """Audit every production source file and return a process-friendly status code."""
     failures = []
     for relative in SOURCE_FILES:
         path = ROOT / relative

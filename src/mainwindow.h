@@ -13,16 +13,21 @@ class QListWidget;
 class QComboBox;
 class QToolBar;
 
+/// Главное окно связывает пользовательские команды, Canvas, файлы проекта и постоянные настройки.
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
+    /// Создаёт и синхронизирует все панели однодокументного редактора.
     explicit MainWindow(QWidget *parent = nullptr);
+    /// Возвращает холст для интеграционных проверок и управляющего кода окна.
     Canvas *canvas() const {
         return canvas_;
     }
+    /// Открывает `.drw` либо импортирует PNG по известному пути без файлового диалога.
     bool openPath(const QString &path);
 
 protected:
+    /// Перед закрытием окна предлагает сохранить изменённый документ.
     void closeEvent(QCloseEvent *event) override;
 
 private:
@@ -88,28 +93,52 @@ private:
     QVector<int> toolWidths_{3, 3, 3};
     bool coordinatePercent_ = true;
     bool rulerPercent_ = false;
+    /// Задаёт свойства окна и последовательно создаёт основные части интерфейса.
     void initializeWindow();
+    /// Создаёт меню, команды и две панели инструментов с общими действиями.
     void setupMenusAndToolbars();
+    /// Создаёт dock-панель перспективы и её сворачиваемые секции.
     void setupPerspectivePanel();
+    /// Связывает элементы панели перспективы с моделью Canvas и настройками.
     void connectPerspectiveControls();
+    /// Создаёт команды масштаба, строку состояния и отображение координат курсора.
     void setupViewAndStatusBar();
+    /// Запрашивает размер и создаёт новый документ после проверки несохранённых изменений.
     void newDocument();
+    /// Показывает диалог выбора проекта или PNG и передаёт путь в `openPath()`.
     void openDocument();
+    /// Сохраняет текущую историю в `.drw`, при необходимости запросив новый путь.
     bool saveDocument(bool saveAs = false);
+    /// Экспортирует только растровое изображение документа в PNG.
     void exportImage();
+    /// Возвращает разрешение продолжить после обработки несохранённых изменений.
     bool confirmDiscard();
+    /// Обновляет заголовок и элементы управления из текущего состояния Canvas.
     void updateState();
+    /// Обновляет образцы цветов Front и Back на панели команд.
     void updateColors();
+    /// Переключает инструмент, его сохранённую ширину и видимое название.
     void activateTool(Canvas::Tool tool, const QString &name);
+    /// Добавляет канонический путь в начало ограниченного списка недавних проектов.
     void addRecentFile(const QString &path);
+    /// Перестраивает меню недавних файлов из постоянного списка.
     void updateRecentFilesMenu();
+    /// Находит текущий индекс точки по устойчивому идентификатору после перестроения списка.
     int vanishingPointIndex(const QString &id) const;
+    /// Показывает критическое сообщение с пользовательским названием приложения.
     void showError(const QString &error);
+    /// Показывает вкладки настроек приложения и применяет изменённые параметры вида.
     void showSettings();
+    /// Показывает значок и полное пользовательское название приложения.
     void showAbout();
+    /// Переводит X изображения в выбранные пользователем единицы относительно центра.
     double displayedX(double imageX) const;
+    /// Переводит направленную вверх Y-координату изображения в выбранные единицы.
     double displayedY(double imageY) const;
+    /// Переводит введённую X-координату обратно в пиксели изображения.
     double imageX(double displayed) const;
+    /// Переводит введённую Y-координату обратно в пиксели изображения.
     double imageY(double displayed) const;
+    /// Настраивает диапазон, шаг и суффикс полей координат без перемещения объектов.
     void setCoordinateUnits(bool percent);
 };

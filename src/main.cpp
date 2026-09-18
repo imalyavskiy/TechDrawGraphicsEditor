@@ -10,6 +10,7 @@
 #endif
 
 namespace {
+/// Однократно переносит настройки раннего прототипа, если новая группа ещё пуста.
 void migrateLegacySettings() {
     QSettings current;
     if (!current.allKeys().isEmpty())
@@ -19,6 +20,7 @@ void migrateLegacySettings() {
         current.setValue(key, legacy.value(key));
 }
 
+/// Загружает наиболее подходящий внешний каталог перевода из каталога рядом с EXE.
 void loadTranslation(QApplication &application, QTranslator *translator) {
     const QString translationsDirectory = QCoreApplication::applicationDirPath() + QStringLiteral("/translations");
     const QString locale = QLocale::system().name();
@@ -33,6 +35,7 @@ void loadTranslation(QApplication &application, QTranslator *translator) {
 }
 } // namespace
 
+/// Настраивает приложение, запускает самопроверку либо открывает главное окно.
 int main(int argc, char **argv) {
 #ifdef Q_OS_WIN
     for (int i = 1; i < argc; ++i)

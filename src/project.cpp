@@ -16,11 +16,13 @@
 
 namespace {
 constexpr qint64 maxProjectBytes = 512000000;
+/// Записывает текст ошибки при наличии приёмника и возвращает `false` для цепочки проверок.
 bool fail(QString *error, const QString &text) {
     if (error)
         *error = text;
     return false;
 }
+/// Кодирует изображение в PNG в памяти для помещения внутрь контейнера проекта.
 bool encode(const QImage &image, QByteArray *png, QString *error) {
     QBuffer buffer(png);
     buffer.open(QIODevice::WriteOnly);
@@ -28,6 +30,7 @@ bool encode(const QImage &image, QByteArray *png, QString *error) {
         return fail(error, QCoreApplication::translate("Project", "Не удалось создать PNG."));
     return true;
 }
+/// Декодирует PNG из устройства с проверкой размера до выделения полного растра.
 bool decode(QIODevice *device, QImage *image, QString *error) {
     QImageReader reader(device, "PNG");
     if (!Project::validSize(reader.size()))
@@ -40,6 +43,7 @@ bool decode(QIODevice *device, QImage *image, QString *error) {
     *image = result.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     return true;
 }
+/// Сериализует только сохраняемую геометрию перспективы, исключая параметры оформления.
 QJsonObject perspectiveJson(const DrawingState &state) {
     QJsonArray points;
     for (const auto &point : state.vanishingPoints) {
@@ -57,6 +61,7 @@ QJsonObject perspectiveJson(const DrawingState &state) {
                        {"vertical", QJsonObject{{"x", state.verticalX}, {"locked", state.verticalLocked}}},
                        {"points", points}};
 }
+/// Читает геометрию перспективы с миграцией схем версий 1–8 в актуальную модель.
 bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     if (!value.isObject())
         return fail(error, QCoreApplication::translate("Project", "Отсутствуют параметры перспективы."));
@@ -182,6 +187,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
     state->vanishingPoints = {point};
     return true;
 }
+/// Проверяет полный снимок перед сохранением, включая пределы геометрии и оформления.
 bool validState(const DrawingState &state) {
     if (!Project::validSize(state.image.size()) || state.image.isNull() || !std::isfinite(state.horizonY) ||
         std::abs(state.horizonY) > 1000000 || !std::isfinite(state.verticalX) || std::abs(state.verticalX) > 1000000 ||
@@ -214,6 +220,7 @@ bool validState(const DrawingState &state) {
            state.verticalOpacity >= 0 && state.verticalOpacity <= 100 && std::isfinite(state.verticalWidth) &&
            state.verticalWidth >= 0.1 && state.verticalWidth <= 20;
 }
+/// Сравнивает только данные проекта, которые должны влиять на сериализованную историю.
 bool samePersistentState(const DrawingState &a, const DrawingState &b) {
     if (a.image != b.image || !qFuzzyCompare(a.horizonY + 1, b.horizonY + 1) || a.horizonLocked != b.horizonLocked ||
         !qFuzzyCompare(a.verticalX + 1, b.verticalX + 1) || a.verticalLocked != b.verticalLocked ||
@@ -255,6 +262,7 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
     QVector<QPair<QString, QByteArray>> historyImages;
     QJsonArray states;
     QString previousImage;
+    // Геометрические команды не меняют растр: соседние равные изображения ссылаются на один PNG в архиве.
     for (int i = 0; i < history.states.size(); ++i) {
         QString imagePath;
         if (i == history.index)
@@ -300,6 +308,7 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
     }
     if (archive.size() > maxProjectBytes)
         return fail(error, QCoreApplication::translate("Project", "Проект с историей превышает ограничение 512 МБ."));
+    // QSaveFile оставляет прежний проект целым, если запись или финальная атомарная замена не удалась.
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly))
         return fail(error, file.errorString());
@@ -331,6 +340,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     QHash<QString, int> counts;
     QHash<QString, qint64> sizes;
     qint64 unpacked = 0;
+    // Метаданные ZIP проверяются до распаковки содержимого, чтобы ограничить память на повреждённых файлах.
     for (const auto &entry : files)
         if (entry.isFile) {
             ++counts[entry.filePath];
@@ -391,6 +401,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         !parsePerspective(object.value("perspective"), &current, error, int(versionValue)))
         return false;
     DrawingHistory result;
+    // Версия 1 предшествует сохраняемой истории и поэтому разворачивается в единственный снимок.
     if (versionValue == 1) {
         result.states.append(current);
         *history = result;

@@ -3,10 +3,12 @@
 #include <QtWidgets>
 
 namespace {
+/// Возвращает полное название, видимое пользователю и доступное для перевода.
 QString productName() {
     return QCoreApplication::translate("MainWindow", "Технический рисунок / Technical Draw");
 }
 
+/// Строит пиктограмму одного из пяти инструментов рисования и навигации.
 QIcon toolIcon(int kind) {
     QPixmap image(24, 24);
     image.fill(Qt::transparent);
@@ -46,6 +48,7 @@ QIcon toolIcon(int kind) {
     }
     return QIcon(image);
 }
+/// Строит пиктограмму команды масштаба один к одному.
 QIcon actualSizeIcon() {
     QPixmap image(28, 20);
     image.fill(Qt::transparent);
@@ -58,6 +61,7 @@ QIcon actualSizeIcon() {
     painter.drawText(image.rect(), Qt::AlignCenter, QCoreApplication::translate("MainWindow", "1:1"));
     return QIcon(image);
 }
+/// Строит открытый или закрытый глаз для переключателя видимости точки.
 QIcon eyeIcon(bool open) {
     QPixmap image(20, 20);
     image.fill(Qt::transparent);
@@ -80,6 +84,7 @@ QIcon eyeIcon(bool open) {
     }
     return QIcon(image);
 }
+/// Строит открытый или закрытый замок для переключателя фиксации точки.
 QIcon lockIcon(bool locked) {
     QPixmap image(20, 20);
     image.fill(Qt::transparent);
@@ -105,6 +110,7 @@ QIcon lockIcon(bool locked) {
     painter.drawLine(10, 12, 10, 15);
     return QIcon(image);
 }
+/// Обновляет цветной образец кнопки без текстовой подписи.
 void colorSwatch(QPushButton *button, QColor color) {
     QPixmap swatch(22, 22);
     swatch.fill(color);
@@ -114,29 +120,36 @@ void colorSwatch(QPushButton *button, QColor color) {
     button->setIcon(QIcon(swatch));
     button->setIconSize(QSize(22, 22));
 }
+/// Добавляет расширение к пути, если оно отсутствует без учёта регистра.
 QString withSuffix(QString path, const QString &suffix) {
     if (!path.endsWith(suffix, Qt::CaseInsensitive))
         path += suffix;
     return path;
 }
+/// Возвращает доступный пользовательский каталог документов либо домашний каталог.
 QString defaultDirectory() {
     const QString documents = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
     return documents.isEmpty() ? QDir::homePath() : documents;
 }
+/// Читает сохранённый каталог и заменяет недоступное значение каталогом по умолчанию.
 QString rememberedDirectory(const QString &key) {
     const QString path = QSettings().value(key).toString();
     return QDir(path).exists() ? path : defaultDirectory();
 }
+/// Сохраняет родительский каталог успешно использованного файла.
 void rememberDirectory(const QString &key, const QString &filePath) {
     QSettings().setValue(key, QFileInfo(filePath).absolutePath());
 }
+/// Формирует предлагаемый путь файла в каталоге, связанном с указанной операцией.
 QString suggestedFile(const QString &key, const QString &name) {
     return QDir(rememberedDirectory(key)).filePath(name);
 }
+/// Возвращает отдельный ключ QSettings для ширины заданного рисующего инструмента.
 QString widthSetting(int tool) {
     static const QStringList keys{"tools/pencilWidth", "tools/brushWidth", "tools/eraserWidth"};
     return keys[tool];
 }
+/// Применяет проверенный пользовательский пресет общих параметров опорных лучей.
 void applySavedPerspectiveDefaults(DrawingState *state) {
     QSettings settings;
     const double step = settings.value("perspective/common/rayStepDegrees", 10.0).toDouble();
@@ -155,6 +168,7 @@ void applySavedPerspectiveDefaults(DrawingState *state) {
     state->rayFadeLength = fadeLength;
     state->rayPattern = pattern;
 }
+/// Восстанавливает параметры отображения оснастки, не входящие в файл проекта.
 void applySavedViewSettings(DrawingState *state) {
     QSettings settings;
     state->rayWidth = qBound(0.1, settings.value("perspective/view/rayWidth", 1.0).toDouble(), 20.0);
@@ -175,11 +189,13 @@ void applySavedViewSettings(DrawingState *state) {
     state->verticalOpacity = qBound(0, settings.value("perspective/view/verticalOpacity", 70).toInt(), 100);
     state->verticalWidth = qBound(0.1, settings.value("perspective/view/verticalWidth", 1.0).toDouble(), 20.0);
 }
+/// Выбирает повторяемый цвет по умолчанию для точки с указанным порядковым номером.
 QColor defaultPointColor(int index) {
     static const QColor colors[]{
         QColor("#628ed1"), QColor("#d06b4c"), QColor("#4b9b67"), QColor("#896ac1"), QColor("#c08a34")};
     return colors[index % 5];
 }
+/// Восстанавливает цвет и видимость каждой точки по её текущей позиции в списке.
 void applySavedPointAppearance(DrawingState *state) {
     QSettings settings;
     for (int i = 0; i < state->vanishingPoints.size(); ++i) {
@@ -190,6 +206,7 @@ void applySavedPointAppearance(DrawingState *state) {
         point.visible = settings.value(QString("perspective/points/%1/visible").arg(i), true).toBool();
     }
 }
+/// Сохраняет единый пользовательский пресет общих параметров лучей.
 void savePerspectiveDefaults(const DrawingState &state) {
     QSettings settings;
     settings.setValue("perspective/common/rayStepDegrees", state.rayStepDegrees);
@@ -199,10 +216,12 @@ void savePerspectiveDefaults(const DrawingState &state) {
     settings.setValue("perspective/common/rayFadeLength", state.rayFadeLength);
     settings.setValue("perspective/common/rayPattern", state.rayPattern);
 }
+/// Удаляет пользовательский пресет, возвращая последующее чтение к заводским значениям.
 void clearPerspectiveDefaults() {
     QSettings settings;
     settings.remove("perspective/common");
 }
+/// Проверяет, совпадает ли активное оформление лучей с сохранённым пресетом.
 bool matchesPerspectiveDefaults(const DrawingState &state) {
     DrawingState defaults;
     applySavedPerspectiveDefaults(&defaults);
@@ -989,6 +1008,7 @@ void MainWindow::updateState() {
     setWindowTitle(tr("%1[*] — %2").arg(name, productName()));
     setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(tr("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
+    // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
         l(horizonUnits_), m(pointX_), n(pointY_), o(pointUnits_), q(pointAttachment_);

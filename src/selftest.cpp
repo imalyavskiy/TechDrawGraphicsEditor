@@ -8,6 +8,7 @@
 
 namespace {
 QString tracePath;
+/// Записывает результат утверждения в трассировку и прерывает сценарий при ошибке.
 void require(bool value, const char *message) {
     QFile trace(tracePath);
     if (trace.open(QIODevice::Append)) {
@@ -18,6 +19,7 @@ void require(bool value, const char *message) {
     if (!value)
         throw std::runtime_error(message);
 }
+/// Доставляет Canvas синтетическое событие мыши с заданными кнопками и модификаторами.
 void mouse(Canvas *canvas,
            QEvent::Type type,
            QPointF position,
@@ -27,11 +29,13 @@ void mouse(Canvas *canvas,
     QMouseEvent event(type, position, button, buttons, modifiers);
     QApplication::sendEvent(canvas, &event);
 }
+/// Имитирует перетаскивание между двумя точками в координатах изображения.
 void drag(Canvas *canvas, QPointF a, QPointF b) {
     mouse(canvas, QEvent::MouseButtonPress, canvas->toView(a), Qt::LeftButton, Qt::LeftButton);
     mouse(canvas, QEvent::MouseMove, canvas->toView(b), Qt::NoButton, Qt::LeftButton);
     mouse(canvas, QEvent::MouseButtonRelease, canvas->toView(b), Qt::LeftButton, Qt::NoButton);
 }
+/// Имитирует щелчок по точке изображения с необязательными модификаторами клавиатуры.
 void click(Canvas *canvas, QPointF point, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
     mouse(canvas, QEvent::MouseButtonPress, canvas->toView(point), Qt::LeftButton, Qt::LeftButton, modifiers);
     mouse(canvas, QEvent::MouseButtonRelease, canvas->toView(point), Qt::LeftButton, Qt::NoButton, modifiers);
@@ -39,12 +43,14 @@ void click(Canvas *canvas, QPointF point, Qt::KeyboardModifiers modifiers = Qt::
 } // namespace
 
 namespace {
+/// Передаёт результаты теста рисования и проекта последующим проверкам совместимости.
 struct ProjectFixture {
     QImage renderedPixels;
     DrawingState loadedState;
     QString projectPath;
 };
 
+/// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
     initial.image = QImage(1000, 620, QImage::Format_ARGB32_Premultiplied);
@@ -55,6 +61,7 @@ DrawingState initialDrawingState() {
     return initial;
 }
 
+/// Проверяет компоновку, меню, настройки и основные диалоги главного окна.
 void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(QCoreApplication::translate("TranslationProbe", "catalog-loaded") == QStringLiteral("catalog-loaded-ru"),
             "external translation catalog was not loaded");
@@ -477,6 +484,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     QSettings().remove("perspective/view");
 }
 
+/// Проверяет редактирование точек, осей, привязок, симметрии, линеек и шаблонов лучей.
 void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingState &initial) {
     auto *horizonSymmetry = window.findChild<QCheckBox *>("horizonSymmetry");
     auto *verticalSymmetry = window.findChild<QCheckBox *>("verticalSymmetry");
@@ -758,6 +766,7 @@ void testPerspectiveGeometry(MainWindow &window, Canvas *canvas, const DrawingSt
             "numeric main vertical movement must remain available while locked");
 }
 
+/// Проверяет рисующие инструменты, историю, форматы DRW/PNG и возвращает созданные данные.
 ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial, const QDir &out) {
     QEvent leave(QEvent::Leave);
     canvas->setDocument(initial);
@@ -1090,6 +1099,7 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     return {pixels, loaded, projectPath};
 }
 
+/// Проверяет независимое сохранение ширины карандаша, кисти и ластика в QSettings.
 void testToolWidthPersistence() {
     MainWindow widthsWindow;
     auto *widthControl = widthsWindow.findChild<QSpinBox *>("strokeWidth");
@@ -1296,6 +1306,7 @@ void testExportValidationAndScreenshots(
     window.close();
 }
 
+/// Записывает итоговый маркер успешного выполнения для внешнего сценария с тайм-аутом.
 void writeReport(const QDir &out) {
     QFile report(out.filePath("result.txt"));
     report.open(QIODevice::WriteOnly);
@@ -1307,6 +1318,7 @@ void writeReport(const QDir &out) {
 }
 } // namespace
 
+/// Выполняет все группы самопроверки в изолированном каталоге и возвращает код процесса.
 int runSelfTests(const QString &outputDirectory) {
     try {
         if (QGuiApplication::platformName() == "offscreen")

@@ -9,6 +9,7 @@
 
 namespace {
 constexpr int rulerSize = 28;
+/// Подбирает читаемый шаг делений линейки из последовательности 1, 2, 5, 10.
 double niceStep(double minimum) {
     if (!std::isfinite(minimum) || minimum <= 0)
         return 1;
@@ -22,12 +23,14 @@ double niceStep(double minimum) {
         nice = 2;
     return nice * power;
 }
+/// Форматирует координату линейки, убирая отрицательный ноль и лишние знаки.
 QString coordinateLabel(double value) {
     if (std::abs(value) < 0.0001)
         value = 0;
     return std::abs(value) >= 1000 ? QString::number(value, 'g', 4)
                                    : QString::number(value, 'f', std::abs(value) < 10 ? 1 : 0);
 }
+/// Переносит несохраняемые параметры отображения перспективы между снимками истории.
 void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target) {
     target->gridVisible = source.gridVisible;
     target->rayStepDegrees = source.rayStepDegrees;
@@ -62,21 +65,27 @@ void copyPerspectiveAppearance(const DrawingState &source, DrawingState *target)
 }
 } // namespace
 
+/// Хранит полные снимки до и после одной операции для стека Undo/Redo.
 class StateCommand : public QUndoCommand {
 public:
+    /// Создаёт команду с владельцем холста, двумя снимками и пользовательской подписью.
     StateCommand(Canvas *canvas, DrawingState before, DrawingState after, const QString &label)
         : canvas_(canvas), before_(std::move(before)), after_(std::move(after)) {
         setText(label);
     }
+    /// Восстанавливает снимок до операции.
     void undo() override {
         canvas_->apply(before_);
     }
+    /// Применяет снимок после операции, включая первый вызов при добавлении команды.
     void redo() override {
         canvas_->apply(after_);
     }
+    /// Возвращает снимок до операции для сериализации истории.
     const DrawingState &before() const {
         return before_;
     }
+    /// Возвращает снимок после операции для сериализации истории.
     const DrawingState &after() const {
         return after_;
     }
@@ -901,6 +910,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
                 return;
             before_ = state_;
             movingPointIndex_ = hit;
+            // Партнёр выбирается один раз при захвате и не перескакивает между точками во время движения.
             movingSymmetricPointIndex_ = symmetricPartnerIndex(hit);
             movingPoint_ = dragging_ = true;
             setCursor(Qt::ClosedHandCursor);
@@ -989,6 +999,7 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
 void Canvas::moveHorizon(double imageY) {
     const double delta = imageY - state_.horizonY;
     state_.horizonY = imageY;
+    // Двойная привязка меняет только координату своей оси; вторую координату сохраняет другая ось.
     for (auto &point : state_.vanishingPoints)
         if (point.isAttachedTo(PerspectiveTarget::horizon()))
             point.position.setY(imageY);
@@ -1013,6 +1024,7 @@ void Canvas::moveVertical(double imageX) {
 void Canvas::finish() {
     if (!dragging_)
         return;
+    // Независимо от числа промежуточных mouseMove весь жест становится одной командой истории.
     if (!panning_ && (movingPoint_      ? state_.vanishingPoints != before_.vanishingPoints
                       : movingHorizon_  ? state_.horizonY != before_.horizonY
                       : movingVertical_ ? state_.verticalX != before_.verticalX
