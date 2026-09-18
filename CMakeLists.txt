@@ -62,6 +62,8 @@ add_executable(TechDraw WIN32
     src/rolloutsection.h
     src/selftest.cpp
     src/selftest.h
+    src/taskbarpin.cpp
+    src/taskbarpin.h
 )
 
 add_dependencies(TechDraw TechDrawTranslations)
@@ -78,6 +80,11 @@ target_link_libraries(TechDraw PRIVATE
     Qt5::Widgets
     Qt5::GuiPrivate
 )
+
+if(WIN32)
+    # TaskbarManager is a WinRT API; MinGW supplies its activation functions through runtimeobject.
+    target_link_libraries(TechDraw PRIVATE runtimeobject)
+endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(TechDraw PRIVATE -Wall -Wextra)

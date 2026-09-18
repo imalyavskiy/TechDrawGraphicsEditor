@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "selftest.h"
+#include "taskbarpin.h"
 #include <QApplication>
 #include <QLocale>
 #include <QSettings>
@@ -60,6 +61,7 @@ int main(int argc, char **argv) {
         return runSelfTests(test + 1 < args.size() ? args[test + 1] : "test-results");
     MainWindow window;
     window.show();
+    QTimer::singleShot(0, &window, requestPendingTaskbarPin);
     if (args.size() > 1)
         QTimer::singleShot(0, &window, [&window, args] { window.openPath(args[1]); });
     return app.exec();
