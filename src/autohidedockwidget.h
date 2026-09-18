@@ -37,6 +37,7 @@ private:
     QMainWindow *owner_ = nullptr;
     Qt::DockWidgetArea area_ = Qt::LeftDockWidgetArea;
     QString settingsKey_;
+    int minimumPanelWidth_ = 220;
     int preferredWidth_ = 260;
     bool pinned_ = true;
     QWidget *pinnedHost_ = nullptr;

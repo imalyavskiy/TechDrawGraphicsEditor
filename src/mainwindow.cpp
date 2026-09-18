@@ -651,6 +651,7 @@ void MainWindow::setupPerspectivePanel() {
     panelScroll->setObjectName("perspectiveScroll");
     panelScroll->setWidgetResizable(true);
     panelScroll->setFrameShape(QFrame::NoFrame);
+    panelScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     panelScroll->setWidget(panel);
     perspectiveDock_->setPanelWidget(panelScroll);
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);

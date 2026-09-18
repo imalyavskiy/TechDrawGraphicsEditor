@@ -505,6 +505,7 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *toolsToolbar = window.findChild<QToolBar *>("toolsToolbar");
     auto *toolsDock = window.findChild<AutoHideDockWidget *>("toolsDock");
     auto *layersDock = window.findChild<AutoHideDockWidget *>("layersDock");
+    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
     auto *layersPanel = window.findChild<LayerPanel *>("layerPanel");
     auto *fileMenu = window.findChild<QMenu *>("fileMenu");
     auto *editMenu = window.findChild<QMenu *>("editMenu");
@@ -518,10 +519,21 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *toolsToolbarToggle = window.findChild<QAction *>("toolsToolbarToggle");
     auto *layersPanelToggle = window.findChild<QAction *>("layersPanelToggle");
     require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle && layersDock &&
-                layersPanel && layersPanelToggle && viewMenu->actions().contains(mainToolbarToggle) &&
+                perspectiveDock && layersPanel && layersPanelToggle && viewMenu->actions().contains(mainToolbarToggle) &&
                 viewMenu->actions().contains(toolsToolbarToggle) && viewMenu->actions().contains(layersPanelToggle) &&
                 window.dockWidgetArea(layersDock) == Qt::RightDockWidgetArea,
             "menus or toolbar visibility actions are missing");
+    require(toolsDock->minimumWidth() == 250 && layersDock->minimumWidth() == 330 &&
+                perspectiveDock->minimumWidth() == 330,
+            "dock panels did not preserve their configured minimum widths");
+    const int toolsWidth = toolsDock->width();
+    window.resizeDocks({toolsDock}, {toolsWidth + 60}, Qt::Horizontal);
+    QApplication::processEvents();
+    require(toolsDock->width() > toolsWidth, "left panel width could not be increased");
+    const int layersWidth = layersDock->width();
+    window.resizeDocks({layersDock}, {layersWidth + 60}, Qt::Horizontal);
+    QApplication::processEvents();
+    require(layersDock->width() > layersWidth, "right panel width could not be increased");
     mainToolbarToggle->trigger();
     QApplication::processEvents();
     require(!mainToolbar->isVisible(), "main toolbar could not be hidden through View menu");
@@ -691,8 +703,8 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
                 perspectiveLayout->indexOf(verticalSettings) < perspectiveLayout->indexOf(vanishingPointSettings) &&
                 perspectiveLayout->indexOf(vanishingPointSettings) < perspectiveLayout->indexOf(vanishingPointsList),
             "perspective blocks must be ordered as horizon, main vertical, point settings, and point list");
-    auto *perspectiveDock = window.findChild<AutoHideDockWidget *>("perspectiveDock");
     auto *perspectivePanelToggle = window.findChild<QAction *>("perspectivePanelToggle");
+    auto *perspectiveScroll = window.findChild<QScrollArea *>("perspectiveScroll");
     auto *perspectivePin = window.findChild<QToolButton *>("perspectivePanelPin");
     auto *perspectiveTitle = window.findChild<QLabel *>("perspectivePanelTitle");
     auto *perspectiveStrip = window.findChild<QDockWidget *>("perspectiveAutoHideStrip");
@@ -709,7 +721,9 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *commonFrame = qobject_cast<QFrame *>(vanishingPointSettings);
     auto *pointsFrame = qobject_cast<QFrame *>(vanishingPointsList);
     auto *selectedPointFrame = qobject_cast<QFrame *>(selectedPointSettings);
-    require(perspectiveDock && perspectivePanelToggle && viewMenu->actions().contains(perspectivePanelToggle) &&
+    require(perspectiveDock && perspectivePanelToggle && perspectiveScroll &&
+                perspectiveScroll->horizontalScrollBarPolicy() == Qt::ScrollBarAlwaysOff &&
+                viewMenu->actions().contains(perspectivePanelToggle) &&
                 perspectivePin && perspectiveTitle && perspectiveStrip && perspectiveTab && perspectiveOverlay &&
                 perspectivePin->mapTo(&window, QPoint()).x() < perspectiveTitle->mapTo(&window, QPoint()).x() &&
                 perspectiveDock->windowTitle() == QStringLiteral("Перспектива") && horizonToggle &&

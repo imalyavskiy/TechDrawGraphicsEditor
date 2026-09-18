@@ -65,9 +65,12 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
                                        int defaultWidth,
                                        QMainWindow *owner)
     : QDockWidget(title, owner), owner_(owner), area_(area), settingsKey_(settingsKey),
-      preferredWidth_(defaultWidth) {
+      minimumPanelWidth_(defaultWidth), preferredWidth_(defaultWidth) {
     setAllowedAreas(area);
     setFeatures(QDockWidget::NoDockWidgetFeatures);
+    setMinimumWidth(minimumPanelWidth_);
+    setMaximumWidth(QWIDGETSIZE_MAX);
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     auto *emptyTitleBar = new QWidget(this);
     emptyTitleBar->setFixedHeight(0);
     setTitleBarWidget(emptyTitleBar);
@@ -146,7 +149,8 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     visibilityAction_->setCheckable(true);
     QSettings settings;
     pinned_ = settings.value("workspace/" + settingsKey_ + "/pinned", true).toBool();
-    preferredWidth_ = settings.value("workspace/" + settingsKey_ + "/width", defaultWidth).toInt();
+    preferredWidth_ = qMax(minimumPanelWidth_,
+                           settings.value("workspace/" + settingsKey_ + "/width", defaultWidth).toInt());
     visibilityAction_->setChecked(
         settings.value("workspace/" + settingsKey_ + "/visible", initiallyVisible).toBool());
     connect(pinButton_, &QToolButton::clicked, this, [this](bool checked) { setPinned(checked); });
@@ -210,7 +214,7 @@ void AutoHideDockWidget::setPinned(bool pinned) {
     if (!pinned_ && pinned)
         hideOverlay();
     if (pinned_ && !pinned && isVisible())
-        preferredWidth_ = qMax(180, width());
+        preferredWidth_ = qMax(minimumPanelWidth_, width());
     pinned_ = pinned;
     QSettings settings;
     settings.setValue("workspace/" + settingsKey_ + "/pinned", pinned_);
@@ -265,7 +269,9 @@ void AutoHideDockWidget::updateFloatingGeometry() {
     const QRect central = owner_->centralWidget()->geometry();
     if (!central.isValid())
         return;
-    const int width = qBound(220, preferredWidth_, qMax(220, central.width() - 48));
+    const int width = qBound(minimumPanelWidth_,
+                             preferredWidth_,
+                             qMax(minimumPanelWidth_, central.width() - 48));
     const int overlayX = area_ == Qt::LeftDockWidgetArea ? central.left() : central.right() - width + 1;
     overlay_->setGeometry(overlayX, central.top(), width, central.height());
     if (overlay_->isVisible())
