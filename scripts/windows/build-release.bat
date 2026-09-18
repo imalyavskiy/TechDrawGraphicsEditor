@@ -72,7 +72,16 @@ rem Force Qt to resolve plugins from the portable directory instead of the devel
 >>"%DEPLOY_DIR%\qt.conf" echo Prefix=.
 >>"%DEPLOY_DIR%\qt.conf" echo Plugins=.
 
-rem Refuse a mixed package before it can be tested, signed or wrapped in an installer.
+rem Keep application signing between deployment and installer packaging. The current script is an
+rem explicit successful placeholder until release credentials are provided outside the repository.
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0sign-binaries.ps1" ^
+    -PackageDirectory "%DEPLOY_DIR%" -Architecture "%ARCHITECTURE%"
+if errorlevel 1 (
+    echo ERROR: Application binary signing stage failed.
+    exit /b 1
+)
+
+rem Refuse a mixed package before it can be tested or wrapped in an installer.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0verify-package.ps1" ^
     -PackageDirectory "%DEPLOY_DIR%" -Architecture "%ARCHITECTURE%"
 if errorlevel 1 (
