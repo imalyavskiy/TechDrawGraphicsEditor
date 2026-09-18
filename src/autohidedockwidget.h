@@ -14,7 +14,7 @@ class AutoHideDockWidget final : public QDockWidget {
     Q_OBJECT
 
 public:
-    /// Создаёт панель для одной стороны окна и восстанавливает её постоянное состояние.
+    /// Создаёт панель для одной стороны окна, восстанавливает состояние и запоминает порядок крайней вкладки.
     AutoHideDockWidget(const QString &title,
                        Qt::DockWidgetArea area,
                        const QString &settingsKey,
@@ -24,6 +24,7 @@ public:
                        int edgeOrder = 0);
     /// Помещает пользовательское содержимое под общим заголовком с кнопкой закрепления.
     void setPanelWidget(QWidget *widget);
+    /// Присоединяет кнопку откреплённой панели к общей внешней полосе соответствующей стороны окна.
     void attachEdgeTab();
     /// Возвращает независимую команду полной видимости для меню «Вид».
     QAction *visibilityAction() const;
@@ -42,6 +43,7 @@ private:
     QMainWindow *owner_ = nullptr;
     Qt::DockWidgetArea area_ = Qt::LeftDockWidgetArea;
     QString settingsKey_;
+    /// Задаёт устойчивое положение кнопки сверху вниз среди вкладок одной стороны.
     int edgeOrder_ = 0;
     int minimumPanelWidth_ = 220;
     int preferredWidth_ = 260;
@@ -53,6 +55,7 @@ private:
     QToolButton *pinButton_ = nullptr;
     QFrame *overlay_ = nullptr;
     QVBoxLayout *overlayLayout_ = nullptr;
+    /// Указывает на общую для всех панелей стороны полосу у внешнего края окна.
     QToolBar *tabStrip_ = nullptr;
     QToolButton *edgeTab_ = nullptr;
     QAction *visibilityAction_ = nullptr;
@@ -67,9 +70,10 @@ private:
     void showOverlay();
     /// Скрывает временную панель, сохраняя доступной её крайнюю вкладку.
     void hideOverlay();
-    /// Пересчитывает положение временной панели и вкладки после изменения окна.
+    /// Пересчитывает положение временной панели поверх рабочей области и закреплённой боковой колонки.
     void updateFloatingGeometry();
     /// Обновляет пиктограмму и подсказку кнопки закрепления.
     void updatePinButton();
+    /// Показывает общую крайнюю полосу, пока в ней остаётся хотя бы одна видимая вкладка.
     void updateEdgeStripVisibility();
 };
