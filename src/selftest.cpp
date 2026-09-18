@@ -189,6 +189,7 @@ void testOrdinaryGuideCreation() {
     canvas.close();
 }
 
+/// Проверяет общий захват обычных и перспективных направляющих всеми рисующими инструментами.
 void testGuideDrawing() {
     DrawingState state;
     QImage image(640, 400, QImage::Format_ARGB32_Premultiplied);

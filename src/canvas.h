@@ -74,7 +74,9 @@ public:
     void setSnapToGuides(bool enabled);
     /// Возвращает состояние единого режима прилипания к направляющим.
     bool snapToGuides() const { return snapToGuides_; }
+    /// Задаёт максимальное экранное расстояние автоматического захвата направляющей.
     void setGuideSnapDistance(int pixels);
+    /// Возвращает расстояние автоматического захвата в экранных пикселях.
     int guideSnapDistance() const { return guideSnapDistance_; }
     /// Включает или завершает режим жестового создания перспективного луча.
     void setPerspectiveGuideCreationEnabled(bool enabled);
@@ -328,9 +330,11 @@ private:
     QVector<int> guideHits(QPointF viewPosition) const;
     /// Показывает курсор захвата или запрета согласно явной цели инструмента перемещения.
     void updateMoveCursor(QPointF viewPosition);
+    /// Ищет ближайшую направляющую общей геометрической операцией в координатах документа.
     int nearestGuideIndex(QPointF imagePosition,
                           double maximumDistance,
                           GuideProjection *projection = nullptr) const;
+    /// Проецирует точку документа на направляющую с заданным устойчивым идентификатором.
     GuideProjection projectToGuide(const GuideId &id, QPointF imagePosition) const;
     /// Возвращает прямоугольник внутри четырёх линеек, доступный для холста и оснастки.
     QRectF viewportRect() const;
