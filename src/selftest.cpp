@@ -58,6 +58,7 @@ QImage pixels(const DrawingState &state) {
     return state.flattenedImage();
 }
 
+/// Проверяет общий контракт проекции обычных направляющих и одностороннего перспективного луча.
 void testGuideGeometry() {
     const Guide horizontal{QStringLiteral("g-h"), GuideType::Horizontal, 50, QString(), 0};
     const Guide vertical{QStringLiteral("g-v"), GuideType::Vertical, 10, QString(), 0};
@@ -377,7 +378,7 @@ void testLayerAwareEraser() {
     require(pixels(canvas.state()) == beforeHidden, "hidden active layer must reject painting");
 }
 
-/// Проверяет DRW 9, историю стеков, дедупликацию ресурсов и отказ на неизвестном типе слоя.
+/// Проверяет DRW 10, историю стеков и направляющих, дедупликацию ресурсов и неизвестный тип слоя.
 void testMultiLayerProject(const QDir &out) {
     DrawingState base;
     QImage background(40, 30, QImage::Format_ARGB32_Premultiplied);

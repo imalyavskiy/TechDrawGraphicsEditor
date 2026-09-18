@@ -68,11 +68,12 @@ struct VanishingPoint {
     }
 };
 
-/// Содержит полный снимок документа: размер холста, стек слоёв, геометрию перспективы и её оформление.
+/// Содержит полный снимок документа: холст, слои, направляющие, геометрию перспективы и её оформление.
 struct DrawingState {
     QSize canvasSize;
     LayerStack layers;
     QVector<VanishingPoint> vanishingPoints;
+    /// Хранит служебные направляющие отдельно от пикселей и содержимого слоёв.
     QVector<Guide> guides;
     double horizonY = 0;
     bool horizonLocked = false;

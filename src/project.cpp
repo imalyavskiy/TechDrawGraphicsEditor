@@ -66,6 +66,7 @@ QJsonObject perspectiveJson(const DrawingState &state) {
                        {"vertical", QJsonObject{{"x", state.verticalX}, {"locked", state.verticalLocked}}},
                        {"points", points}};
 }
+/// Сериализует документную геометрию направляющих без параметров представления.
 QJsonArray guidesJson(const DrawingState &state) {
     QJsonArray result;
     for (const Guide &guide : state.guides) {
@@ -85,6 +86,7 @@ QJsonArray guidesJson(const DrawingState &state) {
     }
     return result;
 }
+/// Читает направляющие DRW 10 и оставляет пустой набор при миграции прежних форматов.
 bool parseGuides(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     state->guides.clear();
     if (formatVersion < 10)
@@ -128,7 +130,7 @@ bool parseGuides(const QJsonValue &value, DrawingState *state, QString *error, i
     }
     return true;
 }
-/// Читает геометрию перспективы с миграцией схем версий 1–9 в актуальную модель.
+/// Читает геометрию перспективы с миграцией схем версий 1–10 в актуальную модель.
 bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     if (!value.isObject())
         return fail(error, QCoreApplication::translate("Project", "Отсутствуют параметры перспективы."));
@@ -313,7 +315,7 @@ bool validState(const DrawingState &state) {
            state.verticalOpacity >= 0 && state.verticalOpacity <= 100 && std::isfinite(state.verticalWidth) &&
            state.verticalWidth >= 0.1 && state.verticalWidth <= 20;
 }
-/// Сравнивает сохраняемые данные, учитывая наличие полноценного стека только в новой схеме.
+/// Сравнивает сохраняемые данные с учётом появления стеков в DRW 9 и направляющих в DRW 10.
 bool samePersistentState(const DrawingState &a, const DrawingState &b, int formatVersion) {
     if (a.canvasSize != b.canvasSize || (formatVersion >= 9 ? a.layers != b.layers
                                                             : a.flattenedImage() != b.flattenedImage()) ||
