@@ -9,6 +9,12 @@ if not defined ARCHITECTURE set "ARCHITECTURE=x64"
 
 call "%~dp0build-installer.bat" "%ARCHITECTURE%" || exit /b 1
 call "%~dp0common.bat" "%ARCHITECTURE%" || exit /b 1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0test-legacy-migration.ps1" ^
+    -ProjectRoot "%PROJECT_ROOT%"
+if errorlevel 1 (
+    echo ERROR: Legacy installer migration verification failed.
+    exit /b 1
+)
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0test-installer.ps1" ^
     -ProjectRoot "%PROJECT_ROOT%" -Architecture "%ARCHITECTURE%"
 if errorlevel 1 (

@@ -18,6 +18,7 @@ var summaryWidget = null;
 var existingDecisionChecked = false;
 var existingIfwBackup = "";
 var existingIfwRoot = "";
+var legacyMigrationBackup = "";
 
 function selectedRussian()
 {
@@ -550,25 +551,42 @@ Component.prototype.createOperations = function()
 {
     component.createOperations();
 
+    var scope = installer.value("TechDrawScope", "CurrentUser");
+    var allUsers = scope === "AllUsers";
+    var migrationScript = "@TargetDir@/_installer/migrate-legacy.ps1";
+    var powershell = installer.environmentVariable("SystemRoot") + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+    legacyMigrationBackup = installer.environmentVariable("TEMP") + "\\TechDraw-legacy-migration-" + Date.now();
+    var migrationArguments = [powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                              migrationScript, "-Action", "Apply", "-BackupDirectory", legacyMigrationBackup,
+                              "-TargetDirectory", "@TargetDir@", "-SelectedScope", scope,
+                              "-MigrationMode", installer.value("TechDrawMigration", "move")];
+    var migrationOverrides = [
+        ["TechDrawLegacyProductId", "-RegistryProductId"],
+        ["TechDrawLegacyAssociationExtension", "-AssociationExtension"],
+        ["TechDrawLegacyAssociationProgId", "-AssociationProgId"],
+        ["TechDrawLegacyProgramsDirectory", "-UserProgramsDirectory"],
+        ["TechDrawLegacyDesktopDirectory", "-UserDesktopDirectory"]
+    ];
+    for (var migrationIndex = 0; migrationIndex < migrationOverrides.length; ++migrationIndex) {
+        var migrationValue = installer.value(migrationOverrides[migrationIndex][0], "");
+        if (migrationValue !== "")
+            migrationArguments = migrationArguments.concat([migrationOverrides[migrationIndex][1], migrationValue]);
+    }
+    migrationArguments.push("UNDOEXECUTE");
+    migrationArguments = migrationArguments.concat([powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                                     migrationScript, "-Action", "Rollback", "-BackupDirectory", legacyMigrationBackup]);
+    addOperation(allUsers || existingInstallations.AllUsers !== null, "Execute", migrationArguments);
+
     // Automated package checks use an isolated root and must not alter the real
     // user's shortcuts, registry, legacy installation or file associations.
     if (installer.value("TechDrawSkipShellIntegration", "false") === "true")
         return;
 
-    var scope = installer.value("TechDrawScope", "CurrentUser");
-    var allUsers = scope === "AllUsers";
     var executable = "@TargetDir@/TechDraw.exe";
     var startRoot = allUsers ? "@AllUsersStartMenuProgramsPath@" : "@UserStartMenuProgramsPath@";
     var startDirectory = startRoot + "/Technical Drawing";
     var desktopRoot = allUsers ? installer.environmentVariable("PUBLIC") + "\\Desktop"
                                : installer.environmentVariable("USERPROFILE") + "\\Desktop";
-
-    var migrationScript = "@TargetDir@/_installer/migrate-legacy.ps1";
-    var powershell = installer.environmentVariable("SystemRoot") + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
-    var migrationArguments = [powershell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                              migrationScript, "-TargetDirectory", "@TargetDir@", "-SelectedScope", scope,
-                              "-MigrationMode", installer.value("TechDrawMigration", "move")];
-    addOperation(allUsers || existingInstallations.AllUsers !== null, "Execute", migrationArguments);
 
     addOperation(allUsers, "CreateShortcut", [executable, startDirectory + "/Technical Drawing.lnk"]);
     addOperation(allUsers, "CreateShortcut", ["@TargetDir@/" + maintenanceToolName + ".exe",
@@ -603,6 +621,13 @@ Component.prototype.createOperations = function()
 Component.prototype.installationFinished = function()
 {
     if (installer.isInstaller() && installer.status === QInstaller.Success) {
+        if (legacyMigrationBackup !== "") {
+            var powershell = installer.environmentVariable("SystemRoot") + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+            installer.execute(powershell, ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                           installer.value("TargetDir") + "/_installer/migrate-legacy.ps1",
+                                           "-Action", "Commit", "-BackupDirectory", legacyMigrationBackup]);
+            legacyMigrationBackup = "";
+        }
         this.discardExistingIfwBackup();
         installer.setValue("FinishedText", selectedRussian() ? "«Технический рисунок» успешно установлен." : "Technical Drawing was installed successfully.");
     } else if (installer.isInstaller()) {

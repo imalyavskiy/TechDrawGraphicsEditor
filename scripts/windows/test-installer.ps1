@@ -32,13 +32,19 @@ if (-not (Test-Path -LiteralPath $installerPath)) { throw "Installer is missing:
 
 # Recreate only verified children of the repository build directory.
 Remove-Item -LiteralPath $testRoot, $cacheRoot, $metadataBackup -Recurse -Force -ErrorAction SilentlyContinue
-@'
+$controllerRoot = $testRoot.Replace('\', '/')
+@"
 function Controller()
 {
     installer.setValue("TechDrawSkipShellIntegration", "true");
     installer.setValue("TechDrawLaunch", "false");
+    installer.setValue("TechDrawLegacyProductId", "TechnicalDrawingLifecycleTest-$Architecture");
+    installer.setValue("TechDrawLegacyAssociationExtension", ".td-lifecycle-$Architecture");
+    installer.setValue("TechDrawLegacyAssociationProgId", "TechnicalDrawing.LifecycleTest.$Architecture");
+    installer.setValue("TechDrawLegacyProgramsDirectory", "$controllerRoot/legacy-programs");
+    installer.setValue("TechDrawLegacyDesktopDirectory", "$controllerRoot/legacy-desktop");
 }
-'@ | Set-Content -LiteralPath $controllerPath -Encoding utf8
+"@ | Set-Content -LiteralPath $controllerPath -Encoding utf8
 
 # Runs one QtIFW CLI command and fails immediately on a nonzero exit status.
 function Invoke-InstallerCommand {
