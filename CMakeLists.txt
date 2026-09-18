@@ -8,7 +8,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets Gui)
+find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets Gui LinguistTools)
+
+set(TECHDRAW_TRANSLATION_SOURCES
+    translations/techdraw_ru.ts
+)
+qt5_add_translation(TECHDRAW_TRANSLATIONS ${TECHDRAW_TRANSLATION_SOURCES})
+add_custom_target(TechDrawTranslations ALL DEPENDS ${TECHDRAW_TRANSLATIONS})
 
 set(TECHDRAW_WINDOWS_RESOURCE)
 if(WIN32 AND MINGW)
@@ -42,6 +48,16 @@ add_executable(TechDraw WIN32
     src/rolloutsection.h
     src/selftest.cpp
     src/selftest.h
+)
+
+add_dependencies(TechDraw TechDrawTranslations)
+add_custom_command(
+    TARGET TechDraw POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:TechDraw>/translations"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            ${TECHDRAW_TRANSLATIONS}
+            "$<TARGET_FILE_DIR:TechDraw>/translations"
+    VERBATIM
 )
 
 target_link_libraries(TechDraw PRIVATE

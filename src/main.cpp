@@ -1,8 +1,10 @@
 #include "mainwindow.h"
 #include "selftest.h"
 #include <QApplication>
+#include <QLocale>
 #include <QSettings>
 #include <QTimer>
+#include <QTranslator>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -15,6 +17,19 @@ void migrateLegacySettings() {
     QSettings legacy(QStringLiteral("DrawingPrototype"), QStringLiteral("Drawing"));
     for (const QString &key : legacy.allKeys())
         current.setValue(key, legacy.value(key));
+}
+
+void loadTranslation(QApplication &application, QTranslator *translator) {
+    const QString translationsDirectory = QCoreApplication::applicationDirPath() + QStringLiteral("/translations");
+    const QString locale = QLocale::system().name();
+    const QString language = locale.section(QLatin1Char('_'), 0, 0);
+    const QStringList catalogs{
+        QStringLiteral("techdraw_") + locale, QStringLiteral("techdraw_") + language, QStringLiteral("techdraw_ru")};
+    for (const QString &catalog : catalogs)
+        if (translator->load(catalog, translationsDirectory)) {
+            application.installTranslator(translator);
+            return;
+        }
 }
 } // namespace
 
@@ -29,7 +44,9 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     app.setOrganizationName("TechDraw");
     app.setApplicationName("TechDraw");
-    app.setApplicationDisplayName(QStringLiteral("Технический рисунок / Technical Draw"));
+    QTranslator translator;
+    loadTranslation(app, &translator);
+    app.setApplicationDisplayName(QCoreApplication::translate("MainWindow", "Технический рисунок / Technical Draw"));
     migrateLegacySettings();
     app.setWindowIcon(QIcon(":/app/techdraw.png"));
     QFont font("Segoe UI", 9);

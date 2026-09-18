@@ -56,6 +56,8 @@ DrawingState initialDrawingState() {
 }
 
 void testMainWindowUi(MainWindow &window, const QDir &out) {
+    require(QCoreApplication::translate("TranslationProbe", "catalog-loaded") == QStringLiteral("catalog-loaded-ru"),
+            "external translation catalog was not loaded");
     window.show();
     QApplication::processEvents();
     require(QCoreApplication::applicationName() == QStringLiteral("TechDraw") &&

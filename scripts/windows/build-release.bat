@@ -19,6 +19,13 @@ copy /y "%BUILD_EXE%" "%DEPLOY_EXE%" >nul || (
     exit /b 1
 )
 
+if not exist "%PROJECT_ROOT%\build\cmake-release\translations\techdraw_ru.qm" (
+    echo ERROR: Compiled translation catalog is missing.
+    exit /b 1
+)
+mkdir "%DEPLOY_DIR%\translations" || exit /b 1
+copy /y "%PROJECT_ROOT%\build\cmake-release\translations\techdraw_ru.qm" "%DEPLOY_DIR%\translations\techdraw_ru.qm" >nul || exit /b 1
+
 for %%F in (Qt5Core.dll Qt5Gui.dll Qt5Widgets.dll) do (
     copy /y "%QT_ROOT%\bin\%%F" "%DEPLOY_DIR%\%%F" >nul || exit /b 1
 )

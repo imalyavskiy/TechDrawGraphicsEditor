@@ -794,7 +794,7 @@ void Canvas::drawRulers(QPainter &p) {
     p.drawLine(cursorView_, QPointF(viewport.left(), cursorView_.y()));
     p.drawLine(cursorView_, QPointF(viewport.right(), cursorView_.y()));
     const QPointF image = toImage(cursorView_);
-    const QString suffix = rulerPercent_ ? QStringLiteral("%") : QStringLiteral(" px");
+    const QString suffix = rulerPercent_ ? tr("%") : tr(" px");
     const QString xLabel = coordinateLabel((image.x() - state_.image.width() / 2.0) / horizontalUnitPixels) + suffix;
     const QString yLabel = coordinateLabel((state_.image.height() / 2.0 - image.y()) / verticalUnitPixels) + suffix;
     p.setPen(QColor("#23405f"));

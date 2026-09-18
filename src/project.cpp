@@ -1,5 +1,6 @@
 #include "project.h"
 #include <QBuffer>
+#include <QCoreApplication>
 #include <QFile>
 #include <QHash>
 #include <QImageReader>
@@ -24,14 +25,15 @@ bool encode(const QImage &image, QByteArray *png, QString *error) {
     QBuffer buffer(png);
     buffer.open(QIODevice::WriteOnly);
     if (!image.save(&buffer, "PNG"))
-        return fail(error, QStringLiteral("Не удалось создать PNG."));
+        return fail(error, QCoreApplication::translate("Project", "Не удалось создать PNG."));
     return true;
 }
 bool decode(QIODevice *device, QImage *image, QString *error) {
     QImageReader reader(device, "PNG");
     if (!Project::validSize(reader.size()))
         return fail(error,
-                    QStringLiteral("Размер изображения недопустим. Максимум: 8192 по стороне и 16 млн пикселей."));
+                    QCoreApplication::translate(
+                        "Project", "Размер изображения недопустим. Максимум: 8192 по стороне и 16 млн пикселей."));
     QImage result = reader.read();
     if (result.isNull())
         return fail(error, reader.errorString());
@@ -57,39 +59,44 @@ QJsonObject perspectiveJson(const DrawingState &state) {
 }
 bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *error, int formatVersion) {
     if (!value.isObject())
-        return fail(error, QStringLiteral("Отсутствуют параметры перспективы."));
+        return fail(error, QCoreApplication::translate("Project", "Отсутствуют параметры перспективы."));
     const auto perspective = value.toObject();
     if (formatVersion >= 4) {
         if (!perspective.value("horizon").isObject() || !perspective.value("points").isArray())
-            return fail(error, QStringLiteral("Некорректная структура перспективы."));
+            return fail(error, QCoreApplication::translate("Project", "Некорректная структура перспективы."));
         const auto horizon = perspective.value("horizon").toObject();
         const double horizonY = horizon.value("y").toDouble(qQNaN());
         if (!std::isfinite(horizonY) || std::abs(horizonY) > 1000000)
-            return fail(error, QStringLiteral("Положение горизонта вне допустимого диапазона."));
+            return fail(error,
+                        QCoreApplication::translate("Project", "Положение горизонта вне допустимого диапазона."));
         if (formatVersion >= 5 && !horizon.value("locked").isBool())
-            return fail(error, QStringLiteral("Некорректное состояние фиксации горизонта."));
+            return fail(error, QCoreApplication::translate("Project", "Некорректное состояние фиксации горизонта."));
         double verticalX = state->image.width() / 2.0;
         bool verticalLocked = false;
         if (formatVersion >= 6) {
             if (!perspective.value("vertical").isObject())
-                return fail(error, QStringLiteral("Отсутствует главная вертикаль."));
+                return fail(error, QCoreApplication::translate("Project", "Отсутствует главная вертикаль."));
             const auto vertical = perspective.value("vertical").toObject();
             verticalX = vertical.value("x").toDouble(qQNaN());
             if (!std::isfinite(verticalX) || std::abs(verticalX) > 1000000)
-                return fail(error, QStringLiteral("Положение главной вертикали вне допустимого диапазона."));
+                return fail(
+                    error,
+                    QCoreApplication::translate("Project", "Положение главной вертикали вне допустимого диапазона."));
             if (!vertical.value("locked").isBool())
-                return fail(error, QStringLiteral("Некорректное состояние фиксации главной вертикали."));
+                return fail(
+                    error,
+                    QCoreApplication::translate("Project", "Некорректное состояние фиксации главной вертикали."));
             verticalLocked = vertical.value("locked").toBool();
         }
         const auto points = perspective.value("points").toArray();
         if (points.size() > 32)
-            return fail(error, QStringLiteral("Слишком много точек схода."));
+            return fail(error, QCoreApplication::translate("Project", "Слишком много точек схода."));
         QSet<QString> ids;
         QVector<VanishingPoint> parsed;
         for (int pointIndex = 0; pointIndex < points.size(); ++pointIndex) {
             const auto entry = points[pointIndex];
             if (!entry.isObject())
-                return fail(error, QStringLiteral("Некорректная точка схода."));
+                return fail(error, QCoreApplication::translate("Project", "Некорректная точка схода."));
             const auto object = entry.toObject();
             VanishingPoint point;
             point.id = object.value("id").toString();
@@ -97,32 +104,37 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
             if (point.id.isEmpty() || point.id.size() > 80 || ids.contains(point.id) ||
                 !std::isfinite(point.position.x()) || !std::isfinite(point.position.y()) ||
                 std::abs(point.position.x()) > 1000000 || std::abs(point.position.y()) > 1000000)
-                return fail(error, QStringLiteral("Некорректная точка схода."));
+                return fail(error, QCoreApplication::translate("Project", "Некорректная точка схода."));
             if (formatVersion >= 7 && !object.value("name").isString())
-                return fail(error, QStringLiteral("Некорректное название точки схода."));
-            point.name = formatVersion >= 7 ? object.value("name").toString()
-                                            : QStringLiteral("Точка схода %1").arg(pointIndex + 1);
+                return fail(error, QCoreApplication::translate("Project", "Некорректное название точки схода."));
+            point.name = formatVersion >= 7
+                             ? object.value("name").toString()
+                             : QCoreApplication::translate("Project", "Точка схода %1").arg(pointIndex + 1);
             if (point.name.size() > 120)
-                return fail(error, QStringLiteral("Название точки схода слишком длинное."));
+                return fail(error, QCoreApplication::translate("Project", "Название точки схода слишком длинное."));
             if (formatVersion >= 5 && !object.value("locked").isBool())
-                return fail(error, QStringLiteral("Некорректное состояние фиксации точки схода."));
+                return fail(error,
+                            QCoreApplication::translate("Project", "Некорректное состояние фиксации точки схода."));
             point.locked = formatVersion >= 5 && object.value("locked").toBool();
             ids.insert(point.id);
             if (formatVersion >= Project::CurrentFormatVersion) {
                 const auto attachments = object.value("attachments");
                 if (!attachments.isArray())
-                    return fail(error, QStringLiteral("Некорректные привязки точки схода."));
+                    return fail(error, QCoreApplication::translate("Project", "Некорректные привязки точки схода."));
                 QSet<QString> targets;
                 for (const auto &entry : attachments.toArray()) {
                     if (!entry.isObject())
-                        return fail(error, QStringLiteral("Некорректная привязка точки схода."));
+                        return fail(error,
+                                    QCoreApplication::translate("Project", "Некорректная привязка точки схода."));
                     const auto binding = entry.toObject();
                     const QString type = binding.value("type").toString(),
                                   targetId = binding.value("targetId").toString();
                     if (type != PerspectiveTarget::constructionType() ||
                         (targetId != PerspectiveTarget::horizon() && targetId != PerspectiveTarget::vertical()) ||
                         targets.contains(targetId))
-                        return fail(error, QStringLiteral("Неизвестная или повторная цель привязки точки схода."));
+                        return fail(error,
+                                    QCoreApplication::translate(
+                                        "Project", "Неизвестная или повторная цель привязки точки схода."));
                     targets.insert(targetId);
                     point.attachmentTargetIds.append(targetId);
                 }
@@ -130,14 +142,16 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                 const auto attachment = object.value("attachment");
                 if (!attachment.isNull() && !attachment.isUndefined()) {
                     if (!attachment.isObject())
-                        return fail(error, QStringLiteral("Некорректная привязка точки схода."));
+                        return fail(error,
+                                    QCoreApplication::translate("Project", "Некорректная привязка точки схода."));
                     const auto binding = attachment.toObject();
                     const QString type = binding.value("type").toString(),
                                   targetId = binding.value("targetId").toString();
                     const bool knownTarget = targetId == PerspectiveTarget::horizon() ||
                                              (formatVersion >= 6 && targetId == PerspectiveTarget::vertical());
                     if (type != PerspectiveTarget::constructionType() || !knownTarget)
-                        return fail(error, QStringLiteral("Неизвестная цель привязки точки схода."));
+                        return fail(error,
+                                    QCoreApplication::translate("Project", "Неизвестная цель привязки точки схода."));
                     point.attachmentTargetIds.append(targetId);
                 }
             }
@@ -151,16 +165,16 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
         return true;
     }
     if (!perspective.value("x").isDouble() || !perspective.value("y").isDouble())
-        return fail(error, QStringLiteral("Некорректные параметры перспективы."));
+        return fail(error, QCoreApplication::translate("Project", "Некорректные параметры перспективы."));
     const double x = perspective.value("x").toDouble(), y = perspective.value("y").toDouble();
     const double horizonY = perspective.value("horizonY").toDouble(y);
     if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(horizonY) || std::abs(x) > 1000000 ||
         std::abs(y) > 1000000 || std::abs(horizonY) > 1000000)
-        return fail(error, QStringLiteral("Параметры перспективы вне допустимого диапазона."));
+        return fail(error, QCoreApplication::translate("Project", "Параметры перспективы вне допустимого диапазона."));
     VanishingPoint point;
     point.id = QStringLiteral("vp-1");
     point.position = QPointF(x, y);
-    point.name = QStringLiteral("Точка схода 1");
+    point.name = QCoreApplication::translate("Project", "Точка схода 1");
     if (qFuzzyCompare(y + 1, horizonY + 1))
         point.attachmentTargetIds.append(PerspectiveTarget::horizon());
     state->horizonY = horizonY;
@@ -219,7 +233,6 @@ bool Project::validSize(QSize size) {
     return size.width() > 0 && size.height() > 0 && size.width() <= 8192 && size.height() <= 8192 &&
            qint64(size.width()) * size.height() <= 16000000;
 }
-
 bool Project::save(const QString &path, const DrawingState &state, QString *error) {
     DrawingHistory history;
     history.states.append(state);
@@ -229,11 +242,12 @@ bool Project::save(const QString &path, const DrawingState &state, QString *erro
 bool Project::save(const QString &path, const DrawingHistory &history, QString *error) {
     if (history.states.isEmpty() || history.states.size() > 31 || history.labels.size() != history.states.size() - 1 ||
         history.index < 0 || history.index >= history.states.size())
-        return fail(error, QStringLiteral("Некорректная история документа."));
+        return fail(error, QCoreApplication::translate("Project", "Некорректная история документа."));
     const QSize size = history.states[history.index].image.size();
     for (const auto &state : history.states)
         if (!validState(state) || state.image.size() != size)
-            return fail(error, QStringLiteral("История содержит недопустимое состояние документа."));
+            return fail(error,
+                        QCoreApplication::translate("Project", "История содержит недопустимое состояние документа."));
 
     QByteArray currentPng;
     if (!encode(history.states[history.index].image, &currentPng, error))
@@ -282,10 +296,10 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
         zip.addFile("project.json", QJsonDocument(metadata).toJson());
         zip.close();
         if (zip.status() != QZipWriter::NoError)
-            return fail(error, QStringLiteral("Ошибка создания контейнера DRW."));
+            return fail(error, QCoreApplication::translate("Project", "Ошибка создания контейнера DRW."));
     }
     if (archive.size() > maxProjectBytes)
-        return fail(error, QStringLiteral("Проект с историей превышает ограничение 512 МБ."));
+        return fail(error, QCoreApplication::translate("Project", "Проект с историей превышает ограничение 512 МБ."));
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly))
         return fail(error, file.errorString());
@@ -311,7 +325,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     if (!file.open(QIODevice::ReadOnly))
         return fail(error, file.errorString());
     if (file.size() > maxProjectBytes)
-        return fail(error, QStringLiteral("Файл слишком велик для прототипа (512 МБ)."));
+        return fail(error, QCoreApplication::translate("Project", "Файл слишком велик для прототипа (512 МБ)."));
     QZipReader zip(&file);
     const auto files = zip.fileInfoList();
     QHash<QString, int> counts;
@@ -326,36 +340,38 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     if (zip.status() != QZipReader::NoError || unpacked > maxProjectBytes || counts.value("drawing.png") != 1 ||
         counts.value("project.json") != 1 || sizes.value("drawing.png") < 1 || sizes.value("drawing.png") > 80000000 ||
         sizes.value("project.json") < 1 || sizes.value("project.json") > 1048576)
-        return fail(error, QStringLiteral("Повреждённый DRW: нужны допустимые drawing.png и project.json."));
+        return fail(
+            error,
+            QCoreApplication::translate("Project", "Повреждённый DRW: нужны допустимые drawing.png и project.json."));
 
     QJsonParseError parseError;
     const auto document = QJsonDocument::fromJson(zip.fileData("project.json"), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject())
-        return fail(error, QStringLiteral("Не удалось прочитать project.json."));
+        return fail(error, QCoreApplication::translate("Project", "Не удалось прочитать project.json."));
     const auto object = document.object();
     const double versionValue = object.value("version").toDouble(-1);
     if (object.value("format").toString() != "Drawing" ||
         (versionValue != 1 && versionValue != 2 && versionValue != 3 && versionValue != 4 && versionValue != 5 &&
          versionValue != 6 && versionValue != 7 && versionValue != Project::CurrentFormatVersion) ||
         object.value("image").toString() != "drawing.png")
-        return fail(error, QStringLiteral("Неизвестный формат или версия DRW."));
+        return fail(error, QCoreApplication::translate("Project", "Неизвестный формат или версия DRW."));
     const double width = object.value("width").toDouble(-1), height = object.value("height").toDouble(-1);
     if (width < 1 || height < 1 || width > 8192 || height > 8192 || width != std::floor(width) ||
         height != std::floor(height) || !validSize(QSize(int(width), int(height))))
-        return fail(error, QStringLiteral("Некорректный размер холста в проекте."));
+        return fail(error, QCoreApplication::translate("Project", "Некорректный размер холста в проекте."));
     const QSize expectedSize{int(width), int(height)};
 
     QHash<QString, QImage> images;
     auto loadImage = [&](const QString &imagePath, QImage *image) -> bool {
         static const QRegularExpression historyName(QStringLiteral("^history/state-[0-9]{4}\\.png$"));
         if (imagePath != "drawing.png" && !historyName.match(imagePath).hasMatch())
-            return fail(error, QStringLiteral("Некорректная ссылка на изображение истории."));
+            return fail(error, QCoreApplication::translate("Project", "Некорректная ссылка на изображение истории."));
         if (images.contains(imagePath)) {
             *image = images.value(imagePath);
             return true;
         }
         if (counts.value(imagePath) != 1 || sizes.value(imagePath) < 1 || sizes.value(imagePath) > 80000000)
-            return fail(error, QStringLiteral("Отсутствует изображение истории."));
+            return fail(error, QCoreApplication::translate("Project", "Отсутствует изображение истории."));
         QByteArray png = zip.fileData(imagePath);
         QBuffer buffer(&png);
         buffer.open(QIODevice::ReadOnly);
@@ -363,7 +379,8 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
         if (!decode(&buffer, &decoded, error))
             return false;
         if (decoded.size() != expectedSize)
-            return fail(error, QStringLiteral("Размер изображения истории не совпадает с проектом."));
+            return fail(error,
+                        QCoreApplication::translate("Project", "Размер изображения истории не совпадает с проектом."));
         images.insert(imagePath, decoded);
         *image = decoded;
         return true;
@@ -382,17 +399,17 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
 
     const auto historyValue = object.value("history");
     if (!historyValue.isObject())
-        return fail(error, QStringLiteral("Отсутствует история документа."));
+        return fail(error, QCoreApplication::translate("Project", "Отсутствует история документа."));
     const auto historyObject = historyValue.toObject();
     const auto states = historyObject.value("states").toArray();
     const auto labels = historyObject.value("labels").toArray();
     const double indexValue = historyObject.value("index").toDouble(-1);
     if (states.isEmpty() || states.size() > 31 || labels.size() != states.size() - 1 || indexValue < 0 ||
         indexValue >= states.size() || indexValue != std::floor(indexValue))
-        return fail(error, QStringLiteral("Некорректное оглавление истории документа."));
+        return fail(error, QCoreApplication::translate("Project", "Некорректное оглавление истории документа."));
     for (const auto &value : states) {
         if (!value.isObject())
-            return fail(error, QStringLiteral("Некорректное состояние истории."));
+            return fail(error, QCoreApplication::translate("Project", "Некорректное состояние истории."));
         const auto stateObject = value.toObject();
         DrawingState state;
         if (!loadImage(stateObject.value("image").toString(), &state.image) ||
@@ -402,12 +419,13 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     }
     for (const auto &value : labels) {
         if (!value.isString() || value.toString().size() > 200)
-            return fail(error, QStringLiteral("Некорректная подпись операции истории."));
+            return fail(error, QCoreApplication::translate("Project", "Некорректная подпись операции истории."));
         result.labels.append(value.toString());
     }
     result.index = int(indexValue);
     if (!samePersistentState(result.states[result.index], current))
-        return fail(error, QStringLiteral("Текущее состояние не совпадает с историей документа."));
+        return fail(error,
+                    QCoreApplication::translate("Project", "Текущее состояние не совпадает с историей документа."));
     *history = result;
     return true;
 }
@@ -425,7 +443,7 @@ bool Project::exportPng(const QString &path, const QImage &image, QString *error
         return fail(error, file.errorString());
     if (!image.save(&file, "PNG")) {
         file.cancelWriting();
-        return fail(error, QStringLiteral("Не удалось записать PNG."));
+        return fail(error, QCoreApplication::translate("Project", "Не удалось записать PNG."));
     }
     if (!file.commit())
         return fail(error, file.errorString());

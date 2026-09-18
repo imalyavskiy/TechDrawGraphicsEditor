@@ -4,7 +4,7 @@
 
 namespace {
 QString productName() {
-    return QStringLiteral("Технический рисунок / Technical Draw");
+    return QCoreApplication::translate("MainWindow", "Технический рисунок / Technical Draw");
 }
 
 QIcon toolIcon(int kind) {
@@ -55,7 +55,7 @@ QIcon actualSizeIcon() {
     font.setBold(true);
     font.setPixelSize(11);
     painter.setFont(font);
-    painter.drawText(image.rect(), Qt::AlignCenter, QStringLiteral("1:1"));
+    painter.drawText(image.rect(), Qt::AlignCenter, QCoreApplication::translate("MainWindow", "1:1"));
     return QIcon(image);
 }
 QIcon eyeIcon(bool open) {
@@ -428,7 +428,7 @@ void MainWindow::setupMenusAndToolbars() {
         action->setObjectName(QString("tool%1").arg(i));
         action->setCheckable(true);
         action->setShortcut(QKeySequence(shortcuts[i]));
-        action->setToolTip(names[i] + " (" + shortcuts[i] + ")");
+        action->setToolTip(tr("%1 (%2)").arg(names[i], shortcuts[i]));
         group->addAction(action);
         toolsToolbar_->addAction(action);
         toolsMenu_->addAction(action);
@@ -899,7 +899,7 @@ void MainWindow::setupViewAndStatusBar() {
     zoom_->setObjectName("zoomPercent");
     zoom_->setRange(5, 1600);
     zoom_->setDecimals(0);
-    zoom_->setSuffix(" %");
+    zoom_->setSuffix(tr(" %"));
     zoom_->setKeyboardTracking(false);
     statusBar()->addPermanentWidget(zoom_);
     connect(zoom_, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double value) {
@@ -914,8 +914,8 @@ void MainWindow::setupViewAndStatusBar() {
                      yPixels = canvas_->state().image.height() / 2.0 - position.y();
         const double x = rulerPercent_ ? xPixels * 100.0 / canvas_->state().image.width() : xPixels,
                      y = rulerPercent_ ? yPixels * 100.0 / canvas_->state().image.height() : yPixels;
-        const QString suffix = rulerPercent_ ? QStringLiteral("%") : QStringLiteral(" px");
-        positionLabel_->setText(QString("X: %1%3   Y: %2%3")
+        const QString suffix = rulerPercent_ ? tr("%") : tr(" px");
+        positionLabel_->setText(tr("X: %1%3   Y: %2%3")
                                     .arg(x, 0, 'f', rulerPercent_ ? 1 : 0)
                                     .arg(y, 0, 'f', rulerPercent_ ? 1 : 0)
                                     .arg(suffix));
@@ -970,7 +970,7 @@ void MainWindow::updateRecentFilesMenu() {
         const QString path = recentFiles_[i];
         QString label = path;
         label.replace("&", "&&");
-        auto *action = recentFilesMenu_->addAction(QString("&%1  %2").arg(i + 1).arg(label));
+        auto *action = recentFilesMenu_->addAction(tr("&%1  %2").arg(i + 1).arg(label));
         action->setObjectName(QString("recentFile%1").arg(i));
         action->setData(path);
         action->setToolTip(path);
@@ -986,9 +986,9 @@ int MainWindow::vanishingPointIndex(const QString &id) const {
 }
 void MainWindow::updateState() {
     QString name = path_.isEmpty() ? tr("Без имени.drw") : QFileInfo(path_).fileName();
-    setWindowTitle(name + "[*] — " + productName());
+    setWindowTitle(tr("%1[*] — %2").arg(name, productName()));
     setWindowModified(!canvas_->undoStack()->isClean());
-    sizeLabel_->setText(QString("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
+    sizeLabel_->setText(tr("%1 × %2 px").arg(canvas_->state().image.width()).arg(canvas_->state().image.height()));
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
         l(horizonUnits_), m(pointX_), n(pointY_), o(pointUnits_), q(pointAttachment_);
@@ -1252,7 +1252,7 @@ void MainWindow::showAbout() {
     icon->setAlignment(Qt::AlignCenter);
     icon->setPixmap(QIcon(":/app/techdraw.png").pixmap(96, 96));
     layout->addWidget(icon);
-    auto *name = new QLabel(QStringLiteral("Технический рисунок\nTechnical Draw"));
+    auto *name = new QLabel(tr("Технический рисунок\nTechnical Draw"));
     name->setObjectName("aboutName");
     name->setAlignment(Qt::AlignCenter);
     QFont nameFont = name->font();
@@ -1302,8 +1302,8 @@ void MainWindow::newDocument() {
     h.setRange(1, 8192);
     w.setValue(remembered.width());
     h.setValue(remembered.height());
-    w.setSuffix(" px");
-    h.setSuffix(" px");
+    w.setSuffix(tr(" px"));
+    h.setSuffix(tr(" px"));
     form->addRow(tr("Ширина"), &w);
     form->addRow(tr("Высота"), &h);
     layout->addLayout(form);
