@@ -66,6 +66,91 @@ QImage *editablePixels(DrawingState *state) {
     return content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
 }
 
+QString testShapeTypeId() {
+    return QStringLiteral("selftest-shape");
+}
+
+class TestShapeContent final : public LayerContent {
+public:
+    QRectF rect;
+    QColor color;
+
+    QString typeId() const override { return testShapeTypeId(); }
+    std::shared_ptr<LayerContent> clone() const override { return std::make_shared<TestShapeContent>(*this); }
+    bool equals(const LayerContent &other) const override {
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&other);
+        return shape && shape->rect == rect && shape->color == color;
+    }
+    qint64 estimatedBytes() const override { return sizeof(TestShapeContent); }
+};
+
+class TestShapeRenderer final : public LayerRenderer {
+public:
+    void render(QPainter &painter,
+                const LayerEntry &entry,
+                const LayerContent &content,
+                const LayerRenderContext &context) const override {
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&content);
+        if (!shape)
+            return;
+        painter.save();
+        painter.resetTransform();
+        painter.setClipRect(context.deviceClip);
+        painter.setTransform(context.documentToDevice);
+        painter.setOpacity(entry.opacity / 100.0);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(shape->color);
+        painter.drawRect(shape->rect.translated(entry.offset));
+        painter.restore();
+    }
+};
+
+class TestShapeCodec final : public LayerCodec {
+public:
+    bool encode(const LayerContent &content,
+                const QString &resourceRoot,
+                QJsonObject *manifest,
+                QHash<QString, QByteArray> *resources,
+                QString *error) const override {
+        Q_UNUSED(resourceRoot)
+        Q_UNUSED(resources)
+        const auto *shape = dynamic_cast<const TestShapeContent *>(&content);
+        if (!shape) {
+            if (error)
+                *error = QStringLiteral("invalid self-test shape");
+            return false;
+        }
+        *manifest = QJsonObject{{"x", shape->rect.x()},
+                                {"y", shape->rect.y()},
+                                {"width", shape->rect.width()},
+                                {"height", shape->rect.height()},
+                                {"color", shape->color.name(QColor::HexArgb)}};
+        return true;
+    }
+
+    std::shared_ptr<LayerContent> decode(const QJsonObject &manifest,
+                                         const LayerResourceReader &resourceReader,
+                                         QSize canvasSize,
+                                         QString *error) const override {
+        Q_UNUSED(resourceReader)
+        Q_UNUSED(canvasSize)
+        auto shape = std::make_shared<TestShapeContent>();
+        shape->rect = QRectF(manifest.value("x").toDouble(qQNaN()),
+                             manifest.value("y").toDouble(qQNaN()),
+                             manifest.value("width").toDouble(qQNaN()),
+                             manifest.value("height").toDouble(qQNaN()));
+        shape->color = QColor(manifest.value("color").toString());
+        if (!std::isfinite(shape->rect.x()) || !std::isfinite(shape->rect.y()) ||
+            !std::isfinite(shape->rect.width()) || !std::isfinite(shape->rect.height()) || !shape->rect.isValid() ||
+            !shape->color.isValid()) {
+            if (error)
+                *error = QStringLiteral("invalid self-test shape manifest");
+            return {};
+        }
+        return shape;
+    }
+};
+
 /// Проверяет реестр типов, copy-on-write, композицию, миниатюру и кодек растрового слоя.
 void testLayerArchitecture() {
     QImage source(24, 16, QImage::Format_ARGB32_Premultiplied);
@@ -303,6 +388,52 @@ void testMultiLayerProject(const QDir &out) {
     DrawingState rejected;
     require(!Project::load(unknownPath, &rejected, &error) && error.contains(QStringLiteral("unregistered-test-type")),
             "unknown layer type must be rejected without flattening");
+}
+
+void testRegisteredNonRasterLayer(const QDir &out) {
+    LayerType shapeType;
+    shapeType.id = testShapeTypeId();
+    shapeType.capabilities = LayerCapability::Thumbnail;
+    shapeType.factory = [] { return std::make_shared<TestShapeContent>(); };
+    shapeType.renderer = std::make_shared<TestShapeRenderer>();
+    shapeType.codec = std::make_shared<TestShapeCodec>();
+    require(LayerTypeRegistry::instance().registerType(shapeType), "self-test layer type was not registered");
+
+    DrawingState state;
+    QImage background(64, 48, QImage::Format_ARGB32_Premultiplied);
+    background.fill(Qt::white);
+    state.setSingleRasterImage(background, QStringLiteral("Background"));
+    state.horizonY = 24;
+    state.verticalX = 32;
+    state.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(48, 24), QString(), QString()});
+    LayerEntry shapeEntry;
+    shapeEntry.id = QStringLiteral("shape-1");
+    shapeEntry.typeId = testShapeTypeId();
+    shapeEntry.name = QStringLiteral("Test shape");
+    shapeEntry.opacity = 80;
+    shapeEntry.offset = QPointF(3, 2);
+    auto shape = std::make_shared<TestShapeContent>();
+    shape->rect = QRectF(10, 8, 20, 14);
+    shape->color = QColor("#2868c7");
+    shapeEntry.content = shape;
+    state.layers.entries().append(shapeEntry);
+    require(state.layers.setActiveLayerId(shapeEntry.id), "self-test layer was not selected");
+    const QImage composition = state.flattenedImage();
+    require(composition.pixelColor(18, 15) != QColor(Qt::white),
+            "registered non-raster renderer did not enter the common composition");
+    const QImage thumbnail = LayerCompositor::thumbnail(state.layers, state.canvasSize, QSize(96, 72));
+    require(!thumbnail.isNull() && thumbnail.size() == QSize(96, 72),
+            "registered non-raster renderer did not create a thumbnail");
+
+    QString error;
+    const QString path = out.filePath("registered-layer.drw");
+    require(Project::save(path, state, &error), qPrintable(error));
+    DrawingState loaded;
+    require(Project::load(path, &loaded, &error), qPrintable(error));
+    const LayerEntry *loadedShape = loaded.layers.entry(shapeEntry.id);
+    require(loaded.layers.entries().size() == 2 && loadedShape && loadedShape->typeId == testShapeTypeId() &&
+                loadedShape->content->equals(*shape) && loaded.flattenedImage() == composition,
+            "registered non-raster codec did not roundtrip through common project code");
 }
 
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
@@ -1801,6 +1932,7 @@ int runSelfTests(const QString &outputDirectory) {
         testLayerPanel();
         testLayerAwareEraser();
         testMultiLayerProject(out);
+        testRegisteredNonRasterLayer(out);
 
         MainWindow window;
         testMainWindowUi(window, out);
