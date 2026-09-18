@@ -139,6 +139,7 @@ void Canvas::setDocument(const DrawingHistory &history, bool clean) {
     else
         undo_.resetClean();
     pan_ = QPointF();
+    emit layersChanged();
     emit stateChanged();
     emit selectedPointChanged(selectedPointIndex_);
     update();
@@ -173,6 +174,146 @@ DrawingHistory Canvas::history() const {
     return result;
 }
 
+void Canvas::selectLayer(const QString &id) {
+    if (!state_.layers.setActiveLayerId(id))
+        return;
+    update();
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::addRasterLayer() {
+    const DrawingState before = state_;
+    const int number = state_.layers.entries().size() + 1;
+    if (state_.layers.addRaster(state_.canvasSize, tr("Слой %1").arg(number)).isEmpty())
+        return;
+    commit(before, tr("добавление слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::removeActiveLayer() {
+    const DrawingState before = state_;
+    if (!state_.layers.removeActive())
+        return;
+    commit(before, tr("удаление слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::duplicateActiveLayer() {
+    const LayerEntry *active = state_.layers.activeEntry();
+    if (!active)
+        return;
+    const DrawingState before = state_;
+    if (state_.layers.duplicateActive(tr("%1 — копия").arg(active->name)).isEmpty())
+        return;
+    commit(before, tr("дублирование слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::moveActiveLayerUp() {
+    const DrawingState before = state_;
+    if (!state_.layers.moveActive(1))
+        return;
+    commit(before, tr("порядок слоёв"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::moveActiveLayerDown() {
+    const DrawingState before = state_;
+    if (!state_.layers.moveActive(-1))
+        return;
+    commit(before, tr("порядок слоёв"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::renameLayer(const QString &id, const QString &name) {
+    const QString trimmed = name.trimmed().left(120);
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || trimmed.isEmpty() || entry->name == trimmed)
+        return;
+    const DrawingState before = state_;
+    entry->name = trimmed;
+    commit(before, tr("название слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::setLayerVisible(const QString &id, bool visible) {
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || entry->visible == visible)
+        return;
+    const DrawingState before = state_;
+    entry->visible = visible;
+    commit(before, visible ? tr("показ слоя") : tr("скрытие слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::setLayerLocked(const QString &id, bool locked) {
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || entry->locked == locked)
+        return;
+    const DrawingState before = state_;
+    entry->locked = locked;
+    commit(before, tr("фиксацию слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::setLayerOpacity(const QString &id, int opacity) {
+    LayerEntry *entry = editableLayerEntry(id);
+    opacity = qBound(0, opacity, 100);
+    if (!entry || entry->opacity == opacity)
+        return;
+    const DrawingState before = state_;
+    entry->opacity = opacity;
+    commit(before, tr("непрозрачность слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::addLayerTransparency(const QString &id) {
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || entry->typeId != LayerTypes::raster() || !entry->content)
+        return;
+    auto *content = dynamic_cast<RasterLayerContent *>(entry->content.get());
+    if (!content || content->transparencyAvailable)
+        return;
+    const DrawingState before = state_;
+    if (!entry->content.unique()) {
+        entry->content = entry->content->clone();
+        content = dynamic_cast<RasterLayerContent *>(entry->content.get());
+    }
+    content->transparencyAvailable = true;
+    content->alphaLocked = false;
+    commit(before, tr("добавление прозрачности слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
+void Canvas::setLayerAlphaLocked(const QString &id, bool locked) {
+    LayerEntry *entry = editableLayerEntry(id);
+    if (!entry || entry->typeId != LayerTypes::raster() || !entry->content)
+        return;
+    auto *content = dynamic_cast<RasterLayerContent *>(entry->content.get());
+    if (!content || !content->transparencyAvailable || content->alphaLocked == locked)
+        return;
+    const DrawingState before = state_;
+    if (!entry->content.unique()) {
+        entry->content = entry->content->clone();
+        content = dynamic_cast<RasterLayerContent *>(entry->content.get());
+    }
+    content->alphaLocked = locked;
+    commit(before, tr("фиксацию прозрачности слоя"));
+    emit layersChanged();
+    emit stateChanged();
+}
+
 void Canvas::apply(const DrawingState &state) {
     DrawingState next = state;
     copyPerspectiveAppearance(state_, &next);
@@ -180,8 +321,16 @@ void Canvas::apply(const DrawingState &state) {
     selectedPointIndex_ =
         state_.vanishingPoints.isEmpty() ? -1 : qBound(0, selectedPointIndex_, state_.vanishingPoints.size() - 1);
     emit stateChanged();
+    emit layersChanged();
     emit selectedPointChanged(selectedPointIndex_);
     update();
+}
+
+LayerEntry *Canvas::editableLayerEntry(const QString &id) {
+    for (auto &entry : state_.layers.entries())
+        if (entry.id == id)
+            return &entry;
+    return nullptr;
 }
 void Canvas::commit(const DrawingState &before, const QString &label) {
     undo_.push(new StateCommand(this, before, state_, label));

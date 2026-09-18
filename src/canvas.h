@@ -22,6 +22,18 @@ public:
     QUndoStack *undoStack() {
         return &undo_;
     }
+    void selectLayer(const QString &id);
+    void addRasterLayer();
+    void removeActiveLayer();
+    void duplicateActiveLayer();
+    void moveActiveLayerUp();
+    void moveActiveLayerDown();
+    void renameLayer(const QString &id, const QString &name);
+    void setLayerVisible(const QString &id, bool visible);
+    void setLayerLocked(const QString &id, bool locked);
+    void setLayerOpacity(const QString &id, int opacity);
+    void addLayerTransparency(const QString &id);
+    void setLayerAlphaLocked(const QString &id, bool locked);
     /// Заменяет документ одним снимком и при необходимости отмечает историю чистой.
     void setDocument(const DrawingState &state, bool clean = true);
     /// Восстанавливает документ вместе с сериализованной историей и её текущей позицией.
@@ -154,6 +166,7 @@ signals:
     void positionChanged(QPointF position);
     /// Сообщает об изменении выбора точки схода.
     void selectedPointChanged(int index);
+    void layersChanged();
 
 protected:
     /// Рисует растр, перспективную оснастку, маркеры и линейки.
@@ -238,4 +251,5 @@ private:
     QRectF viewportRect() const;
     /// Рисует четыре линейки и проекции текущего положения курсора.
     void drawRulers(QPainter &painter);
+    LayerEntry *editableLayerEntry(const QString &id);
 };

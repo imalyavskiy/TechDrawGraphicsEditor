@@ -122,6 +122,70 @@ LayerStack LayerStack::singleRaster(
     return result;
 }
 
+QString LayerStack::addRaster(QSize canvasSize, const QString &name) {
+    if (!canvasSize.isValid())
+        return {};
+    LayerEntry entry;
+    entry.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    entry.typeId = LayerTypes::raster();
+    entry.name = name;
+    auto content = std::make_shared<RasterLayerContent>();
+    content->image = QImage(canvasSize, QImage::Format_ARGB32_Premultiplied);
+    content->image.fill(Qt::transparent);
+    content->transparencyAvailable = true;
+    content->alphaLocked = false;
+    entry.content = content;
+    int insertion = entries_.size();
+    for (int index = 0; index < entries_.size(); ++index)
+        if (entries_[index].id == activeLayerId_) {
+            insertion = index + 1;
+            break;
+        }
+    entries_.insert(insertion, entry);
+    activeLayerId_ = entry.id;
+    return entry.id;
+}
+
+QString LayerStack::duplicateActive(const QString &name) {
+    for (int index = 0; index < entries_.size(); ++index)
+        if (entries_[index].id == activeLayerId_) {
+            LayerEntry duplicate = entries_[index];
+            duplicate.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            duplicate.name = name;
+            entries_.insert(index + 1, duplicate);
+            activeLayerId_ = duplicate.id;
+            return duplicate.id;
+        }
+    return {};
+}
+
+bool LayerStack::removeActive() {
+    if (entries_.size() <= 1)
+        return false;
+    for (int index = 0; index < entries_.size(); ++index)
+        if (entries_[index].id == activeLayerId_) {
+            entries_.remove(index);
+            const int next = qMin(index, entries_.size() - 1);
+            activeLayerId_ = entries_[next].id;
+            return true;
+        }
+    return false;
+}
+
+bool LayerStack::moveActive(int offset) {
+    if (offset == 0)
+        return false;
+    for (int index = 0; index < entries_.size(); ++index)
+        if (entries_[index].id == activeLayerId_) {
+            const int target = qBound(0, index + offset, entries_.size() - 1);
+            if (target == index)
+                return false;
+            entries_.move(index, target);
+            return true;
+        }
+    return false;
+}
+
 const QVector<LayerEntry> &LayerStack::entries() const { return entries_; }
 QVector<LayerEntry> &LayerStack::entries() { return entries_; }
 const QString &LayerStack::activeLayerId() const { return activeLayerId_; }
@@ -146,6 +210,13 @@ LayerEntry *LayerStack::activeEntry() {
     for (auto &entry : entries_)
         if (entry.id == activeLayerId_)
             return &entry;
+    return nullptr;
+}
+
+const LayerEntry *LayerStack::entry(const QString &id) const {
+    for (const auto &item : entries_)
+        if (item.id == id)
+            return &item;
     return nullptr;
 }
 

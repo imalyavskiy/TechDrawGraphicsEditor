@@ -62,6 +62,10 @@ public:
                                    const QString &name,
                                    bool transparencyAvailable,
                                    bool alphaLocked);
+    QString addRaster(QSize canvasSize, const QString &name);
+    QString duplicateActive(const QString &name);
+    bool removeActive();
+    bool moveActive(int offset);
     /// Возвращает неизменяемую последовательность слоёв в порядке композиции.
     const QVector<LayerEntry> &entries() const;
     /// Возвращает последовательность для структурных операций модели документа.
@@ -74,6 +78,7 @@ public:
     const LayerEntry *activeEntry() const;
     /// Находит активную запись для изменения её общих свойств.
     LayerEntry *activeEntry();
+    const LayerEntry *entry(const QString &id) const;
     /// Проверяет доступность операции и отделяет содержимое от других снимков перед изменением.
     LayerContent *editableActiveContent(LayerCapability capability);
     /// Оценивает суммарный объём содержимого всех записей.

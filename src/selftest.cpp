@@ -105,6 +105,25 @@ void testLayerArchitecture() {
     auto decoded = type->codec->decode(
         manifest, [&resources](const QString &path) { return resources.value(path); }, source.size(), &error);
     require(decoded && decoded->equals(*layers.activeEntry()->content), "raster layer codec roundtrip failed");
+
+    const QString addedId = layers.addRaster(source.size(), QStringLiteral("Paint"));
+    require(!addedId.isEmpty() && layers.entries().size() == 2 && layers.activeLayerId() == addedId &&
+                layers.activeEntry()->content->typeId() == LayerTypes::raster(),
+            "transparent raster layer was not added or selected");
+    const auto *addedRaster = dynamic_cast<const RasterLayerContent *>(layers.activeEntry()->content.get());
+    require(addedRaster && addedRaster->transparencyAvailable && !addedRaster->alphaLocked &&
+                addedRaster->image.pixelColor(0, 0).alpha() == 0,
+            "new raster layer must be transparent and alpha-editable");
+    const QString duplicateId = layers.duplicateActive(QStringLiteral("Paint copy"));
+    require(!duplicateId.isEmpty() && layers.entries().size() == 3 && layers.activeLayerId() == duplicateId &&
+                layers.entries()[1].content == layers.entries()[2].content,
+            "layer duplication must share unchanged content and select the copy");
+    require(!layers.moveActive(1) && layers.moveActive(-1) && layers.entries()[1].id == duplicateId,
+            "active layer order change failed");
+    require(layers.removeActive() && layers.entries().size() == 2 && layers.activeEntry(),
+            "active layer removal failed");
+    require(layers.removeActive() && layers.entries().size() == 1 && !layers.removeActive(),
+            "last document layer must not be removable");
 }
 
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
