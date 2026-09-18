@@ -29,6 +29,24 @@ function detectDefaultLanguage()
     return uiLanguage.indexOf("ru") === 0 ? "Russian" : "English";
 }
 
+function bannerProductTitle()
+{
+    var text = selectedRussian() ? "Технический Рисунок" : "Technical Drawing";
+    return "<table width='528' cellspacing='0' cellpadding='0'><tr>"
+        + "<td width='25'></td><td align='left'>"
+        + "<span style='font-size:22pt; font-weight:600; color:#123B67;'>"
+        + text + "</span></td></tr></table>";
+}
+
+function setDynamicPageIdentity(objectName, pageListTitle)
+{
+    var page = gui.pageByObjectName(objectName);
+    if (!page)
+        return;
+    page.title = bannerProductTitle();
+    page.setPageListTitle(pageListTitle);
+}
+
 function registryRoot(scope)
 {
     return scope === "AllUsers" ? "HKEY_LOCAL_MACHINE\\" : "HKEY_CURRENT_USER\\";
@@ -162,16 +180,16 @@ Component.prototype.retranslateNativePages = function()
     var perform = gui.pageById(QInstaller.PerformInstallation);
     var finished = gui.pageById(QInstaller.InstallationFinished);
     if (ready) {
-        ready.title = ru ? "Сводка установки" : "Installation summary";
-        ready.setPageListTitle(ready.title);
+        ready.title = bannerProductTitle();
+        ready.setPageListTitle(ru ? "Сводка установки" : "Installation summary");
     }
     if (perform) {
-        perform.title = ru ? "Установка" : "Installing";
-        perform.setPageListTitle(perform.title);
+        perform.title = bannerProductTitle();
+        perform.setPageListTitle(ru ? "Установка" : "Installing");
     }
     if (finished) {
-        finished.title = ru ? "Завершение установки" : "Finished";
-        finished.setPageListTitle(finished.title);
+        finished.title = bannerProductTitle();
+        finished.setPageListTitle(ru ? "Завершение установки" : "Finished");
     }
     gui.setWizardPageButtonText(QInstaller.ReadyForInstallation, buttons.CommitButton,
                                 ru ? "Установить" : "Install");
@@ -325,6 +343,9 @@ Component.prototype.retranslatePages = function()
         optionsWidget.readyLabel.text = ru ? "После этой страницы остаются только подтверждение и установка." : "After this page, only confirmation and installation remain.";
         this.updateMigrationControls();
     }
+    setDynamicPageIdentity("DynamicLanguagePage", ru ? "Язык" : "Language");
+    setDynamicPageIdentity("DynamicPrototypeNoticePage", ru ? "Уведомление о прототипе" : "Prototype notice");
+    setDynamicPageIdentity("DynamicOptionsPage", ru ? "Параметры установки" : "Installation settings");
 };
 
 Component.prototype.retranslateUninstallPage = function()
