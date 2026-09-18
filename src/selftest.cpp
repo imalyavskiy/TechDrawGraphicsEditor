@@ -526,14 +526,53 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     require(toolsDock->minimumWidth() == 250 && layersDock->minimumWidth() == 330 &&
                 perspectiveDock->minimumWidth() == 330,
             "dock panels did not preserve their configured minimum widths");
+    auto *toolsResizeHandle = window.findChild<QWidget *>("toolsResizeHandle");
+    auto *layersResizeHandle = window.findChild<QWidget *>("layersResizeHandle");
+    require(toolsResizeHandle && layersResizeHandle && toolsResizeHandle->cursor().shape() == Qt::SizeHorCursor &&
+                layersResizeHandle->cursor().shape() == Qt::SizeHorCursor,
+            "dock panels do not expose horizontal mouse resize handles");
     const int toolsWidth = toolsDock->width();
-    window.resizeDocks({toolsDock}, {toolsWidth + 60}, Qt::Horizontal);
+    QMouseEvent toolsResizePress(QEvent::MouseButtonPress,
+                                 QPointF(3, 10),
+                                 Qt::LeftButton,
+                                 Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizePress);
+    QMouseEvent toolsResizeMove(QEvent::MouseMove,
+                                QPointF(63, 10),
+                                Qt::NoButton,
+                                Qt::LeftButton,
+                                Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizeMove);
+    QMouseEvent toolsResizeRelease(QEvent::MouseButtonRelease,
+                                   QPointF(63, 10),
+                                   Qt::LeftButton,
+                                   Qt::NoButton,
+                                   Qt::NoModifier);
+    QApplication::sendEvent(toolsResizeHandle, &toolsResizeRelease);
     QApplication::processEvents();
-    require(toolsDock->width() > toolsWidth, "left panel width could not be increased");
+    require(toolsDock->width() > toolsWidth, "left panel width could not be increased with its mouse handle");
     const int layersWidth = layersDock->width();
-    window.resizeDocks({layersDock}, {layersWidth + 60}, Qt::Horizontal);
+    QMouseEvent layersResizePress(QEvent::MouseButtonPress,
+                                  QPointF(3, 10),
+                                  Qt::LeftButton,
+                                  Qt::LeftButton,
+                                  Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizePress);
+    QMouseEvent layersResizeMove(QEvent::MouseMove,
+                                 QPointF(-57, 10),
+                                 Qt::NoButton,
+                                 Qt::LeftButton,
+                                 Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizeMove);
+    QMouseEvent layersResizeRelease(QEvent::MouseButtonRelease,
+                                    QPointF(-57, 10),
+                                    Qt::LeftButton,
+                                    Qt::NoButton,
+                                    Qt::NoModifier);
+    QApplication::sendEvent(layersResizeHandle, &layersResizeRelease);
     QApplication::processEvents();
-    require(layersDock->width() > layersWidth, "right panel width could not be increased");
+    require(layersDock->width() > layersWidth, "right panel width could not be increased with its mouse handle");
     mainToolbarToggle->trigger();
     QApplication::processEvents();
     require(!mainToolbar->isVisible(), "main toolbar could not be hidden through View menu");

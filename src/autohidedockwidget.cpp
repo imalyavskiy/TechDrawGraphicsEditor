@@ -40,6 +40,60 @@ private:
     Qt::DockWidgetArea area_;
 };
 
+class DockResizeHandle final : public QWidget {
+public:
+    DockResizeHandle(QDockWidget *dock, QMainWindow *owner, Qt::DockWidgetArea area, QWidget *parent)
+        : QWidget(parent), dock_(dock), owner_(owner), area_(area) {
+        setCursor(Qt::SizeHorCursor);
+        setFixedWidth(6);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setPen(palette().color(QPalette::Mid));
+        painter.drawLine(width() / 2, 0, width() / 2, height());
+    }
+
+    void mousePressEvent(QMouseEvent *event) override {
+        if (event->button() != Qt::LeftButton)
+            return;
+        dragging_ = true;
+        startMouseX_ = event->pos().x();
+        startWidth_ = dock_->width();
+        grabMouse();
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override {
+        if (!dragging_ || !(event->buttons() & Qt::LeftButton))
+            return;
+        const int delta = event->pos().x() - startMouseX_;
+        const int requestedWidth =
+            qMax(dock_->minimumWidth(), startWidth_ + (area_ == Qt::LeftDockWidgetArea ? delta : -delta));
+        owner_->resizeDocks({dock_}, {requestedWidth}, Qt::Horizontal);
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override {
+        if (event->button() != Qt::LeftButton)
+            return;
+        dragging_ = false;
+        if (mouseGrabber() == this)
+            releaseMouse();
+        event->accept();
+    }
+
+private:
+    QDockWidget *dock_ = nullptr;
+    QMainWindow *owner_ = nullptr;
+    Qt::DockWidgetArea area_ = Qt::LeftDockWidgetArea;
+    bool dragging_ = false;
+    int startMouseX_ = 0;
+    int startWidth_ = 0;
+};
+
 /// Строит простую пиктограмму канцелярской кнопки без зависимости от темы ОС.
 QIcon pinIcon(bool pinned) {
     QPixmap image(18, 18);
@@ -76,9 +130,22 @@ AutoHideDockWidget::AutoHideDockWidget(const QString &title,
     setTitleBarWidget(emptyTitleBar);
 
     pinnedHost_ = new QWidget(this);
-    pinnedLayout_ = new QVBoxLayout(pinnedHost_);
+    auto *pinnedColumns = new QHBoxLayout(pinnedHost_);
+    pinnedColumns->setContentsMargins(0, 0, 0, 0);
+    pinnedColumns->setSpacing(0);
+    auto *pinnedPanelHost = new QWidget(pinnedHost_);
+    pinnedLayout_ = new QVBoxLayout(pinnedPanelHost);
     pinnedLayout_->setContentsMargins(0, 0, 0, 0);
     pinnedLayout_->setSpacing(0);
+    auto *resizeHandle = new DockResizeHandle(this, owner_, area_, pinnedHost_);
+    resizeHandle->setObjectName(settingsKey_ + "ResizeHandle");
+    if (area_ == Qt::LeftDockWidgetArea) {
+        pinnedColumns->addWidget(pinnedPanelHost, 1);
+        pinnedColumns->addWidget(resizeHandle);
+    } else {
+        pinnedColumns->addWidget(resizeHandle);
+        pinnedColumns->addWidget(pinnedPanelHost, 1);
+    }
     QDockWidget::setWidget(pinnedHost_);
 
     panelFrame_ = new QFrame(pinnedHost_);
