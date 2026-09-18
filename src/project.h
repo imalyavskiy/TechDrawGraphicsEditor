@@ -1,4 +1,5 @@
 #pragma once
+#include "guidemodel.h"
 #include "layermodel.h"
 #include <QByteArray>
 #include <QImage>
@@ -72,6 +73,7 @@ struct DrawingState {
     QSize canvasSize;
     LayerStack layers;
     QVector<VanishingPoint> vanishingPoints;
+    QVector<Guide> guides;
     double horizonY = 0;
     bool horizonLocked = false;
     double verticalX = 0;
@@ -118,7 +120,7 @@ struct DrawingHistory {
 };
 
 namespace Project {
-inline constexpr int CurrentFormatVersion = 9;
+inline constexpr int CurrentFormatVersion = 10;
 
 /// Проверяет размер растра по ограничениям стороны и общего числа пикселей.
 bool validSize(QSize size);

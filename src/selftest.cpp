@@ -58,6 +58,35 @@ QImage pixels(const DrawingState &state) {
     return state.flattenedImage();
 }
 
+void testGuideGeometry() {
+    const Guide horizontal{QStringLiteral("g-h"), GuideType::Horizontal, 50, QString(), 0};
+    const Guide vertical{QStringLiteral("g-v"), GuideType::Vertical, 10, QString(), 0};
+    Guide perspective;
+    perspective.id = QStringLiteral("g-p");
+    perspective.type = GuideType::Perspective;
+    perspective.vanishingPointId = QStringLiteral("vp-1");
+    perspective.angleRadians = 0;
+    const QHash<QString, QPointF> points{{QStringLiteral("vp-1"), QPointF(100, 100)}};
+
+    const GuideProjection horizontalProjection = GuideGeometry::project(horizontal, QPointF(30, 12));
+    const GuideProjection verticalProjection = GuideGeometry::project(vertical, QPointF(30, 12));
+    const GuideProjection rayProjection = GuideGeometry::project(perspective, QPointF(80, 110), points);
+    require(horizontalProjection.valid && horizontalProjection.point == QPointF(30, 50) &&
+                horizontalProjection.direction == QPointF(1, 0) && verticalProjection.valid &&
+                verticalProjection.point == QPointF(10, 12) && verticalProjection.direction == QPointF(0, 1),
+            "ordinary guide projection is invalid");
+    require(rayProjection.valid && rayProjection.point == QPointF(100, 100) && rayProjection.direction == QPointF(1, 0),
+            "perspective guide projection must stop at its vanishing-point origin");
+    GuideProjection nearestProjection;
+    require(GuideGeometry::nearest({horizontal, vertical, perspective},
+                                   QPointF(12, 14),
+                                   points,
+                                   20,
+                                   &nearestProjection) == 1 &&
+                nearestProjection.point == QPointF(10, 14),
+            "common nearest-guide query did not select the closest geometry");
+}
+
 /// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
 QImage *editablePixels(DrawingState *state) {
     LayerEntry *entry = state->layers.activeEntry();
@@ -357,7 +386,15 @@ void testMultiLayerProject(const QDir &out) {
     base.horizonY = 15;
     base.verticalX = 20;
     base.vanishingPoints.append({QStringLiteral("vp-1"), QPointF(30, 15), QString(), QString()});
+    base.guides.append({QStringLiteral("guide-h"), GuideType::Horizontal, 12, QString(), 0});
     DrawingState layered = base;
+    layered.guides.append({QStringLiteral("guide-v"), GuideType::Vertical, 22, QString(), 0});
+    Guide perspectiveGuide;
+    perspectiveGuide.id = QStringLiteral("guide-p");
+    perspectiveGuide.type = GuideType::Perspective;
+    perspectiveGuide.vanishingPointId = QStringLiteral("vp-1");
+    perspectiveGuide.angleRadians = 0.75;
+    layered.guides.append(perspectiveGuide);
     const QString paintId = layered.layers.addRaster(layered.canvasSize, QStringLiteral("Paint"));
     LayerContent *content = layered.layers.editableActiveContent(LayerCapability::RasterPainting);
     const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
@@ -373,14 +410,15 @@ void testMultiLayerProject(const QDir &out) {
     history.labels = QStringList{QStringLiteral("layer operation")};
     history.index = 1;
     QString error;
-    const QString path = out.filePath("multilayer-v9.drw");
+    const QString path = out.filePath("multilayer-v10.drw");
     require(Project::save(path, history, &error), qPrintable(error));
     DrawingHistory loaded;
     require(Project::load(path, &loaded, &error), qPrintable(error));
     require(loaded.states.size() == 2 && loaded.index == 1 && loaded.labels == history.labels &&
                 loaded.states[1].layers == layered.layers && loaded.states[0].layers == base.layers &&
+                loaded.states[1].guides == layered.guides && loaded.states[0].guides == base.guides &&
                 loaded.states[1].layers.activeLayerId() == paintId && pixels(loaded.states[1]) == pixels(layered),
-            "version 9 multilayer stack or history did not roundtrip");
+            "version 10 multilayer and guide history did not roundtrip");
 
     QZipReader archive(path);
     const QJsonObject metadata = QJsonDocument::fromJson(archive.fileData("project.json")).object();
@@ -388,9 +426,9 @@ void testMultiLayerProject(const QDir &out) {
     for (const auto &entry : archive.fileInfoList())
         if (entry.isFile && entry.filePath.startsWith("resources/"))
             ++resourceCount;
-    require(metadata.value("version").toInt() == 9 &&
+    require(metadata.value("version").toInt() == 10 && metadata.value("guides").toArray().size() == 3 &&
                 metadata.value("layers").toObject().value("entries").toArray().size() == 2 && resourceCount == 2,
-            "version 9 manifest or content resource deduplication is invalid");
+            "version 10 manifest, guides, or content resource deduplication is invalid");
 
     QJsonObject unknownMetadata = metadata;
     QJsonObject unknownLayers = unknownMetadata.value("layers").toObject();
@@ -2066,6 +2104,7 @@ int runSelfTests(const QString &outputDirectory) {
         });
         watchdog.start();
 
+        testGuideGeometry();
         testLayerArchitecture();
         testLayerPanel();
         testLayerAwareEraser();
