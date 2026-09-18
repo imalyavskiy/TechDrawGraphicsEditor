@@ -1,6 +1,6 @@
 # Технический рисунок / Technical Draw
 
-Растровый редактор на C++17 / Qt Widgets с опорными построениями для создания и разбора технического рисунка. Рабочий комплект: Qt 5.15.2 + MinGW 8.1.0, 64 бит.
+Растровый редактор на C++17 / Qt Widgets с опорными построениями для создания и разбора технического рисунка. Основной рабочий комплект: Qt 5.15.2 + MinGW 8.1.0, 64 бит; дополнительно поддерживается сборка x86.
 
 ## Инструменты разработчика
 
@@ -9,15 +9,15 @@
 - Git 2.x; проверялась версия 2.48.1;
 - CMake 3.16 или новее; проверялись версии 3.29.2 и 4.3.2;
 - Ninja 1.12 или совместимая версия; проверялась версия 1.12.0;
-- Qt 5.15.2 MinGW 64-bit с модулями Core, Gui, Widgets, LinguistTools и закрытыми заголовками Gui;
-- MinGW 8.1.0 из того же комплекта Qt;
+- Qt 5.15.2 MinGW 64-bit с модулями Core, Gui, Widgets, LinguistTools и закрытыми заголовками Gui; для дополнительной x86-сборки нужен соответствующий 32-битный комплект;
+- MinGW 8.1.0 той же разрядности и из того же комплекта Qt;
 - Windows PowerShell 5.1 и штатный IExpress для автоматических проверок и сборки EXE-инсталлятора. Отдельный `windeployqt` не требуется: проверенный набор библиотек разворачивает `build-release.bat`.
 
 Python 3 нужен для автоматического аудита локализуемых строк, который запускает `test.bat`. Pillow требуется только для повторной генерации PNG/ICO из `resources/techdraw.svg`.
 
 Доступность основных инструментов проверяется командами `git --version`, `cmake --version`, `ninja --version` и `powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion"`. Подробная проверка путей Qt/MinGW выполняется общим сценарием при каждом запуске сборочного батника.
 
-Скопируйте `scripts\windows\environment.example.bat` в неотслеживаемый файл `scripts\windows\environment.bat` и укажите локальные `QT_ROOT` и `MINGW_ROOT`. CMake и Ninja должны находиться в `PATH`. Командные файлы сами определяют корень репозитория, поэтому их можно вызывать из любого текущего каталога.
+Скопируйте `scripts\windows\environment.example.bat` в неотслеживаемый файл `scripts\windows\environment.bat` и укажите локальные `QT_ROOT_X64`, `MINGW_ROOT_X64`, а при необходимости x86 — также `QT_ROOT_X86`, `MINGW_ROOT_X86`. Старые `QT_ROOT` и `MINGW_ROOT` по-прежнему принимаются как x64. CMake и Ninja должны находиться в `PATH`.
 
 ## Сборка, проверка и запуск
 
@@ -28,7 +28,10 @@ scripts\windows\build-release.bat
 scripts\windows\test.bat
 scripts\windows\run-release.bat
 scripts\windows\build-installer.bat
+scripts\windows\test-installer.bat
 ```
+
+Дополнительный 32-битный комплект собирают одноимённые сценарии с суффиксом `-x86`: `build-debug-x86.bat`, `build-release-x86.bat`, `build-installer-x86.bat`, `run-debug-x86.bat`, `run-release-x86.bat`, `test-x86.bat` и `test-installer-x86.bat`.
 
 Результаты появляются в следующих каталогах:
 
@@ -36,9 +39,10 @@ scripts\windows\build-installer.bat
 - `build\cmake-release\TechDraw.exe` — Release до развёртывания библиотек;
 - `dist\TechDraw\` — переносимый Release-комплект, который нужно копировать целиком;
 - `build\offscreen-results` и `build\windows-results` — отчёты и снимки самопроверок;
-- `dist\installer\TechnicalDrawing-Setup.exe` — пользовательский EXE-инсталлятор.
+- `dist\TechDraw-x86\` — отдельный переносимый x86-комплект;
+- `dist\installer\TechnicalDrawing-Setup-x64.exe` и `TechnicalDrawing-Setup-x86.exe` — раздельные EXE-инсталляторы.
 
-Инсталлятор устанавливает приложение для текущего пользователя в `%LOCALAPPDATA%\Programs\Technical Drawing`, создаёт ярлыки и запись удаления. Подробный порядок первоначальной настройки, прямые команды CMake, диагностика и устройство всех сценариев описаны в [`docs/howto.md`](docs/howto.md). Архитектура приложения описана в [`docs/architecture.md`](docs/architecture.md), план — в [`docs/PLAN.md`](docs/PLAN.md), обязательные правила Git Flow — в [`AGENTS.md`](AGENTS.md).
+Инсталлятор предлагает русский или английский язык, установку для текущего либо всех пользователей, каталог, ярлыки и ассоциацию `.drw`; поддерживает восстановление, обновление, подтверждённый downgrade и безопасное удаление. Подробный порядок работы описан в [`docs/howto.md`](docs/howto.md), архитектура — в [`docs/architecture.md`](docs/architecture.md), план — в [`docs/PLAN.md`](docs/PLAN.md), правила Git Flow — в [`AGENTS.md`](AGENTS.md).
 
 Исходник значка хранится в `resources/techdraw.svg`. Команда `py tools/generate_icon.py --qt-root <Qt> --compiler-root <MinGW>` создаёт из него растровый ресурс Qt и многоразмерный значок Windows через временный CMake-проект. Во всём видимом интерфейсе используется полное название «Технический рисунок / Technical Draw». Имя `TechDraw` сохраняется только для исполняемого файла и внутренних технических идентификаторов.
 
