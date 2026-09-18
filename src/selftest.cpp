@@ -1,6 +1,7 @@
 #include "selftest.h"
 #include "autohidedockwidget.h"
 #include "layermodel.h"
+#include "layerpanel.h"
 #include "mainwindow.h"
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
@@ -126,6 +127,74 @@ void testLayerArchitecture() {
             "last document layer must not be removable");
 }
 
+void testLayerPanel() {
+    Canvas canvas;
+    LayerPanel panel(&canvas);
+    panel.resize(330, 420);
+    panel.show();
+    QApplication::processEvents();
+    auto *list = panel.findChild<QListWidget *>("layersList");
+    auto *add = panel.findChild<QToolButton *>("addLayer");
+    auto *remove = panel.findChild<QToolButton *>("removeLayer");
+    auto *duplicate = panel.findChild<QToolButton *>("duplicateLayer");
+    auto *up = panel.findChild<QToolButton *>("raiseLayer");
+    auto *down = panel.findChild<QToolButton *>("lowerLayer");
+    auto *opacity = panel.findChild<QSpinBox *>("layerOpacity");
+    auto *addTransparency = panel.findChild<QPushButton *>("addLayerTransparency");
+    require(list && add && remove && duplicate && up && down && opacity && addTransparency && list->count() == 1 &&
+                !remove->isEnabled(),
+            "layers panel or its initial layer is incomplete");
+    add->click();
+    QApplication::processEvents();
+    require(list->count() == 2 && canvas.state().layers.entries().size() == 2 && remove->isEnabled() &&
+                canvas.state().layers.activeEntry()->name == QStringLiteral("Слой 2"),
+            "layers panel did not add and select a raster layer");
+    QWidget *activeRow = list->itemWidget(list->currentItem());
+    auto *name = activeRow ? activeRow->findChild<QLineEdit *>("layerName") : nullptr;
+    auto *visible = activeRow ? activeRow->findChild<QToolButton *>("layerVisible") : nullptr;
+    auto *locked = activeRow ? activeRow->findChild<QToolButton *>("layerLocked") : nullptr;
+    require(name && visible && locked && !addTransparency->isVisible(),
+            "layer row controls or transparent-layer state are missing");
+    name->setText(QStringLiteral("Штриховка"));
+    QMetaObject::invokeMethod(name, "editingFinished");
+    require(canvas.state().layers.activeEntry()->name == QStringLiteral("Штриховка"),
+            "inline layer rename failed");
+    visible->click();
+    require(!canvas.state().layers.activeEntry()->visible, "layer visibility button failed");
+    activeRow = list->itemWidget(list->currentItem());
+    locked = activeRow ? activeRow->findChild<QToolButton *>("layerLocked") : nullptr;
+    require(locked, "layer lock button disappeared after refresh");
+    locked->click();
+    require(canvas.state().layers.activeEntry()->locked, "layer lock button failed");
+    opacity->setValue(63);
+    QMetaObject::invokeMethod(opacity, "editingFinished");
+    require(canvas.state().layers.activeEntry()->opacity == 63, "layer opacity control failed");
+    duplicate->click();
+    require(canvas.state().layers.entries().size() == 3 && down->isEnabled(), "layer duplication failed in panel");
+    down->click();
+    up->click();
+    remove->click();
+    require(canvas.state().layers.entries().size() == 2, "layer order or removal controls failed");
+    canvas.undoStack()->undo();
+    require(canvas.state().layers.entries().size() == 3, "layer removal must be undoable");
+
+    const QString backgroundId = canvas.state().layers.entries().first().id;
+    canvas.selectLayer(backgroundId);
+    QApplication::processEvents();
+    require(addTransparency->isVisible(), "opaque raster layer must offer adding transparency");
+    addTransparency->click();
+    QApplication::processEvents();
+    auto *alphaLocked = panel.findChild<QCheckBox *>("layerAlphaLocked");
+    const auto *raster = dynamic_cast<const RasterLayerContent *>(canvas.state().layers.activeEntry()->content.get());
+    require(alphaLocked && alphaLocked->isVisible() && raster && raster->transparencyAvailable &&
+                !raster->alphaLocked,
+            "adding layer transparency failed");
+    alphaLocked->click();
+    raster = dynamic_cast<const RasterLayerContent *>(canvas.state().layers.activeEntry()->content.get());
+    require(raster && raster->alphaLocked, "alpha lock control failed");
+    panel.close();
+}
+
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
@@ -167,6 +236,8 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
     auto *mainToolbar = window.findChild<QToolBar *>("mainToolbar");
     auto *toolsToolbar = window.findChild<QToolBar *>("toolsToolbar");
     auto *toolsDock = window.findChild<AutoHideDockWidget *>("toolsDock");
+    auto *layersDock = window.findChild<AutoHideDockWidget *>("layersDock");
+    auto *layersPanel = window.findChild<LayerPanel *>("layerPanel");
     auto *fileMenu = window.findChild<QMenu *>("fileMenu");
     auto *editMenu = window.findChild<QMenu *>("editMenu");
     auto *viewMenu = window.findChild<QMenu *>("viewMenu");
@@ -177,8 +248,11 @@ void testMainWindowUi(MainWindow &window, const QDir &out) {
             "toolbars must show icons only and drawing tools must be horizontal");
     auto *mainToolbarToggle = window.findChild<QAction *>("mainToolbarToggle");
     auto *toolsToolbarToggle = window.findChild<QAction *>("toolsToolbarToggle");
-    require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle &&
-                viewMenu->actions().contains(mainToolbarToggle) && viewMenu->actions().contains(toolsToolbarToggle),
+    auto *layersPanelToggle = window.findChild<QAction *>("layersPanelToggle");
+    require(fileMenu && editMenu && viewMenu && toolsMenu && mainToolbarToggle && toolsToolbarToggle && layersDock &&
+                layersPanel && layersPanelToggle && viewMenu->actions().contains(mainToolbarToggle) &&
+                viewMenu->actions().contains(toolsToolbarToggle) && viewMenu->actions().contains(layersPanelToggle) &&
+                window.dockWidgetArea(layersDock) == Qt::RightDockWidgetArea,
             "menus or toolbar visibility actions are missing");
     mainToolbarToggle->trigger();
     QApplication::processEvents();
@@ -1063,7 +1137,8 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
     require(canvas->state().vanishingPoints[0].position == QPointF(550, 240),
             "perspective point must snap near the horizon");
     drag(canvas, QPointF(100, 240), QPointF(100, 300));
-    require(canvas->state().horizonY == 300 && canvas->state().vanishingPoints[0].position == QPointF(550, 300),
+    require(std::abs(canvas->state().horizonY - 300) < 0.001 &&
+                QLineF(canvas->state().vanishingPoints[0].position, QPointF(550, 300)).length() < 0.001,
             "moving the horizon must carry a snapped vanishing point vertically");
     QApplication::sendEvent(canvas, &leave);
     QImage gridView(canvas->size(), QImage::Format_ARGB32_Premultiplied);
@@ -1598,6 +1673,7 @@ int runSelfTests(const QString &outputDirectory) {
         watchdog.start();
 
         testLayerArchitecture();
+        testLayerPanel();
 
         MainWindow window;
         testMainWindowUi(window, out);

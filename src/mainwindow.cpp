@@ -2,6 +2,7 @@
 #include "autohidedockwidget.h"
 #include "rolloutsection.h"
 #include "drawingtoolsettings.h"
+#include "layerpanel.h"
 #include "toolpropertiespanel.h"
 #include <QtWidgets>
 
@@ -234,6 +235,7 @@ MainWindow::MainWindow(QWidget *parent)
     initializeWindow();
     setupMenusAndToolbars();
     setupPerspectivePanel();
+    setupLayersPanel();
     connectPerspectiveControls();
     setupViewAndStatusBar();
 }
@@ -654,6 +656,16 @@ void MainWindow::setupPerspectivePanel() {
     addDockWidget(Qt::RightDockWidgetArea, perspectiveDock_);
 }
 
+void MainWindow::setupLayersPanel() {
+    layersDock_ = new AutoHideDockWidget(tr("Слои"), Qt::RightDockWidgetArea, "layers", true, 330, this);
+    layersDock_->setObjectName("layersDock");
+    layerPanel_ = new LayerPanel(canvas_, layersDock_);
+    layersDock_->setPanelWidget(layerPanel_);
+    addDockWidget(Qt::RightDockWidgetArea, layersDock_);
+    splitDockWidget(perspectiveDock_, layersDock_, Qt::Vertical);
+    resizeDocks({perspectiveDock_, layersDock_}, {440, 260}, Qt::Vertical);
+}
+
 void MainWindow::connectPerspectiveControls() {
     auto *mainToolbarToggle = mainToolbar_->toggleViewAction();
     mainToolbarToggle->setObjectName("mainToolbarToggle");
@@ -667,6 +679,10 @@ void MainWindow::connectPerspectiveControls() {
     perspectivePanelToggle->setObjectName("perspectivePanelToggle");
     perspectivePanelToggle->setText(tr("Панель перспективы"));
     viewMenu_->addAction(perspectivePanelToggle);
+    auto *layersPanelToggle = layersDock_->visibilityAction();
+    layersPanelToggle->setObjectName("layersPanelToggle");
+    layersPanelToggle->setText(tr("Панель слоёв"));
+    viewMenu_->addAction(layersPanelToggle);
     viewMenu_->addSeparator();
     connect(gridVisible_, &QCheckBox::toggled, canvas_, &Canvas::setGridVisible);
     connect(axesVisible_, &QCheckBox::toggled, this, [this](bool value) {

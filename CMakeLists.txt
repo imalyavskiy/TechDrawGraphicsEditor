@@ -59,6 +59,8 @@ add_executable(TechDraw WIN32
     src/drawingtoolsettings.h
     src/layermodel.cpp
     src/layermodel.h
+    src/layerpanel.cpp
+    src/layerpanel.h
     src/main.cpp
     src/mainwindow.cpp
     src/mainwindow.h

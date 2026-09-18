@@ -9,6 +9,7 @@ SOURCE_FILES = (
     "src/canvas.cpp",
     "src/drawingtoolsettings.cpp",
     "src/layermodel.cpp",
+    "src/layerpanel.cpp",
     "src/main.cpp",
     "src/mainwindow.cpp",
     "src/project.cpp",
