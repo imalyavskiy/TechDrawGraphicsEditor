@@ -196,6 +196,40 @@ void testLayerPanel() {
     panel.close();
 }
 
+void testLayerAwareEraser() {
+    Canvas canvas;
+    canvas.resize(700, 500);
+    canvas.fit();
+    canvas.setTool(Canvas::Eraser);
+    canvas.setBack(QColor("#c84b73"));
+    DrawingToolSettings settings;
+    settings.width = 11;
+    settings.hardness = 100;
+    settings.strength = 100;
+    canvas.setStrokeSettings(settings);
+    const QString layerId = canvas.state().layers.activeLayerId();
+    click(&canvas, QPointF(100, 100));
+    require(pixels(canvas.state()).pixelColor(100, 100) == QColor("#c84b73"),
+            "eraser must use Back on a layer without transparency");
+    canvas.addLayerTransparency(layerId);
+    click(&canvas, QPointF(130, 100));
+    require(pixels(canvas.state()).pixelColor(130, 100).alpha() == 0,
+            "eraser must remove alpha on an alpha-editable layer");
+    canvas.setLayerAlphaLocked(layerId, true);
+    click(&canvas, QPointF(160, 100));
+    require(pixels(canvas.state()).pixelColor(160, 100) == QColor("#c84b73"),
+            "eraser must use Back when alpha is locked");
+    canvas.setLayerLocked(layerId, true);
+    const QImage beforeLocked = pixels(canvas.state());
+    click(&canvas, QPointF(190, 100));
+    require(pixels(canvas.state()) == beforeLocked, "locked active layer must reject painting");
+    canvas.setLayerLocked(layerId, false);
+    canvas.setLayerVisible(layerId, false);
+    const QImage beforeHidden = pixels(canvas.state());
+    click(&canvas, QPointF(220, 100));
+    require(pixels(canvas.state()) == beforeHidden, "hidden active layer must reject painting");
+}
+
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
     DrawingState initial;
@@ -1431,6 +1465,19 @@ void testToolWidthPersistence() {
                 opacityControl->isHidden() && !hardnessControl->isHidden() && !strengthControl->isHidden() &&
                 eraserMode->text() == QStringLiteral("Цветом Back"),
             "eraser must expose hardness and strength and report the current Back-color behavior");
+    const QString targetLayerId = widthsWindow.canvas()->state().layers.activeLayerId();
+    widthsWindow.canvas()->addLayerTransparency(targetLayerId);
+    QApplication::processEvents();
+    require(eraserMode->text() == QStringLiteral("До прозрачности"),
+            "eraser panel must report alpha removal on an alpha-editable layer");
+    widthsWindow.canvas()->setLayerAlphaLocked(targetLayerId, true);
+    QApplication::processEvents();
+    require(eraserMode->text() == QStringLiteral("Цветом Back"),
+            "eraser panel must report Back behavior when alpha is locked");
+    widthsWindow.canvas()->setLayerLocked(targetLayerId, true);
+    QApplication::processEvents();
+    require(!widthControl->isEnabled(), "drawing properties must be disabled for a locked active layer");
+    widthsWindow.canvas()->setLayerLocked(targetLayerId, false);
     widthControl->setValue(17);
     hardnessControl->setValue(25);
     spacingControl->setValue(30);
@@ -1450,6 +1497,7 @@ void testToolWidthPersistence() {
     panAction->trigger();
     require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
             "drawing controls must be disabled for a non-paint mode");
+    widthsWindow.canvas()->undoStack()->setClean();
     widthsWindow.close();
     MainWindow persistedWidthsWindow;
     widthControl = persistedWidthsWindow.findChild<QSpinBox *>("strokeWidth");
@@ -1675,6 +1723,7 @@ int runSelfTests(const QString &outputDirectory) {
 
         testLayerArchitecture();
         testLayerPanel();
+        testLayerAwareEraser();
 
         MainWindow window;
         testMainWindowUi(window, out);

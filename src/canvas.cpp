@@ -985,13 +985,19 @@ void Canvas::stamp(QPointF center) {
     if (!image)
         return;
     QPainter painter(image);
+    const auto *raster = dynamic_cast<const RasterLayerContent *>(content);
+    const bool eraseToTransparency = tool_ == Eraser && raster && raster->transparencyAvailable &&
+                                     !raster->alphaLocked;
+    if (eraseToTransparency)
+        painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
     const bool softEdge = tool_ != Pencil && strokeSettings_.hardness < 100;
     painter.setRenderHint(QPainter::Antialiasing, tool_ != Pencil);
     painter.setPen(Qt::NoPen);
-    QColor color = tool_ == Eraser ? back_ : front_;
+    QColor color = eraseToTransparency ? QColor(Qt::black) : tool_ == Eraser ? back_ : front_;
     const int amount = tool_ == Eraser ? strokeSettings_.strength : strokeSettings_.opacity;
     color.setAlphaF(amount / 100.0);
     const double radius = strokeSettings_.width / 2.0;
+    center -= entry->offset;
     if (softEdge) {
         QRadialGradient gradient(center, radius);
         const double hardStop = qBound(0.0, strokeSettings_.hardness / 100.0, 0.999);

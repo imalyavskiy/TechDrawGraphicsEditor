@@ -979,6 +979,28 @@ void MainWindow::updateState() {
     setWindowModified(!canvas_->undoStack()->isClean());
     sizeLabel_->setText(
         tr("%1 × %2 px").arg(canvas_->state().canvasSize.width()).arg(canvas_->state().canvasSize.height()));
+    DrawingTargetContext target;
+    const LayerEntry *activeLayer = canvas_->state().layers.activeEntry();
+    const LayerType *activeType = activeLayer ? LayerTypeRegistry::instance().type(activeLayer->typeId) : nullptr;
+    const auto *activeRaster = activeLayer && activeLayer->content
+                                   ? dynamic_cast<const RasterLayerContent *>(activeLayer->content.get())
+                                   : nullptr;
+    target.editable = activeLayer && activeType &&
+                      activeType->capabilities.testFlag(LayerCapability::RasterPainting) && activeLayer->visible &&
+                      !activeLayer->locked;
+    target.supportsTransparency =
+        activeType && activeType->capabilities.testFlag(LayerCapability::Transparency) && activeRaster &&
+        activeRaster->transparencyAvailable;
+    target.alphaLocked = !activeRaster || activeRaster->alphaLocked;
+    if (!activeLayer)
+        target.unavailableReason = tr("Нет активного слоя");
+    else if (!activeType || !activeType->capabilities.testFlag(LayerCapability::RasterPainting))
+        target.unavailableReason = tr("Активный слой не поддерживает растровое рисование");
+    else if (!activeLayer->visible)
+        target.unavailableReason = tr("Активный слой скрыт");
+    else if (activeLayer->locked)
+        target.unavailableReason = tr("Активный слой зафиксирован");
+    toolSettings_->setTargetContext(target);
     // Обновление представления модели не должно повторно вызвать обработчики и создать новую команду истории.
     QSignalBlocker a(gridVisible_), b(rayStep_), c(rayGap_), d(rayStartOpacity_), e(rayEndOpacity_), f(rayFadeLength_),
         g(horizonOpacity_), h(horizonWidth_), i(vanishingPointsList_), j(selectedPointVisible_), k(horizonPosition_),
