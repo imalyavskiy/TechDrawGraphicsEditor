@@ -22,17 +22,29 @@ public:
     QUndoStack *undoStack() {
         return &undo_;
     }
+    /// Выбирает слой для рисования и панели свойств без создания команды истории.
     void selectLayer(const QString &id);
+    /// Создаёт прозрачный растровый слой над активным.
     void addRasterLayer();
+    /// Удаляет активный слой, сохраняя в документе хотя бы один слой.
     void removeActiveLayer();
+    /// Дублирует активный слой над исходным.
     void duplicateActiveLayer();
+    /// Перемещает активный слой на один уровень вверх в композиции.
     void moveActiveLayerUp();
+    /// Перемещает активный слой на один уровень вниз в композиции.
     void moveActiveLayerDown();
+    /// Переименовывает указанный слой.
     void renameLayer(const QString &id, const QString &name);
+    /// Показывает или скрывает указанный слой.
     void setLayerVisible(const QString &id, bool visible);
+    /// Фиксирует или освобождает указанный слой для редактирования.
     void setLayerLocked(const QString &id, bool locked);
+    /// Задаёт непрозрачность указанного слоя в процентах.
     void setLayerOpacity(const QString &id, int opacity);
+    /// Добавляет растровому слою доступную прозрачность.
     void addLayerTransparency(const QString &id);
+    /// Фиксирует или разрешает изменение альфа-канала растрового слоя.
     void setLayerAlphaLocked(const QString &id, bool locked);
     /// Заменяет документ одним снимком и при необходимости отмечает историю чистой.
     void setDocument(const DrawingState &state, bool clean = true);
@@ -166,6 +178,7 @@ signals:
     void positionChanged(QPointF position);
     /// Сообщает об изменении выбора точки схода.
     void selectedPointChanged(int index);
+    /// Сообщает панели и инструментам об изменении структуры, выбора или свойств слоёв.
     void layersChanged();
 
 protected:
@@ -251,5 +264,6 @@ private:
     QRectF viewportRect() const;
     /// Рисует четыре линейки и проекции текущего положения курсора.
     void drawRulers(QPainter &painter);
+    /// Находит изменяемую запись слоя по идентификатору.
     LayerEntry *editableLayerEntry(const QString &id);
 };

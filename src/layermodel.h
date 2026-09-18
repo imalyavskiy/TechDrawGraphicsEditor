@@ -62,9 +62,13 @@ public:
                                    const QString &name,
                                    bool transparencyAvailable,
                                    bool alphaLocked);
+    /// Создаёт новый прозрачный растровый слой над текущим активным слоем и выбирает его.
     QString addRaster(QSize canvasSize, const QString &name);
+    /// Дублирует активную запись с новым идентификатором, разделяя содержимое до первой записи.
     QString duplicateActive(const QString &name);
+    /// Удаляет активную запись, если в документе остаётся хотя бы один слой.
     bool removeActive();
+    /// Перемещает активную запись на один шаг в порядке композиции.
     bool moveActive(int offset);
     /// Возвращает неизменяемую последовательность слоёв в порядке композиции.
     const QVector<LayerEntry> &entries() const;
@@ -78,6 +82,7 @@ public:
     const LayerEntry *activeEntry() const;
     /// Находит активную запись для изменения её общих свойств.
     LayerEntry *activeEntry();
+    /// Находит запись по устойчивому идентификатору без изменения стека.
     const LayerEntry *entry(const QString &id) const;
     /// Проверяет доступность операции и отделяет содержимое от других снимков перед изменением.
     LayerContent *editableActiveContent(LayerCapability capability);
