@@ -96,8 +96,8 @@ function Expand-TechDrawTemplate {
 $installerSource = Join-Path $projectRootFull 'installer'
 Expand-TechDrawTemplate (Join-Path $installerSource 'config\config.xml.in') (Join-Path $configDirectory 'config.xml')
 Copy-Item -LiteralPath (Join-Path $installerSource 'config\controller.qs') -Destination $configDirectory
+Copy-Item -LiteralPath (Join-Path $installerSource 'config\wizard-banner.png') -Destination $configDirectory
 Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.ico') -Destination $configDirectory
-Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.png') -Destination $configDirectory
 Copy-Item -LiteralPath (Join-Path $projectRootFull 'resources\techdraw.png') -Destination (Join-Path $configDirectory 'window-icon.png')
 
 $metaSource = Join-Path $installerSource "packages\$($product.componentId)\meta"

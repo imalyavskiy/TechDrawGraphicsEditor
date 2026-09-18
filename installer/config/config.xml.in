@@ -6,7 +6,7 @@
     <Publisher>@PRODUCT_PUBLISHER@</Publisher>
     <InstallerApplicationIcon>techdraw</InstallerApplicationIcon>
     <InstallerWindowIcon>window-icon.png</InstallerWindowIcon>
-    <Logo>techdraw.png</Logo>
+    <Banner>wizard-banner.png</Banner>
     <WizardStyle>Modern</WizardStyle>
     <WizardDefaultWidth>660</WizardDefaultWidth>
     <WizardDefaultHeight>490</WizardDefaultHeight>
