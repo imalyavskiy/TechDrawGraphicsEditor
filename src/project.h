@@ -5,10 +5,42 @@
 #include <QStringList>
 #include <QVector>
 
+namespace PerspectiveTarget {
+/// Возвращает тип сохраняемой привязки к элементу перспективной оснастки.
+inline const QString &constructionType() {
+    static const QString value = QStringLiteral("construction");
+    return value;
+}
+/// Возвращает устойчивый идентификатор линии горизонта.
+inline const QString &horizon() {
+    static const QString value = QStringLiteral("horizon");
+    return value;
+}
+/// Возвращает устойчивый идентификатор главной вертикали.
+inline const QString &vertical() {
+    static const QString value = QStringLiteral("vertical");
+    return value;
+}
+/// Возвращает составной идентификатор пересечения обеих осей для элементов интерфейса.
+inline const QString &intersection() {
+    static const QString value = QStringLiteral("intersection");
+    return value;
+}
+} // namespace PerspectiveTarget
+
+/// Описывает одну точку схода, её геометрию, привязки и параметры отображения.
 struct VanishingPoint {
+    /// Создаёт пустую точку для последующего заполнения при чтении проекта.
     VanishingPoint() = default;
-    VanishingPoint(const QString &pointId,QPointF pointPosition,const QString &type=QString(),const QString &targetId=QString())
-        : id(pointId),position(pointPosition) { if(type==QStringLiteral("construction")&&!targetId.isEmpty())attachmentTargetIds.append(targetId); }
+    /// Создаёт точку и при необходимости добавляет одну совместимую привязку старого формата.
+    VanishingPoint(const QString &pointId,
+                   QPointF pointPosition,
+                   const QString &type = QString(),
+                   const QString &targetId = QString())
+        : id(pointId), position(pointPosition) {
+        if (type == PerspectiveTarget::constructionType() && !targetId.isEmpty())
+            attachmentTargetIds.append(targetId);
+    }
     QString id;
     QPointF position;
     QStringList attachmentTargetIds;
@@ -17,16 +49,23 @@ struct VanishingPoint {
     bool locked = false;
     QString name;
 
-    bool isAttachedTo(const QString &targetId) const { return attachmentTargetIds.contains(targetId); }
+    /// Проверяет наличие привязки к указанной оси без учёта других привязок точки.
+    bool isAttachedTo(const QString &targetId) const {
+        return attachmentTargetIds.contains(targetId);
+    }
 
+    /// Сравнивает сохраняемую геометрию и текущие параметры отображения двух точек.
     bool operator==(const VanishingPoint &other) const {
-        return id == other.id && position == other.position &&
-               attachmentTargetIds == other.attachmentTargetIds &&
+        return id == other.id && position == other.position && attachmentTargetIds == other.attachmentTargetIds &&
                color == other.color && visible == other.visible && locked == other.locked && name == other.name;
     }
-    bool operator!=(const VanishingPoint &other) const { return !(*this == other); }
+    /// Проверяет отличие хотя бы одного свойства точки.
+    bool operator!=(const VanishingPoint &other) const {
+        return !(*this == other);
+    }
 };
 
+/// Содержит полный снимок документа: растр, геометрию перспективы и её текущее оформление.
 struct DrawingState {
     QImage image;
     QVector<VanishingPoint> vanishingPoints;
@@ -57,6 +96,7 @@ struct DrawingState {
     bool verticalSymmetry = false;
 };
 
+/// Представляет сериализуемую историю снимков и позицию активного состояния.
 struct DrawingHistory {
     QVector<DrawingState> states;
     QStringList labels;
@@ -64,11 +104,20 @@ struct DrawingHistory {
 };
 
 namespace Project {
+inline constexpr int CurrentFormatVersion = 8;
+
+/// Проверяет размер растра по ограничениям стороны и общего числа пикселей.
 bool validSize(QSize size);
+/// Сохраняет один снимок документа в контейнер `.drw` без дополнительной истории.
 bool save(const QString &path, const DrawingState &state, QString *error);
+/// Сохраняет историю документа в атомарно заменяемый контейнер `.drw`.
 bool save(const QString &path, const DrawingHistory &history, QString *error);
+/// Загружает только активный снимок из `.drw`, включая проекты прежних версий.
 bool load(const QString &path, DrawingState *state, QString *error);
+/// Загружает состояние и доступную историю Undo/Redo из `.drw`.
 bool load(const QString &path, DrawingHistory *history, QString *error);
+/// Читает PNG с проверкой установленных ограничений размера.
 bool loadPng(const QString &path, QImage *image, QString *error);
+/// Атомарно записывает только растр документа в PNG без служебной оснастки.
 bool exportPng(const QString &path, const QImage &image, QString *error);
-}
+} // namespace Project
