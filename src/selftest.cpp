@@ -66,26 +66,34 @@ QImage *editablePixels(DrawingState *state) {
     return content && type && type->rasterEditor ? type->rasterEditor(*content) : nullptr;
 }
 
+/// Возвращает устойчивый идентификатор нерастрового типа, существующего только в самопроверке.
 QString testShapeTypeId() {
     return QStringLiteral("selftest-shape");
 }
 
+/// Хранит прямоугольник и цвет без QImage для доказательства полиморфной модели содержимого.
 class TestShapeContent final : public LayerContent {
 public:
     QRectF rect;
     QColor color;
 
+    /// Возвращает тестовый строковый тип.
     QString typeId() const override { return testShapeTypeId(); }
+    /// Создаёт отделённую копию параметрического содержимого.
     std::shared_ptr<LayerContent> clone() const override { return std::make_shared<TestShapeContent>(*this); }
+    /// Сравнивает геометрию и цвет двух тестовых фигур.
     bool equals(const LayerContent &other) const override {
         const auto *shape = dynamic_cast<const TestShapeContent *>(&other);
         return shape && shape->rect == rect && shape->color == color;
     }
+    /// Возвращает постоянную оценку памяти небольшого параметрического объекта.
     qint64 estimatedBytes() const override { return sizeof(TestShapeContent); }
 };
 
+/// Рисует параметрическую тестовую фигуру напрямую через общий QPainter-конвейер.
 class TestShapeRenderer final : public LayerRenderer {
 public:
+    /// Применяет общий контекст, свойства записи и выводит прямоугольник без промежуточного растра.
     void render(QPainter &painter,
                 const LayerEntry &entry,
                 const LayerContent &content,
@@ -105,8 +113,10 @@ public:
     }
 };
 
+/// Сохраняет тестовую фигуру только в JSON, подтверждая необязательность PNG для типа слоя.
 class TestShapeCodec final : public LayerCodec {
 public:
+    /// Записывает геометрию и цвет в манифест без двоичных ресурсов.
     bool encode(const LayerContent &content,
                 const QString &resourceRoot,
                 QJsonObject *manifest,
@@ -128,6 +138,7 @@ public:
         return true;
     }
 
+    /// Проверяет JSON и восстанавливает параметрическое содержимое.
     std::shared_ptr<LayerContent> decode(const QJsonObject &manifest,
                                          const LayerResourceReader &resourceReader,
                                          QSize canvasSize,
@@ -390,6 +401,7 @@ void testMultiLayerProject(const QDir &out) {
             "unknown layer type must be rejected without flattening");
 }
 
+/// Доказывает общий рендеринг, миниатюру и сохранение зарегистрированного нерастрового типа.
 void testRegisteredNonRasterLayer(const QDir &out) {
     LayerType shapeType;
     shapeType.id = testShapeTypeId();
