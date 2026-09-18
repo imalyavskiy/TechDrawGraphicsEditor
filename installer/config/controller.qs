@@ -16,3 +16,25 @@ Controller.prototype.lockWindowSize = function()
 {
     gui.setFixedSize(gui.width, gui.height);
 };
+
+Controller.prototype.clearBannerCaption = function()
+{
+    var page = gui.currentPageWidget();
+    if (page)
+        page.title = " ";
+};
+
+Controller.prototype.ReadyForInstallationPageCallback = function()
+{
+    this.clearBannerCaption();
+};
+
+Controller.prototype.PerformInstallationPageCallback = function()
+{
+    this.clearBannerCaption();
+};
+
+Controller.prototype.FinishedPageCallback = function()
+{
+    this.clearBannerCaption();
+};
