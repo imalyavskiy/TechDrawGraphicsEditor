@@ -98,7 +98,7 @@ scripts\windows\build-debug.bat
 scripts\windows\build-release.bat
 ```
 
-Сначала `configure-build.bat Release` собирает `build\cmake-release\TechDraw.exe`. Затем сценарий заново создаёт `dist\TechDraw`, копирует EXE, русский каталог `translations\techdraw_ru.qm`, Qt5Core/Gui/Widgets, библиотеки среды MinGW, плагины `qwindows`, `qoffscreen`, стиль Windows Vista и `qt.conf`.
+Сначала `configure-build.bat Release` собирает `build\cmake-release\TechDraw.exe`. Затем сценарий заново создаёт `dist\TechDraw`, копирует EXE, русский каталог `translations\techdraw_ru.qm`, Qt5Core/Gui/Widgets, библиотеки среды MinGW, плагины `qwindows`, `qoffscreen`, `qjpeg`, стиль Windows Vista и `qt.conf`. `qjpeg` необходим для экспорта JPEG; PNG и BMP поддерживаются базовой сборкой Qt.
 
 Результаты:
 
