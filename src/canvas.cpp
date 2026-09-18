@@ -96,8 +96,10 @@ Canvas::Canvas(QWidget *parent) : QWidget(parent) {
     initial.image.fill(Qt::white);
     initial.horizonY = 240;
     initial.verticalX = 500;
-    initial.vanishingPoints.append(
-        {QStringLiteral("vp-1"), QPointF(650, 240), QStringLiteral("construction"), QStringLiteral("horizon")});
+    initial.vanishingPoints.append({QStringLiteral("vp-1"),
+                                    QPointF(650, 240),
+                                    PerspectiveTarget::constructionType(),
+                                    PerspectiveTarget::horizon()});
     initial.vanishingPoints.last().name = tr("Точка схода 1");
     setDocument(initial);
 }
@@ -291,11 +293,11 @@ void Canvas::setHorizonY(double imageY) {
     const double delta = imageY - state_.horizonY;
     state_.horizonY = imageY;
     for (auto &point : state_.vanishingPoints)
-        if (point.isAttachedTo(QStringLiteral("horizon")))
+        if (point.isAttachedTo(PerspectiveTarget::horizon()))
             point.position.setY(imageY);
-    if (state_.verticalSymmetry && attachedPointIndices(QStringLiteral("vertical")).size() >= 2)
+    if (state_.verticalSymmetry && attachedPointIndices(PerspectiveTarget::vertical()).size() >= 2)
         for (auto &point : state_.vanishingPoints)
-            if (point.attachmentTargetIds == QStringList{QStringLiteral("vertical")})
+            if (point.attachmentTargetIds == QStringList{PerspectiveTarget::vertical()})
                 point.position.ry() += delta;
     commit(before, tr("положение горизонта"));
     emit stateChanged();
@@ -347,11 +349,11 @@ void Canvas::setVerticalX(double imageX) {
     const double delta = imageX - state_.verticalX;
     state_.verticalX = imageX;
     for (auto &point : state_.vanishingPoints)
-        if (point.isAttachedTo(QStringLiteral("vertical")))
+        if (point.isAttachedTo(PerspectiveTarget::vertical()))
             point.position.setX(imageX);
-    if (state_.horizonSymmetry && attachedPointIndices(QStringLiteral("horizon")).size() >= 2)
+    if (state_.horizonSymmetry && attachedPointIndices(PerspectiveTarget::horizon()).size() >= 2)
         for (auto &point : state_.vanishingPoints)
-            if (point.attachmentTargetIds == QStringList{QStringLiteral("horizon")})
+            if (point.attachmentTargetIds == QStringList{PerspectiveTarget::horizon()})
                 point.position.rx() += delta;
     commit(before, tr("положение главной вертикали"));
     emit stateChanged();
@@ -490,9 +492,9 @@ void Canvas::setSelectedPointPosition(QPointF position) {
         std::abs(position.y()) > 1000000)
         return;
     auto &point = state_.vanishingPoints[selectedPointIndex_];
-    if (point.isAttachedTo(QStringLiteral("horizon")))
+    if (point.isAttachedTo(PerspectiveTarget::horizon()))
         position.setY(state_.horizonY);
-    if (point.isAttachedTo(QStringLiteral("vertical")))
+    if (point.isAttachedTo(PerspectiveTarget::vertical()))
         position.setX(state_.verticalX);
     if (point.position == position)
         return;
@@ -511,13 +513,13 @@ int Canvas::symmetricPartnerIndex(int movedIndex) const {
     if (moved.attachmentTargetIds.size() != 1)
         return -1;
     const QString target = moved.attachmentTargetIds.first();
-    if ((target == QStringLiteral("horizon") && !state_.horizonSymmetry) ||
-        (target == QStringLiteral("vertical") && !state_.verticalSymmetry))
+    if ((target == PerspectiveTarget::horizon() && !state_.horizonSymmetry) ||
+        (target == PerspectiveTarget::vertical() && !state_.verticalSymmetry))
         return -1;
     const auto points = attachedPointIndices(target);
     if (points.size() < 2)
         return -1;
-    const QPointF reflected = target == QStringLiteral("horizon")
+    const QPointF reflected = target == PerspectiveTarget::horizon()
                                   ? QPointF(2 * state_.verticalX - moved.position.x(), state_.horizonY)
                                   : QPointF(state_.verticalX, 2 * state_.horizonY - moved.position.y());
     int nearest = -1;
@@ -545,9 +547,9 @@ void Canvas::updateSymmetricPoint(int movedIndex, int partnerIndex) {
     auto &other = state_.vanishingPoints[partnerIndex];
     if (moved.attachmentTargetIds.size() != 1 || moved.attachmentTargetIds != other.attachmentTargetIds)
         return;
-    if (moved.isAttachedTo(QStringLiteral("horizon")) && state_.horizonSymmetry)
+    if (moved.isAttachedTo(PerspectiveTarget::horizon()) && state_.horizonSymmetry)
         other.position = QPointF(2 * state_.verticalX - moved.position.x(), state_.horizonY);
-    else if (moved.isAttachedTo(QStringLiteral("vertical")) && state_.verticalSymmetry)
+    else if (moved.isAttachedTo(PerspectiveTarget::vertical()) && state_.verticalSymmetry)
         other.position = QPointF(state_.verticalX, 2 * state_.horizonY - moved.position.y());
 }
 QVector<int> Canvas::attachedPointIndices(const QString &targetId) const {
@@ -562,27 +564,28 @@ QVector<int> Canvas::attachedPointIndices(const QString &targetId) const {
 void Canvas::setSelectedPointAttachedToHorizon(bool attached) {
     if (selectedPointIndex_ < 0 || selectedPointIndex_ >= state_.vanishingPoints.size())
         return;
-    const bool onVertical = state_.vanishingPoints[selectedPointIndex_].isAttachedTo(QStringLiteral("vertical"));
-    setSelectedPointAttachment(attached ? (onVertical ? QStringLiteral("intersection") : QStringLiteral("horizon"))
-                                        : (onVertical ? QStringLiteral("vertical") : QString()));
+    const bool onVertical = state_.vanishingPoints[selectedPointIndex_].isAttachedTo(PerspectiveTarget::vertical());
+    setSelectedPointAttachment(attached
+                                   ? (onVertical ? PerspectiveTarget::intersection() : PerspectiveTarget::horizon())
+                                   : (onVertical ? PerspectiveTarget::vertical() : QString()));
 }
 void Canvas::setSelectedPointAttachment(const QString &targetId) {
     if (selectedPointIndex_ < 0 || selectedPointIndex_ >= state_.vanishingPoints.size())
         return;
     auto &point = state_.vanishingPoints[selectedPointIndex_];
     QStringList targets;
-    if (targetId == QStringLiteral("horizon") || targetId == QStringLiteral("vertical"))
+    if (targetId == PerspectiveTarget::horizon() || targetId == PerspectiveTarget::vertical())
         targets.append(targetId);
-    else if (targetId == QStringLiteral("intersection"))
-        targets = QStringList{QStringLiteral("horizon"), QStringLiteral("vertical")};
+    else if (targetId == PerspectiveTarget::intersection())
+        targets = QStringList{PerspectiveTarget::horizon(), PerspectiveTarget::vertical()};
     if (point.attachmentTargetIds == targets)
         return;
     finish();
     DrawingState before = state_;
     point.attachmentTargetIds = targets;
-    if (point.isAttachedTo(QStringLiteral("horizon")))
+    if (point.isAttachedTo(PerspectiveTarget::horizon()))
         point.position.setY(state_.horizonY);
-    if (point.isAttachedTo(QStringLiteral("vertical")))
+    if (point.isAttachedTo(PerspectiveTarget::vertical()))
         point.position.setX(state_.verticalX);
     updateSymmetricPoint(selectedPointIndex_);
     commit(before, tr("привязку точки схода"));
@@ -984,13 +987,13 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
                      verticalDistance = std::abs(e->localPos().x() - toView(QPointF(state_.verticalX, 0)).x());
         QStringList targets;
         if (horizonDistance <= 10)
-            targets.append(QStringLiteral("horizon"));
+            targets.append(PerspectiveTarget::horizon());
         if (verticalDistance <= 10)
-            targets.append(QStringLiteral("vertical"));
+            targets.append(PerspectiveTarget::vertical());
         vanishing.attachmentTargetIds = targets;
-        if (vanishing.isAttachedTo(QStringLiteral("horizon")))
+        if (vanishing.isAttachedTo(PerspectiveTarget::horizon()))
             point.setY(state_.horizonY);
-        if (vanishing.isAttachedTo(QStringLiteral("vertical")))
+        if (vanishing.isAttachedTo(PerspectiveTarget::vertical()))
             point.setX(state_.verticalX);
         vanishing.position = point;
         updateSymmetricPoint(movingPointIndex_, movingSymmetricPointIndex_);
@@ -999,22 +1002,22 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         const double nextY = toImage(e->localPos()).y(), delta = nextY - state_.horizonY;
         state_.horizonY = nextY;
         for (auto &point : state_.vanishingPoints)
-            if (point.isAttachedTo(QStringLiteral("horizon")))
+            if (point.isAttachedTo(PerspectiveTarget::horizon()))
                 point.position.setY(nextY);
-        if (state_.verticalSymmetry && attachedPointIndices(QStringLiteral("vertical")).size() >= 2)
+        if (state_.verticalSymmetry && attachedPointIndices(PerspectiveTarget::vertical()).size() >= 2)
             for (auto &point : state_.vanishingPoints)
-                if (point.attachmentTargetIds == QStringList{QStringLiteral("vertical")})
+                if (point.attachmentTargetIds == QStringList{PerspectiveTarget::vertical()})
                     point.position.ry() += delta;
         update();
     } else if (movingVertical_) {
         const double nextX = toImage(e->localPos()).x(), delta = nextX - state_.verticalX;
         state_.verticalX = nextX;
         for (auto &point : state_.vanishingPoints)
-            if (point.isAttachedTo(QStringLiteral("vertical")))
+            if (point.isAttachedTo(PerspectiveTarget::vertical()))
                 point.position.setX(nextX);
-        if (state_.horizonSymmetry && attachedPointIndices(QStringLiteral("horizon")).size() >= 2)
+        if (state_.horizonSymmetry && attachedPointIndices(PerspectiveTarget::horizon()).size() >= 2)
             for (auto &point : state_.vanishingPoints)
-                if (point.attachmentTargetIds == QStringList{QStringLiteral("horizon")})
+                if (point.attachmentTargetIds == QStringList{PerspectiveTarget::horizon()})
                     point.position.rx() += delta;
         update();
     } else if (!straightStroke_) {

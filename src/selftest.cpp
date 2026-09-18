@@ -359,7 +359,7 @@ int runSelfTests(const QString &outputDirectory) {
                 "numeric horizon position must not move a free point");
         pointAttachment->setCurrentIndex(2);
         require(canvas->state().vanishingPoints[0].position == QPointF(500, 210) &&
-                    canvas->state().vanishingPoints[0].isAttachedTo(QStringLiteral("vertical")),
+                    canvas->state().vanishingPoints[0].isAttachedTo(PerspectiveTarget::vertical()),
                 "point did not attach to the main vertical");
         verticalPosition->setValue(60);
         require(canvas->state().verticalX == 560 && canvas->state().vanishingPoints[0].position == QPointF(560, 210),
@@ -508,9 +508,11 @@ int runSelfTests(const QString &outputDirectory) {
         require(horizonVisible && axesVisible && markersVisible && horizonSymmetry && verticalSymmetry,
                 "perspective visibility and axis symmetry controls are missing");
         DrawingState pair = initial;
-        pair.vanishingPoints[0].attachmentTargetIds = QStringList{QStringLiteral("horizon")};
-        pair.vanishingPoints.append(
-            {QStringLiteral("vp-2"), QPointF(350, 240), QStringLiteral("construction"), QStringLiteral("horizon")});
+        pair.vanishingPoints[0].attachmentTargetIds = QStringList{PerspectiveTarget::horizon()};
+        pair.vanishingPoints.append({QStringLiteral("vp-2"),
+                                     QPointF(350, 240),
+                                     PerspectiveTarget::constructionType(),
+                                     PerspectiveTarget::horizon()});
         canvas->setDocument(pair);
         canvas->setHorizonSymmetry(true);
         canvas->selectPoint(0);
@@ -520,13 +522,15 @@ int runSelfTests(const QString &outputDirectory) {
         DrawingState multiplePartners = initial;
         multiplePartners.gridVisible = true;
         multiplePartners.vanishingPoints[0].position = QPointF(700, 240);
-        multiplePartners.vanishingPoints[0].attachmentTargetIds = QStringList{QStringLiteral("horizon")};
+        multiplePartners.vanishingPoints[0].attachmentTargetIds = QStringList{PerspectiveTarget::horizon()};
         multiplePartners.vanishingPoints.append({QStringLiteral("vp-nearest"),
                                                  QPointF(310, 240),
-                                                 QStringLiteral("construction"),
-                                                 QStringLiteral("horizon")});
-        multiplePartners.vanishingPoints.append(
-            {QStringLiteral("vp-other"), QPointF(360, 240), QStringLiteral("construction"), QStringLiteral("horizon")});
+                                                 PerspectiveTarget::constructionType(),
+                                                 PerspectiveTarget::horizon()});
+        multiplePartners.vanishingPoints.append({QStringLiteral("vp-other"),
+                                                 QPointF(360, 240),
+                                                 PerspectiveTarget::constructionType(),
+                                                 PerspectiveTarget::horizon()});
         Canvas multiplePartnerCanvas;
         multiplePartnerCanvas.resize(800, 600);
         multiplePartnerCanvas.setDocument(multiplePartners);
@@ -557,8 +561,10 @@ int runSelfTests(const QString &outputDirectory) {
                     multiplePartnerCanvas.state().vanishingPoints[2].position == QPointF(360, 240),
                 "symmetry must keep the nearest reflected partner selected at drag start");
         DrawingState threePoint = pair;
-        threePoint.vanishingPoints.append(
-            {QStringLiteral("vp-3"), QPointF(500, 80), QStringLiteral("construction"), QStringLiteral("vertical")});
+        threePoint.vanishingPoints.append({QStringLiteral("vp-3"),
+                                           QPointF(500, 80),
+                                           PerspectiveTarget::constructionType(),
+                                           PerspectiveTarget::vertical()});
         threePoint.gridVisible = true;
         Canvas threePointCanvas;
         threePointCanvas.resize(800, 600);
@@ -594,10 +600,14 @@ int runSelfTests(const QString &outputDirectory) {
                 "universal points must be created free at the center and then in successive positions to the left");
         DrawingState fourPoint = pair;
         fourPoint.gridVisible = true;
-        fourPoint.vanishingPoints.append(
-            {QStringLiteral("vp-3"), QPointF(500, 40), QStringLiteral("construction"), QStringLiteral("vertical")});
-        fourPoint.vanishingPoints.append(
-            {QStringLiteral("vp-4"), QPointF(500, 440), QStringLiteral("construction"), QStringLiteral("vertical")});
+        fourPoint.vanishingPoints.append({QStringLiteral("vp-3"),
+                                          QPointF(500, 40),
+                                          PerspectiveTarget::constructionType(),
+                                          PerspectiveTarget::vertical()});
+        fourPoint.vanishingPoints.append({QStringLiteral("vp-4"),
+                                          QPointF(500, 440),
+                                          PerspectiveTarget::constructionType(),
+                                          PerspectiveTarget::vertical()});
         Canvas fourPointCanvas;
         fourPointCanvas.resize(800, 600);
         fourPointCanvas.setDocument(fourPoint);
@@ -642,8 +652,8 @@ int runSelfTests(const QString &outputDirectory) {
         centralCanvas.setTool(Canvas::Perspective);
         drag(&centralCanvas, QPointF(650, 240), QPointF(504, 244));
         const auto &centralPoint = centralCanvas.state().vanishingPoints[0];
-        require(centralPoint.position == QPointF(500, 240) && centralPoint.isAttachedTo(QStringLiteral("horizon")) &&
-                    centralPoint.isAttachedTo(QStringLiteral("vertical")),
+        require(centralPoint.position == QPointF(500, 240) && centralPoint.isAttachedTo(PerspectiveTarget::horizon()) &&
+                    centralPoint.isAttachedTo(PerspectiveTarget::vertical()),
                 "a point near the axes intersection must snap to both axes");
         centralCanvas.setHorizonY(275);
         require(centralCanvas.state().vanishingPoints[0].position == QPointF(500, 275),
@@ -733,7 +743,7 @@ int runSelfTests(const QString &outputDirectory) {
                 "cursor projection must reach all rulers without editing the document");
         DrawingState lockState = initial;
         lockState.gridVisible = true;
-        lockState.vanishingPoints[0].attachmentTargetIds = QStringList{QStringLiteral("horizon")};
+        lockState.vanishingPoints[0].attachmentTargetIds = QStringList{PerspectiveTarget::horizon()};
         Canvas lockCanvas;
         lockCanvas.resize(700, 500);
         lockCanvas.setDocument(lockState);
@@ -921,7 +931,7 @@ int runSelfTests(const QString &outputDirectory) {
         styled.vanishingPoints[0].name = QStringLiteral("Главная точка");
         styled.vanishingPoints[0].position = QPointF(555, 240);
         styled.vanishingPoints[0].attachmentTargetIds =
-            QStringList{QStringLiteral("horizon"), QStringLiteral("vertical")};
+            QStringList{PerspectiveTarget::horizon(), PerspectiveTarget::vertical()};
         styled.vanishingPoints[0].locked = true;
         styled.horizonLocked = true;
         styled.rayStepDegrees = 7.5;
@@ -940,8 +950,8 @@ int runSelfTests(const QString &outputDirectory) {
                 qPrintable(error));
         require(loaded.vanishingPoints[0].name == QStringLiteral("Главная точка") &&
                     loaded.vanishingPoints[0].position == QPointF(555, 240) &&
-                    loaded.vanishingPoints[0].isAttachedTo(QStringLiteral("horizon")) &&
-                    loaded.vanishingPoints[0].isAttachedTo(QStringLiteral("vertical")) &&
+                    loaded.vanishingPoints[0].isAttachedTo(PerspectiveTarget::horizon()) &&
+                    loaded.vanishingPoints[0].isAttachedTo(PerspectiveTarget::vertical()) &&
                     loaded.vanishingPoints[0].locked && loaded.horizonY == 240 && loaded.horizonLocked &&
                     loaded.verticalX == 555 && loaded.verticalLocked && !loaded.gridVisible &&
                     loaded.vanishingPoints[0].color == QColor("#628ed1") && loaded.rayStepDegrees == 10 &&
@@ -957,11 +967,11 @@ int runSelfTests(const QString &outputDirectory) {
         const auto storedPerspective = styledMetadata.value("perspective").toObject();
         const auto storedPoint = storedPerspective.value("points").toArray().first().toObject();
         const auto storedAttachments = storedPoint.value("attachments").toArray();
-        require(styledMetadata.value("version").toInt() == 8 &&
+        require(styledMetadata.value("version").toInt() == Project::CurrentFormatVersion &&
                     storedPoint.value("name").toString() == QStringLiteral("Главная точка") &&
                     storedPoint.value("locked").toBool() && storedAttachments.size() == 2 &&
-                    storedAttachments[0].toObject().value("targetId").toString() == QStringLiteral("horizon") &&
-                    storedAttachments[1].toObject().value("targetId").toString() == QStringLiteral("vertical") &&
+                    storedAttachments[0].toObject().value("targetId").toString() == PerspectiveTarget::horizon() &&
+                    storedAttachments[1].toObject().value("targetId").toString() == PerspectiveTarget::vertical() &&
                     storedPerspective.value("horizon").toObject().value("locked").toBool() &&
                     storedPerspective.value("vertical").toObject().value("x").toDouble() == 555 &&
                     storedPerspective.value("vertical").toObject().value("locked").toBool(),
@@ -997,7 +1007,7 @@ int runSelfTests(const QString &outputDirectory) {
         DrawingState version6State;
         require(Project::load(out.filePath("legacy-v6.drw"), &version6State, &error) &&
                     version6State.vanishingPoints.first().name == QStringLiteral("Точка схода 1") &&
-                    version6State.vanishingPoints.first().isAttachedTo(QStringLiteral("horizon")),
+                    version6State.vanishingPoints.first().isAttachedTo(PerspectiveTarget::horizon()),
                 "version 6 projects must receive default point names and restore their single attachment");
         Canvas styledCanvas;
         styled.image = QImage(200, 200, QImage::Format_ARGB32_Premultiplied);

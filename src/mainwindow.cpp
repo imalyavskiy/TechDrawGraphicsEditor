@@ -832,9 +832,9 @@ void MainWindow::connectPerspectiveControls() {
         setCoordinateUnits(index == 0);
     });
     connect(pointAttachment_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
-        canvas_->setSelectedPointAttachment(index == 1   ? QStringLiteral("horizon")
-                                            : index == 2 ? QStringLiteral("vertical")
-                                            : index == 3 ? QStringLiteral("intersection")
+        canvas_->setSelectedPointAttachment(index == 1   ? PerspectiveTarget::horizon()
+                                            : index == 2 ? PerspectiveTarget::vertical()
+                                            : index == 3 ? PerspectiveTarget::intersection()
                                                          : QString());
     });
     connect(gridColorButton_, &QPushButton::clicked, this, [this] {
@@ -1151,8 +1151,8 @@ void MainWindow::updateState() {
     if (hasPoint) {
         pointX_->setValue(displayedX(points[selected].position.x()));
         pointY_->setValue(displayedY(points[selected].position.y()));
-        const bool onHorizon = points[selected].isAttachedTo(QStringLiteral("horizon")),
-                   onVertical = points[selected].isAttachedTo(QStringLiteral("vertical"));
+        const bool onHorizon = points[selected].isAttachedTo(PerspectiveTarget::horizon()),
+                   onVertical = points[selected].isAttachedTo(PerspectiveTarget::vertical());
         pointX_->setEnabled(!onVertical);
         pointY_->setEnabled(!onHorizon);
         pointAttachment_->setCurrentIndex(onHorizon && onVertical ? 3 : onHorizon ? 1 : onVertical ? 2 : 0);
@@ -1329,8 +1329,8 @@ void MainWindow::newDocument() {
     state.verticalX = w.value() / 2.0;
     state.vanishingPoints.append({QStringLiteral("vp-1"),
                                   QPointF(w.value() / 2.0, h.value() / 2.0),
-                                  QStringLiteral("construction"),
-                                  QStringLiteral("horizon")});
+                                  PerspectiveTarget::constructionType(),
+                                  PerspectiveTarget::horizon()});
     state.vanishingPoints.last().name = tr("Точка схода 1");
     applySavedPerspectiveDefaults(&state);
     applySavedViewSettings(&state);
@@ -1376,8 +1376,8 @@ bool MainWindow::openPath(const QString &path) {
         state.verticalX = state.image.width() / 2.0;
         state.vanishingPoints.append({QStringLiteral("vp-1"),
                                       QPointF(state.image.width() / 2.0, state.image.height() / 2.0),
-                                      QStringLiteral("construction"),
-                                      QStringLiteral("horizon")});
+                                      PerspectiveTarget::constructionType(),
+                                      PerspectiveTarget::horizon()});
         state.vanishingPoints.last().name = tr("Точка схода 1");
         applySavedPerspectiveDefaults(&state);
         applySavedViewSettings(&state);

@@ -43,7 +43,7 @@ QJsonObject perspectiveJson(const DrawingState &state) {
     for (const auto &point : state.vanishingPoints) {
         QJsonArray attachments;
         for (const auto &targetId : point.attachmentTargetIds)
-            attachments.append(QJsonObject{{"type", "construction"}, {"targetId", targetId}});
+            attachments.append(QJsonObject{{"type", PerspectiveTarget::constructionType()}, {"targetId", targetId}});
         points.append(QJsonObject{{"id", point.id},
                                   {"name", point.name},
                                   {"x", point.position.x()},
@@ -108,7 +108,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                 return fail(error, QStringLiteral("Некорректное состояние фиксации точки схода."));
             point.locked = formatVersion >= 5 && object.value("locked").toBool();
             ids.insert(point.id);
-            if (formatVersion >= 8) {
+            if (formatVersion >= Project::CurrentFormatVersion) {
                 const auto attachments = object.value("attachments");
                 if (!attachments.isArray())
                     return fail(error, QStringLiteral("Некорректные привязки точки схода."));
@@ -119,8 +119,8 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                     const auto binding = entry.toObject();
                     const QString type = binding.value("type").toString(),
                                   targetId = binding.value("targetId").toString();
-                    if (type != QStringLiteral("construction") ||
-                        (targetId != QStringLiteral("horizon") && targetId != QStringLiteral("vertical")) ||
+                    if (type != PerspectiveTarget::constructionType() ||
+                        (targetId != PerspectiveTarget::horizon() && targetId != PerspectiveTarget::vertical()) ||
                         targets.contains(targetId))
                         return fail(error, QStringLiteral("Неизвестная или повторная цель привязки точки схода."));
                     targets.insert(targetId);
@@ -134,9 +134,9 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
                     const auto binding = attachment.toObject();
                     const QString type = binding.value("type").toString(),
                                   targetId = binding.value("targetId").toString();
-                    const bool knownTarget = targetId == QStringLiteral("horizon") ||
-                                             (formatVersion >= 6 && targetId == QStringLiteral("vertical"));
-                    if (type != QStringLiteral("construction") || !knownTarget)
+                    const bool knownTarget = targetId == PerspectiveTarget::horizon() ||
+                                             (formatVersion >= 6 && targetId == PerspectiveTarget::vertical());
+                    if (type != PerspectiveTarget::constructionType() || !knownTarget)
                         return fail(error, QStringLiteral("Неизвестная цель привязки точки схода."));
                     point.attachmentTargetIds.append(targetId);
                 }
@@ -162,7 +162,7 @@ bool parsePerspective(const QJsonValue &value, DrawingState *state, QString *err
     point.position = QPointF(x, y);
     point.name = QStringLiteral("Точка схода 1");
     if (qFuzzyCompare(y + 1, horizonY + 1))
-        point.attachmentTargetIds.append(QStringLiteral("horizon"));
+        point.attachmentTargetIds.append(PerspectiveTarget::horizon());
     state->horizonY = horizonY;
     state->verticalX = state->image.width() / 2.0;
     state->vanishingPoints = {point};
@@ -183,7 +183,7 @@ bool validState(const DrawingState &state) {
         ids.insert(point.id);
         QSet<QString> targets;
         for (const auto &targetId : point.attachmentTargetIds) {
-            if ((targetId != QStringLiteral("horizon") && targetId != QStringLiteral("vertical")) ||
+            if ((targetId != PerspectiveTarget::horizon() && targetId != PerspectiveTarget::vertical()) ||
                 targets.contains(targetId))
                 return false;
             targets.insert(targetId);
@@ -263,7 +263,7 @@ bool Project::save(const QString &path, const DrawingHistory &history, QString *
     QJsonObject historyJson{{"index", history.index}, {"states", states}, {"labels", labels}};
     const DrawingState &current = history.states[history.index];
     QJsonObject metadata{{"format", "Drawing"},
-                         {"version", 8},
+                         {"version", Project::CurrentFormatVersion},
                          {"width", size.width()},
                          {"height", size.height()},
                          {"image", "drawing.png"},
@@ -336,7 +336,7 @@ bool Project::load(const QString &path, DrawingHistory *history, QString *error)
     const double versionValue = object.value("version").toDouble(-1);
     if (object.value("format").toString() != "Drawing" ||
         (versionValue != 1 && versionValue != 2 && versionValue != 3 && versionValue != 4 && versionValue != 5 &&
-         versionValue != 6 && versionValue != 7 && versionValue != 8) ||
+         versionValue != 6 && versionValue != 7 && versionValue != Project::CurrentFormatVersion) ||
         object.value("image").toString() != "drawing.png")
         return fail(error, QStringLiteral("Неизвестный формат или версия DRW."));
     const double width = object.value("width").toDouble(-1), height = object.value("height").toDouble(-1);

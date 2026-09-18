@@ -5,6 +5,25 @@
 #include <QStringList>
 #include <QVector>
 
+namespace PerspectiveTarget {
+inline const QString &constructionType() {
+    static const QString value = QStringLiteral("construction");
+    return value;
+}
+inline const QString &horizon() {
+    static const QString value = QStringLiteral("horizon");
+    return value;
+}
+inline const QString &vertical() {
+    static const QString value = QStringLiteral("vertical");
+    return value;
+}
+inline const QString &intersection() {
+    static const QString value = QStringLiteral("intersection");
+    return value;
+}
+} // namespace PerspectiveTarget
+
 struct VanishingPoint {
     VanishingPoint() = default;
     VanishingPoint(const QString &pointId,
@@ -12,7 +31,7 @@ struct VanishingPoint {
                    const QString &type = QString(),
                    const QString &targetId = QString())
         : id(pointId), position(pointPosition) {
-        if (type == QStringLiteral("construction") && !targetId.isEmpty())
+        if (type == PerspectiveTarget::constructionType() && !targetId.isEmpty())
             attachmentTargetIds.append(targetId);
     }
     QString id;
@@ -73,6 +92,8 @@ struct DrawingHistory {
 };
 
 namespace Project {
+inline constexpr int CurrentFormatVersion = 8;
+
 bool validSize(QSize size);
 bool save(const QString &path, const DrawingState &state, QString *error);
 bool save(const QString &path, const DrawingHistory &history, QString *error);
