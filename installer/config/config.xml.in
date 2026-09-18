@@ -9,6 +9,7 @@
     <Banner>wizard-banner-ru.png</Banner>
     <Watermark>wizard-banner-en.png</Watermark>
     <Background>wizard-banner-ru-source.png</Background>
+    <TitleColor>#00FFFFFF</TitleColor>
     <WizardStyle>Modern</WizardStyle>
     <WizardDefaultWidth>660</WizardDefaultWidth>
     <WizardDefaultHeight>490</WizardDefaultHeight>
