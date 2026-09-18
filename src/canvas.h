@@ -11,7 +11,8 @@ class Canvas : public QWidget {
     Q_OBJECT
 public:
     /// Перечисляет режимы ввода: три растровых инструмента, панорамирование и редактирование перспективы.
-    enum Tool { Pencil, Brush, Eraser, Pan, Perspective };
+    enum Tool { Pencil, Brush, Eraser, Move, Perspective };
+    enum MoveTarget { GuidesTarget, ActiveLayerTarget };
     /// Создаёт холст с начальным документом и пустой историей Undo/Redo.
     explicit Canvas(QWidget *parent = nullptr);
     /// Возвращает активный снимок документа без копирования.
@@ -60,6 +61,8 @@ public:
     Tool tool() const {
         return tool_;
     }
+    void setMoveTarget(MoveTarget target);
+    MoveTarget moveTarget() const { return moveTarget_; }
     /// Временно показывает или скрывает все документные направляющие без изменения истории.
     void setGuidesVisible(bool visible);
     /// Возвращает текущее состояние отображения направляющих.
@@ -200,6 +203,7 @@ signals:
     void layersChanged();
     /// Сообщает об автоматической смене инструмента после завершённого жеста на холсте.
     void toolChanged(Canvas::Tool tool);
+    void moveTargetChanged(Canvas::MoveTarget target);
     /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
     void selectedGuideChanged(const GuideId &id);
 
@@ -228,6 +232,7 @@ private:
     DrawingState before_;
     QUndoStack undo_;
     Tool tool_ = Pencil;
+    MoveTarget moveTarget_ = GuidesTarget;
     QColor front_ = QColor("#2c3441");
     QColor back_ = Qt::white;
     DrawingToolSettings strokeSettings_;
@@ -242,6 +247,8 @@ private:
     bool movingPoint_ = false;
     bool movingHorizon_ = false;
     bool movingVertical_ = false;
+    bool movingGuides_ = false;
+    bool movingLayer_ = false;
     bool space_ = false;
     int selectedPointIndex_ = 0;
     int movingPointIndex_ = -1;
@@ -260,6 +267,11 @@ private:
     GuideType creatingGuideType_ = GuideType::Horizontal;
     double guidePreviewPosition_ = 0;
     GuideId selectedGuideId_;
+    GuideId hoveredGuideId_;
+    QVector<GuideId> movingGuideIds_;
+    QString movingLayerId_;
+    QPointF moveStartImage_;
+    bool deleteMovedGuides_ = false;
     /// Рисует один растровый отрезок выбранным инструментом между двумя точками изображения.
     void stroke(QPointF start, QPointF end);
     /// Накладывает один круглый отпечаток активного инструмента на растровое изображение.
@@ -288,6 +300,8 @@ private:
     int perspectiveHit(QPointF viewPosition) const;
     /// Выбирает курсор по доступности и состоянию фиксации объекта под указателем.
     void updatePerspectiveCursor(QPointF viewPosition);
+    QVector<int> guideHits(QPointF viewPosition) const;
+    void updateMoveCursor(QPointF viewPosition);
     /// Возвращает прямоугольник внутри четырёх линеек, доступный для холста и оснастки.
     QRectF viewportRect() const;
     /// Рисует четыре линейки и проекции текущего положения курсора.

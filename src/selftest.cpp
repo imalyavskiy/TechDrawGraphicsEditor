@@ -95,6 +95,7 @@ void testOrdinaryGuideCreation() {
     canvas.show();
     QApplication::processEvents();
     canvas.fit();
+    canvas.setMoveTarget(Canvas::ActiveLayerTarget);
     QApplication::processEvents();
     const auto dragGuide = [&canvas](QPointF start, QPointF end) {
         mouse(&canvas, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
@@ -117,9 +118,55 @@ void testOrdinaryGuideCreation() {
                 canvas.state().guides[2].type == GuideType::Vertical &&
                 qAbs(canvas.state().guides[2].position - 70) < 0.01 &&
                 canvas.state().guides[3].type == GuideType::Vertical &&
-                qAbs(canvas.state().guides[3].position - 160) < 0.01 && canvas.tool() == Canvas::Pan &&
+                qAbs(canvas.state().guides[3].position - 160) < 0.01 && canvas.tool() == Canvas::Move &&
+                canvas.moveTarget() == Canvas::GuidesTarget &&
                 canvas.undoStack()->count() == 4,
             "guides were not created from all four rulers as undoable document objects");
+    canvas.setMoveTarget(Canvas::GuidesTarget);
+    const int beforeJointMove = canvas.undoStack()->count();
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(70, 50)), Qt::NoButton, Qt::NoButton);
+    require(canvas.cursor().shape() == Qt::OpenHandCursor, "movable guide must use the open-hand cursor");
+    drag(&canvas, QPointF(70, 50), QPointF(90, 80));
+    require(qAbs(canvas.state().guides[0].position - 80) < 0.01 &&
+                qAbs(canvas.state().guides[2].position - 90) < 0.01 &&
+                canvas.undoStack()->count() == beforeJointMove + 1,
+            "an ordinary guide intersection must move both guides in one undo command");
+    canvas.undoStack()->undo();
+    require(qAbs(canvas.state().guides[0].position - 50) < 0.01 &&
+                qAbs(canvas.state().guides[2].position - 70) < 0.01,
+            "undo did not restore jointly moved guides");
+
+    const DrawingState beforeCancelledMove = canvas.state();
+    mouse(&canvas,
+          QEvent::MouseButtonPress,
+          canvas.toView(QPointF(300, 100)),
+          Qt::LeftButton,
+          Qt::LeftButton);
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(300, 140)), Qt::NoButton, Qt::LeftButton);
+    QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(&canvas, &escape);
+    require(canvas.state().guides == beforeCancelledMove.guides,
+            "Escape must restore guide positions without adding history");
+
+    drag(&canvas, QPointF(300, 100), QPointF(300, -10));
+    require(canvas.state().guides.size() == 3, "dragging a guide outside the document must delete it");
+    canvas.undoStack()->undo();
+    require(canvas.state().guides.size() == 4, "deleted guide must be restored by Undo");
+
+    canvas.setMoveTarget(Canvas::ActiveLayerTarget);
+    const QString layerId = canvas.state().layers.activeLayerId();
+    const QPointF originalOffset = canvas.state().layers.entry(layerId)->offset;
+    drag(&canvas, QPointF(400, 300), QPointF(445, 325));
+    require(canvas.state().layers.entry(layerId)->offset == originalOffset + QPointF(45, 25),
+            "move tool did not offset the explicitly selected layer");
+    canvas.undoStack()->undo();
+    require(canvas.state().layers.entry(layerId)->offset == originalOffset,
+            "layer move must be restored by one Undo command");
+    canvas.setLayerLocked(layerId, true);
+    mouse(&canvas, QEvent::MouseMove, canvas.toView(QPointF(400, 300)), Qt::NoButton, Qt::NoButton);
+    require(canvas.cursor().shape() == Qt::ForbiddenCursor, "locked move target must use the forbidden cursor");
+    canvas.setLayerLocked(layerId, false);
+    canvas.setMoveTarget(Canvas::GuidesTarget);
     const int beforeCancelled = canvas.state().guides.size();
     const QPointF outsidePaper = canvas.toView(QPointF(-10, 10));
     dragGuide(QPointF(canvas.width() / 2.0, 4), outsidePaper);
@@ -130,6 +177,7 @@ void testOrdinaryGuideCreation() {
     require(!canvas.guidesVisible() && canvas.undoStack()->count() == historyBeforeVisibility,
             "guide visibility must remain view state outside document history");
     canvas.setGuidesVisible(true);
+    click(&canvas, QPointF(300, 50));
     canvas.removeSelectedGuide();
     require(canvas.state().guides.size() == 3, "selected guide removal failed");
     canvas.undoStack()->undo();
@@ -1661,8 +1709,9 @@ ProjectFixture testDrawingAndProject(Canvas *canvas, const DrawingState &initial
             "zoom must not edit document");
     QPointF point(100, 100);
     require(QLineF(canvas->toImage(canvas->toView(point)), point).length() < 0.001, "view coordinate roundtrip failed");
-    canvas->setTool(Canvas::Pan);
-    drag(canvas, QPointF(100, 100), QPointF(150, 130));
+    mouse(canvas, QEvent::MouseButtonPress, QPointF(100, 100), Qt::MiddleButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseMove, QPointF(150, 130), Qt::NoButton, Qt::MiddleButton);
+    mouse(canvas, QEvent::MouseButtonRelease, QPointF(150, 130), Qt::MiddleButton, Qt::NoButton);
     require(pixels(canvas->state()) == renderedPixels && canvas->undoStack()->index() == undoIndex,
             "pan must not edit document");
     canvas->fit();
@@ -1955,9 +2004,13 @@ void testToolWidthPersistence() {
     auto *pencilAction = widthsWindow.findChild<QAction *>("tool0");
     auto *brushAction = widthsWindow.findChild<QAction *>("tool1");
     auto *eraserAction = widthsWindow.findChild<QAction *>("tool2");
-    auto *panAction = widthsWindow.findChild<QAction *>("tool3");
+    auto *moveAction = widthsWindow.findChild<QAction *>("tool3");
+    auto *moveTarget = widthsWindow.findChild<QComboBox *>("moveTarget");
+    auto *moveSection = widthsWindow.findChild<QWidget *>("moveTargetSettings");
+    auto *strokeSection = widthsWindow.findChild<QWidget *>("strokeMainSettings");
     require(widthControl && opacityControl && hardnessControl && spacingControl && strengthControl && toolTitle &&
-                eraserMode && pencilAction && brushAction && eraserAction && panAction,
+                eraserMode && pencilAction && brushAction && eraserAction && moveAction && moveTarget && moveSection &&
+                strokeSection,
             "shared per-tool controls are missing");
     widthControl->setValue(4);
     opacityControl->setValue(80);
@@ -2006,9 +2059,15 @@ void testToolWidthPersistence() {
     require(widthControl->value() == 17 && hardnessControl->value() == 25 && spacingControl->value() == 30 &&
                 strengthControl->value() == 55,
             "eraser settings were not restored");
-    panAction->trigger();
-    require(!widthControl->isEnabled() && toolTitle->text() == QStringLiteral("Параметры рисования"),
-            "drawing controls must be disabled for a non-paint mode");
+    moveAction->trigger();
+    require(strokeSection->isHidden() && !moveSection->isHidden() && moveTarget->isEnabled() &&
+                toolTitle->text() == QStringLiteral("Перемещение"),
+            "move mode must replace drawing controls with its explicit target");
+    moveTarget->setCurrentIndex(1);
+    require(widthsWindow.canvas()->moveTarget() == Canvas::ActiveLayerTarget &&
+                QSettings().value("tools/moveTarget").toInt() == 1,
+            "move target selection must update the canvas and persist");
+    moveTarget->setCurrentIndex(0);
     widthsWindow.canvas()->undoStack()->setClean();
     widthsWindow.close();
     MainWindow persistedWidthsWindow;

@@ -7,6 +7,8 @@ class DrawingToolSettingsModel;
 class QLabel;
 class QPushButton;
 class QSpinBox;
+class QComboBox;
+class RolloutSection;
 class StrokePreview;
 
 /// Единая панель параметров карандаша, кисти и ластика.
@@ -20,6 +22,8 @@ public:
     void setColors(const QColor &front, const QColor &back);
     /// Передаёт фокус полю ширины для команды меню параметров инструмента.
     void focusWidth();
+    void setCanvasTool(int tool);
+    void setMoveTarget(int target);
 
 signals:
     /// Запрашивает открытие общего диалога выбора цвета Front.
@@ -28,6 +32,7 @@ signals:
     void backColorRequested();
     /// Запрашивает обмен общих цветов Front и Back.
     void swapColorsRequested();
+    void moveTargetRequested(int target);
 
 private:
     DrawingToolSettingsModel *model_ = nullptr;
@@ -46,8 +51,13 @@ private:
     QPushButton *front_ = nullptr;
     QPushButton *back_ = nullptr;
     StrokePreview *preview_ = nullptr;
+    RolloutSection *mainSection_ = nullptr;
+    RolloutSection *detailsSection_ = nullptr;
+    RolloutSection *moveSection_ = nullptr;
+    QComboBox *moveTarget_ = nullptr;
     QColor frontColor_;
     QColor backColor_;
+    int canvasTool_ = 0;
 
     /// Синхронизирует все видимые поля с активным инструментом и контекстом цели.
     void refresh();

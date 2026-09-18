@@ -4,6 +4,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QUuid>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -142,7 +143,7 @@ void Canvas::setDocument(const DrawingState &state, bool clean) {
 }
 
 void Canvas::setDocument(const DrawingHistory &history, bool clean) {
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = movingGuides_ = movingLayer_ = false;
     movingPointIndex_ = movingSymmetricPointIndex_ = -1;
     straightStroke_ = shiftPressed_ = controlPressed_ = false;
     hasPaintAnchor_ = hasHoverPoint_ = false;
@@ -352,6 +353,18 @@ void Canvas::apply(const DrawingState &state) {
     DrawingState next = state;
     copyPerspectiveAppearance(state_, &next);
     state_ = std::move(next);
+    if (!selectedGuideId_.isEmpty()) {
+        bool exists = false;
+        for (const auto &guide : state_.guides)
+            if (guide.id == selectedGuideId_) {
+                exists = true;
+                break;
+            }
+        if (!exists) {
+            selectedGuideId_.clear();
+            emit selectedGuideChanged(selectedGuideId_);
+        }
+    }
     selectedPointIndex_ =
         state_.vanishingPoints.isEmpty() ? -1 : qBound(0, selectedPointIndex_, state_.vanishingPoints.size() - 1);
     emit stateChanged();
@@ -373,10 +386,20 @@ void Canvas::setTool(Tool tool) {
     finish();
     if (tool_ != tool)
         hasPaintAnchor_ = false;
+    hoveredGuideId_.clear();
     tool_ = tool;
-    setCursor(tool == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
+    setCursor(Qt::CrossCursor);
     emit toolChanged(tool_);
     update();
+}
+void Canvas::setMoveTarget(MoveTarget target) {
+    if (moveTarget_ == target)
+        return;
+    moveTarget_ = target;
+    hoveredGuideId_.clear();
+    emit moveTargetChanged(moveTarget_);
+    if (tool_ == Move && !dragging_)
+        updateMoveCursor(cursorView_);
 }
 void Canvas::setGuidesVisible(bool visible) {
     if (guidesVisible_ == visible)
@@ -880,8 +903,9 @@ void Canvas::paintEvent(QPaintEvent *) {
         for (const VanishingPoint &point : state_.vanishingPoints)
             vanishingPoints.insert(point.id, point.position);
         for (const Guide &guide : state_.guides) {
-            QColor color = guide.id == selectedGuideId_ ? QColor("#ed8b24") : QColor("#2f86c7");
-            QPen pen(color, guide.id == selectedGuideId_ ? 2 : 1, Qt::DashLine);
+            const bool highlighted = guide.id == selectedGuideId_ || guide.id == hoveredGuideId_;
+            QColor color = highlighted ? QColor("#ed8b24") : QColor("#2f86c7");
+            QPen pen(color, highlighted ? 2 : 1, Qt::DashLine);
             pen.setCosmetic(true);
             p.setPen(pen);
             if (guide.type == GuideType::Horizontal) {
@@ -1184,6 +1208,66 @@ void Canvas::updatePerspectiveCursor(QPointF viewPosition) {
         movable = !state_.horizonLocked;
     setCursor(movable ? Qt::OpenHandCursor : hit != NoPerspectiveHit ? Qt::ForbiddenCursor : Qt::CrossCursor);
 }
+QVector<int> Canvas::guideHits(QPointF viewPosition) const {
+    QVector<int> result;
+    if (!guidesVisible_ || !viewportRect().contains(viewPosition))
+        return result;
+    QHash<QString, QPointF> points;
+    for (const auto &point : state_.vanishingPoints)
+        points.insert(point.id, point.position);
+    const QPointF image = toImage(viewPosition);
+    int horizontal = -1, vertical = -1, other = -1;
+    double horizontalDistance = 9, verticalDistance = 9, otherDistance = 9;
+    for (int index = 0; index < state_.guides.size(); ++index) {
+        const GuideProjection projection = GuideGeometry::project(state_.guides[index], image, points);
+        const double distance = projection.distance * zoom_;
+        if (!projection.valid || distance > 8)
+            continue;
+        if (state_.guides[index].type == GuideType::Horizontal && distance < horizontalDistance) {
+            horizontal = index;
+            horizontalDistance = distance;
+        } else if (state_.guides[index].type == GuideType::Vertical && distance < verticalDistance) {
+            vertical = index;
+            verticalDistance = distance;
+        } else if (distance < otherDistance) {
+            other = index;
+            otherDistance = distance;
+        }
+    }
+    if (horizontal >= 0 && vertical >= 0) {
+        result << horizontal << vertical;
+        return result;
+    }
+    int nearest = horizontal;
+    double distance = horizontalDistance;
+    if (vertical >= 0 && verticalDistance < distance) {
+        nearest = vertical;
+        distance = verticalDistance;
+    }
+    if (other >= 0 && otherDistance < distance)
+        nearest = other;
+    if (nearest >= 0)
+        result << nearest;
+    return result;
+}
+void Canvas::updateMoveCursor(QPointF viewPosition) {
+    if (tool_ != Move || dragging_)
+        return;
+    if (!viewportRect().contains(viewPosition)) {
+        setCursor(Qt::CrossCursor);
+        return;
+    }
+    if (moveTarget_ == GuidesTarget) {
+        setCursor(guideHits(viewPosition).isEmpty() ? Qt::CrossCursor : Qt::OpenHandCursor);
+        return;
+    }
+    const LayerEntry *entry = state_.layers.activeEntry();
+    const bool onDocument = QRectF(QPointF(), state_.canvasSize).contains(toImage(viewPosition));
+    if (!onDocument)
+        setCursor(Qt::CrossCursor);
+    else
+        setCursor(entry && entry->visible && !entry->locked ? Qt::OpenHandCursor : Qt::ForbiddenCursor);
+}
 void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() != Qt::LeftButton && e->button() != Qt::MiddleButton)
         return;
@@ -1202,7 +1286,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton && !viewportRect().contains(e->localPos()))
         return;
     setFocus();
-    panning_ = e->button() == Qt::MiddleButton || tool_ == Pan || space_;
+    panning_ = e->button() == Qt::MiddleButton || space_;
     if (panning_) {
         dragging_ = true;
         last_ = e->localPos();
@@ -1241,6 +1325,36 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         }
         return;
     }
+    if (tool_ == Move) {
+        if (moveTarget_ == GuidesTarget) {
+            const QVector<int> hits = guideHits(e->localPos());
+            if (hits.isEmpty())
+                return;
+            before_ = state_;
+            movingGuideIds_.clear();
+            for (int index : hits)
+                movingGuideIds_.append(state_.guides[index].id);
+            selectedGuideId_ = state_.guides[hits.first()].id;
+            emit selectedGuideChanged(selectedGuideId_);
+            moveStartImage_ = toImage(e->localPos());
+            deleteMovedGuides_ = false;
+            movingGuides_ = dragging_ = true;
+            setCursor(Qt::ClosedHandCursor);
+            update();
+            return;
+        }
+        LayerEntry *entry = state_.layers.activeEntry();
+        if (!entry || !entry->visible || entry->locked)
+            return;
+        before_ = state_;
+        movingLayerId_ = entry->id;
+        moveStartImage_ = toImage(e->localPos());
+        movingLayer_ = dragging_ = true;
+        setCursor(Qt::ClosedHandCursor);
+        return;
+    }
+    if (!isPaintTool())
+        return;
     QPointF point = toImage(e->localPos());
     if (!QRectF(QPointF(), state_.canvasSize).contains(point))
         return;
@@ -1266,7 +1380,14 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     hasHoverPoint_ = QRectF(QPointF(), state_.canvasSize).contains(hoverPoint_);
     emit positionChanged(hoverPoint_);
     if (!dragging_) {
+        hoveredGuideId_.clear();
+        if (tool_ == Move && moveTarget_ == GuidesTarget) {
+            const QVector<int> hits = guideHits(e->localPos());
+            if (!hits.isEmpty())
+                hoveredGuideId_ = state_.guides[hits.first()].id;
+        }
         updatePerspectiveCursor(e->localPos());
+        updateMoveCursor(e->localPos());
         update();
         return;
     }
@@ -1302,6 +1423,37 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
     } else if (movingVertical_) {
         moveVertical(toImage(e->localPos()).x());
         update();
+    } else if (movingGuides_) {
+        const QPointF current = toImage(e->localPos());
+        const QPointF delta = current - moveStartImage_;
+        QHash<QString, QPointF> points;
+        for (const auto &point : state_.vanishingPoints)
+            points.insert(point.id, point.position);
+        for (auto &guide : state_.guides) {
+            if (!movingGuideIds_.contains(guide.id))
+                continue;
+            const auto original = std::find_if(before_.guides.cbegin(), before_.guides.cend(),
+                                               [&guide](const Guide &candidate) { return candidate.id == guide.id; });
+            if (original == before_.guides.cend())
+                continue;
+            if (guide.type == GuideType::Horizontal)
+                guide.position = original->position + delta.y();
+            else if (guide.type == GuideType::Vertical)
+                guide.position = original->position + delta.x();
+            else if (points.contains(guide.vanishingPointId)) {
+                const QPointF direction = current - points.value(guide.vanishingPointId);
+                if (QLineF(QPointF(), direction).length() > 0.0001)
+                    guide.angleRadians = std::atan2(direction.y(), direction.x());
+            }
+        }
+        deleteMovedGuides_ = !QRectF(QPointF(), state_.canvasSize).contains(current);
+        update();
+    } else if (movingLayer_) {
+        LayerEntry *entry = editableLayerEntry(movingLayerId_);
+        const LayerEntry *original = before_.layers.entry(movingLayerId_);
+        if (entry && original)
+            entry->offset = original->offset + toImage(e->localPos()) - moveStartImage_;
+        update();
     } else if (!straightStroke_) {
         stroke(last_, hoverPoint_);
         last_ = hoverPoint_;
@@ -1336,24 +1488,41 @@ void Canvas::moveVertical(double imageX) {
 void Canvas::finish() {
     if (!dragging_)
         return;
+    if (movingGuides_ && deleteMovedGuides_) {
+        for (int index = state_.guides.size() - 1; index >= 0; --index)
+            if (movingGuideIds_.contains(state_.guides[index].id))
+                state_.guides.removeAt(index);
+        if (movingGuideIds_.contains(selectedGuideId_)) {
+            selectedGuideId_.clear();
+            emit selectedGuideChanged(selectedGuideId_);
+        }
+    }
     // Независимо от числа промежуточных mouseMove весь жест становится одной командой истории.
     if (!panning_ && (movingPoint_      ? state_.vanishingPoints != before_.vanishingPoints
                       : movingHorizon_  ? state_.horizonY != before_.horizonY
                       : movingVertical_ ? state_.verticalX != before_.verticalX
+                      : movingGuides_   ? state_.guides != before_.guides
                                         : state_.layers != before_.layers))
         commit(before_,
                movingPoint_      ? tr("точку схода")
                : movingHorizon_  ? tr("горизонт")
                : movingVertical_ ? tr("главную вертикаль")
+               : movingGuides_   ? (deleteMovedGuides_ ? tr("удаление направляющей")
+                                                          : tr("перемещение направляющей"))
+               : movingLayer_    ? tr("перемещение слоя")
                                  : (tool_ == Eraser ? tr("ластик") : tr("штрих")));
     if (!panning_ && !movingPoint_ && !movingHorizon_ && !movingVertical_ && isPaintTool()) {
         paintAnchor_ = last_;
         hasPaintAnchor_ = true;
     }
     before_ = DrawingState();
-    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = straightStroke_ = creatingGuide_ = false;
+    dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = movingGuides_ = movingLayer_ =
+        straightStroke_ = creatingGuide_ = false;
     movingPointIndex_ = movingSymmetricPointIndex_ = -1;
-    setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
+    movingGuideIds_.clear();
+    movingLayerId_.clear();
+    deleteMovedGuides_ = false;
+    setCursor(Qt::CrossCursor);
 }
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (creatingGuide_) {
@@ -1362,6 +1531,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     }
     finish();
     updatePerspectiveCursor(e->localPos());
+    updateMoveCursor(e->localPos());
 }
 void Canvas::wheelEvent(QWheelEvent *e) {
     setZoom(zoom_ * std::pow(1.15, e->angleDelta().y() / 120.0), e->position());
@@ -1383,9 +1553,16 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
     } else if (e->key() == Qt::Key_Escape && dragging_) {
         if (!panning_)
             state_ = before_;
-        dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = creatingGuide_ = false;
+        dragging_ = panning_ = movingPoint_ = movingHorizon_ = movingVertical_ = movingGuides_ = movingLayer_ =
+            creatingGuide_ = false;
         movingPointIndex_ = -1;
+        movingGuideIds_.clear();
+        movingLayerId_.clear();
+        deleteMovedGuides_ = false;
         before_ = DrawingState();
+        emit stateChanged();
+        emit layersChanged();
+        updateMoveCursor(cursorView_);
         update();
     } else
         QWidget::keyPressEvent(e);
@@ -1393,7 +1570,8 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
 void Canvas::keyReleaseEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) {
         space_ = false;
-        setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
+        setCursor(Qt::CrossCursor);
+        updateMoveCursor(cursorView_);
     } else if (e->key() == Qt::Key_Shift) {
         shiftPressed_ = false;
         update();
@@ -1412,7 +1590,8 @@ void Canvas::focusOutEvent(QFocusEvent *e) {
 void Canvas::leaveEvent(QEvent *e) {
     cursorInViewport_ = false;
     hasHoverPoint_ = false;
-    if (tool_ == Perspective && !dragging_)
+    hoveredGuideId_.clear();
+    if (!dragging_)
         setCursor(Qt::CrossCursor);
     update();
     QWidget::leaveEvent(e);
@@ -1447,9 +1626,10 @@ void Canvas::finishGuideCreation(QPointF viewPosition) {
         commit(before_, tr("создание направляющей"));
         emit selectedGuideChanged(selectedGuideId_);
         emit stateChanged();
-        setTool(Pan);
+        setMoveTarget(GuidesTarget);
+        setTool(Move);
     } else {
-        setCursor(tool_ == Pan ? Qt::OpenHandCursor : Qt::CrossCursor);
+        setCursor(Qt::CrossCursor);
     }
     before_ = DrawingState();
     update();

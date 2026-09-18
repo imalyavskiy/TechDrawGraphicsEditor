@@ -35,12 +35,16 @@ QIcon toolIcon(int kind) {
         painter.drawLine(8, 10, 16, 17);
         painter.drawLine(11, 20, 21, 20);
     } else if (kind == 3) {
-        painter.drawRoundedRect(QRectF(7, 9, 12, 12), 4, 4);
-        painter.drawLine(7, 14, 4, 10);
-        painter.drawLine(9, 10, 9, 4);
-        painter.drawLine(12, 9, 12, 3);
-        painter.drawLine(15, 10, 15, 4);
-        painter.drawLine(18, 11, 18, 7);
+        painter.drawLine(12, 3, 12, 21);
+        painter.drawLine(3, 12, 21, 12);
+        painter.drawLine(12, 3, 9, 7);
+        painter.drawLine(12, 3, 15, 7);
+        painter.drawLine(12, 21, 9, 17);
+        painter.drawLine(12, 21, 15, 17);
+        painter.drawLine(3, 12, 7, 9);
+        painter.drawLine(3, 12, 7, 15);
+        painter.drawLine(21, 12, 17, 9);
+        painter.drawLine(21, 12, 17, 15);
     } else {
         painter.drawEllipse(QPointF(12, 10), 3, 3);
         painter.drawLine(12, 1, 12, 6);
@@ -261,6 +265,7 @@ void MainWindow::initializeWindow() {
     canvas_->setRulerPercent(rulerPercent_);
     canvas_->setGuidesVisible(QSettings().value("view/guides/visible", true).toBool());
     canvas_->setSnapToGuides(QSettings().value("view/guides/snap", true).toBool());
+    canvas_->setMoveTarget(Canvas::MoveTarget(qBound(0, QSettings().value("tools/moveTarget", 0).toInt(), 1)));
     DrawingState initialState = canvas_->state();
     applySavedPerspectiveDefaults(&initialState);
     applySavedViewSettings(&initialState);
@@ -435,7 +440,7 @@ void MainWindow::setupMenusAndToolbars() {
     toolsPanelLayout->addWidget(toolsToolbar_);
     auto *group = new QActionGroup(this);
     group->setExclusive(true);
-    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение холста"), tr("Перспектива")};
+    QStringList names{tr("Карандаш"), tr("Кисть"), tr("Ластик"), tr("Перемещение"), tr("Перспектива")};
     QStringList shortcuts{"B", "K", "E", "H", "P"};
     for (int i = 0; i < 5; ++i) {
         auto *action = new QAction(toolIcon(i), names[i], this);
@@ -463,6 +468,8 @@ void MainWindow::setupMenusAndToolbars() {
         toolLabel_->setText(names.value(int(tool)));
         const bool paints = tool <= Canvas::Eraser;
         toolSettings_->setActiveTool(paints ? int(tool) : -1);
+        if (toolProperties_)
+            toolProperties_->setCanvasTool(int(tool));
         if (paints)
             canvas_->setStrokeSettings(toolSettings_->settingsFor(int(tool)));
     });
@@ -478,6 +485,16 @@ void MainWindow::setupMenusAndToolbars() {
     connect(toolProperties_, &ToolPropertiesPanel::frontColorRequested, frontColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::backColorRequested, backColorAction, &QAction::trigger);
     connect(toolProperties_, &ToolPropertiesPanel::swapColorsRequested, swap, &QAction::trigger);
+    toolProperties_->setCanvasTool(int(canvas_->tool()));
+    toolProperties_->setMoveTarget(int(canvas_->moveTarget()));
+    connect(toolProperties_, &ToolPropertiesPanel::moveTargetRequested, this, [this](int target) {
+        QSettings().setValue("tools/moveTarget", target);
+        canvas_->setMoveTarget(Canvas::MoveTarget(target));
+    });
+    connect(canvas_, &Canvas::moveTargetChanged, this, [this](Canvas::MoveTarget target) {
+        QSettings().setValue("tools/moveTarget", int(target));
+        toolProperties_->setMoveTarget(int(target));
+    });
     connect(toolSettings_, &DrawingToolSettingsModel::settingsChanged, this, [this] {
         if (toolSettings_->activeTool() >= 0)
             canvas_->setStrokeSettings(toolSettings_->settingsFor(toolSettings_->activeTool()));
