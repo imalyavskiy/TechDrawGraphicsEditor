@@ -1246,6 +1246,13 @@ Technical Draw</translation>
         </message>
     </context>
     <context>
+        <name>LayerModel</name>
+        <message><source>Некорректное растровое содержимое слоя.</source><translation>Некорректное растровое содержимое слоя.</translation></message>
+        <message><source>Не удалось закодировать растровый слой.</source><translation>Не удалось закодировать растровый слой.</translation></message>
+        <message><source>Некорректный манифест растрового слоя.</source><translation>Некорректный манифест растрового слоя.</translation></message>
+        <message><source>Размер растрового слоя не совпадает с холстом.</source><translation>Размер растрового слоя не совпадает с холстом.</translation></message>
+    </context>
+    <context>
         <name>TranslationProbe</name>
         <message>
             <location filename="../src/selftest.cpp" line="59" />

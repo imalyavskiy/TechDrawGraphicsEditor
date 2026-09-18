@@ -1,5 +1,6 @@
 #include "selftest.h"
 #include "autohidedockwidget.h"
+#include "layermodel.h"
 #include "mainwindow.h"
 #include <QtWidgets>
 #include <private/qzipreader_p.h>
@@ -50,6 +51,47 @@ struct ProjectFixture {
     DrawingState loadedState;
     QString projectPath;
 };
+
+void testLayerArchitecture() {
+    QImage source(24, 16, QImage::Format_ARGB32_Premultiplied);
+    source.fill(QColor("#b94c42"));
+    LayerStack layers = LayerStack::singleRaster(source, QStringLiteral("Background"), false, true);
+    require(layers.entries().size() == 1 && layers.activeEntry() &&
+                layers.activeEntry()->typeId == LayerTypes::raster(),
+            "single raster layer stack was not created");
+    const LayerType *type = LayerTypeRegistry::instance().type(LayerTypes::raster());
+    require(type && type->renderer && type->codec && type->rasterEditor &&
+                type->capabilities.testFlag(LayerCapability::RasterPainting),
+            "raster layer type is not fully registered");
+
+    LayerStack snapshot = layers;
+    LayerContent *editable = layers.editableActiveContent(LayerCapability::RasterPainting);
+    QImage *pixels = editable ? type->rasterEditor(*editable) : nullptr;
+    require(pixels, "raster layer did not provide an editable target");
+    pixels->setPixelColor(3, 4, QColor("#234f8c"));
+    const auto *snapshotRaster = dynamic_cast<const RasterLayerContent *>(snapshot.activeEntry()->content.get());
+    require(snapshotRaster && snapshotRaster->image.pixelColor(3, 4) == QColor("#b94c42"),
+            "editing a layer changed a shared history snapshot");
+
+    QImage composition = LayerCompositor::compose(layers, source.size());
+    require(composition.pixelColor(3, 4) == QColor("#234f8c"),
+            "layer compositor did not render edited raster content");
+    QImage thumbnail = LayerCompositor::thumbnail(layers, source.size(), QSize(48, 48));
+    require(thumbnail.size() == QSize(48, 48) && !thumbnail.isNull(), "layer compositor did not create a thumbnail");
+
+    QJsonObject manifest;
+    QHash<QString, QByteArray> resources;
+    QString error;
+    require(type->codec->encode(*layers.activeEntry()->content,
+                                QStringLiteral("layers/test"),
+                                &manifest,
+                                &resources,
+                                &error),
+            qPrintable(error));
+    auto decoded = type->codec->decode(
+        manifest, [&resources](const QString &path) { return resources.value(path); }, source.size(), &error);
+    require(decoded && decoded->equals(*layers.activeEntry()->content), "raster layer codec roundtrip failed");
+}
 
 /// Создаёт воспроизводимый снимок документа для всех групп интеграционных проверок.
 DrawingState initialDrawingState() {
@@ -1516,6 +1558,8 @@ int runSelfTests(const QString &outputDirectory) {
             std::exit(2);
         });
         watchdog.start();
+
+        testLayerArchitecture();
 
         MainWindow window;
         testMainWindowUi(window, out);
