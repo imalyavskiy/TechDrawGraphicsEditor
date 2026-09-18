@@ -3,6 +3,7 @@
 #include <QtWidgets>
 
 namespace {
+/// Узкая вкладка рисует название панели вдоль соответствующего края окна.
 class EdgeTabButton final : public QToolButton {
 public:
     EdgeTabButton(const QString &text, Qt::DockWidgetArea area, QWidget *parent)
@@ -39,6 +40,7 @@ private:
     Qt::DockWidgetArea area_;
 };
 
+/// Строит простую пиктограмму канцелярской кнопки без зависимости от темы ОС.
 QIcon pinIcon(bool pinned) {
     QPixmap image(18, 18);
     image.fill(Qt::transparent);
@@ -54,7 +56,7 @@ QIcon pinIcon(bool pinned) {
     painter.drawLine(0, 1, 0, 7);
     return QIcon(image);
 }
-}
+} // namespace
 
 AutoHideDockWidget::AutoHideDockWidget(const QString &title,
                                        Qt::DockWidgetArea area,
