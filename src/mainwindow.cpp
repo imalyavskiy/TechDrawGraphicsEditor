@@ -84,6 +84,7 @@ QIcon snapIcon() {
     painter.drawLine(15, 19, 21, 19);
     return QIcon(image);
 }
+/// Строит пиктограмму одностороннего перспективного луча для общей команды создания.
 QIcon perspectiveGuideIcon() {
     QPixmap image(24, 24);
     image.fill(Qt::transparent);

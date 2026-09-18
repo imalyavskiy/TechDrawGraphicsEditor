@@ -74,9 +74,13 @@ public:
     void setSnapToGuides(bool enabled);
     /// Возвращает состояние единого режима прилипания к направляющим.
     bool snapToGuides() const { return snapToGuides_; }
+    /// Включает или завершает режим жестового создания перспективного луча.
     void setPerspectiveGuideCreationEnabled(bool enabled);
+    /// Возвращает состояние режима создания перспективного луча.
     bool perspectiveGuideCreationEnabled() const { return perspectiveGuideCreationEnabled_; }
+    /// Ограничивает допустимое угловое отклонение жеста от направления на точку схода.
     void setPerspectiveGuideAngleThreshold(double degrees);
+    /// Возвращает угловой порог выбора точки схода в градусах.
     double perspectiveGuideAngleThreshold() const { return perspectiveGuideAngleThreshold_; }
     /// Возвращает устойчивый идентификатор выбранной направляющей либо пустую строку.
     const GuideId &selectedGuideId() const { return selectedGuideId_; }
@@ -212,6 +216,7 @@ signals:
     void toolChanged(Canvas::Tool tool);
     /// Сообщает панели свойств об автоматической смене цели перемещения.
     void moveTargetChanged(Canvas::MoveTarget target);
+    /// Синхронизирует все представления режима создания перспективной направляющей.
     void perspectiveGuideCreationChanged(bool enabled);
     /// Сообщает об изменении выбора направляющей для меню и будущей панели свойств.
     void selectedGuideChanged(const GuideId &id);
@@ -329,5 +334,6 @@ private:
     bool rulerGuideType(QPointF viewPosition, GuideType *type) const;
     /// Создаёт направляющую при отпускании над документом либо отменяет жест за его пределами.
     void finishGuideCreation(QPointF viewPosition);
+    /// Завершает жест перспективной направляющей и создаёт связанный односторонний луч при наличии кандидата.
     void finishPerspectiveGuideCreation();
 };
