@@ -67,7 +67,7 @@ struct VanishingPoint {
     }
 };
 
-/// Содержит полный снимок документа: растр, геометрию перспективы и её текущее оформление.
+/// Содержит полный снимок документа: размер холста, стек слоёв, геометрию перспективы и её оформление.
 struct DrawingState {
     QSize canvasSize;
     LayerStack layers;
@@ -98,6 +98,7 @@ struct DrawingState {
     bool horizonSymmetry = false;
     bool verticalSymmetry = false;
 
+    /// Заменяет содержимое снимка одним растровым слоем для новых документов и старых форматов проекта.
     void setSingleRasterImage(const QImage &image,
                               const QString &name,
                               bool transparencyAvailable = false,
@@ -105,6 +106,7 @@ struct DrawingState {
         canvasSize = image.size();
         layers = LayerStack::singleRaster(image, name, transparencyAvailable, alphaLocked);
     }
+    /// Собирает видимые слои в изображение размера холста для экспорта и совместимого сохранения.
     QImage flattenedImage() const { return LayerCompositor::compose(layers, canvasSize); }
 };
 

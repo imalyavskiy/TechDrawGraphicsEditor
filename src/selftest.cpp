@@ -52,10 +52,12 @@ struct ProjectFixture {
     QString projectPath;
 };
 
+/// Возвращает итоговые пиксели снимка независимо от внутреннего числа и типов слоёв.
 QImage pixels(const DrawingState &state) {
     return state.flattenedImage();
 }
 
+/// Получает изменяемый растр активного слоя через реестр типов, как это делает инструмент рисования.
 QImage *editablePixels(DrawingState *state) {
     LayerEntry *entry = state->layers.activeEntry();
     LayerContent *content = state->layers.editableActiveContent(LayerCapability::RasterPainting);
