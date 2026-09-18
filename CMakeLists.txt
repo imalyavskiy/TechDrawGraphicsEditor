@@ -10,9 +10,27 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Qt5 5.15 REQUIRED COMPONENTS Widgets Gui)
 
+set(TECHDRAW_WINDOWS_RESOURCE)
+if(WIN32 AND MINGW)
+    set(TECHDRAW_WINDOWS_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/techdraw_resources.o")
+    add_custom_command(
+        OUTPUT "${TECHDRAW_WINDOWS_RESOURCE}"
+        COMMAND "${CMAKE_RC_COMPILER}" -i techdraw.rc -o "${TECHDRAW_WINDOWS_RESOURCE}" --include-dir=.
+        DEPENDS
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/techdraw.ico"
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/techdraw.manifest"
+            "${CMAKE_CURRENT_SOURCE_DIR}/resources/techdraw.rc"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/resources"
+        VERBATIM
+    )
+    set_source_files_properties("${TECHDRAW_WINDOWS_RESOURCE}" PROPERTIES GENERATED TRUE EXTERNAL_OBJECT TRUE)
+elseif(WIN32)
+    set(TECHDRAW_WINDOWS_RESOURCE resources/techdraw.rc)
+endif()
+
 add_executable(TechDraw WIN32
     resources/techdraw.qrc
-    resources/techdraw.rc
+    ${TECHDRAW_WINDOWS_RESOURCE}
     src/canvas.cpp
     src/canvas.h
     src/main.cpp
