@@ -42,6 +42,7 @@ public:
     void setLayerLocked(const QString &id, bool locked);
     /// Задаёт непрозрачность указанного слоя в процентах.
     void setLayerOpacity(const QString &id, int opacity);
+    /// Задаёт смещение содержимого слоя в координатах документа.
     void setLayerOffset(const QString &id, QPointF offset);
     /// Добавляет растровому слою доступную прозрачность.
     void addLayerTransparency(const QString &id);
