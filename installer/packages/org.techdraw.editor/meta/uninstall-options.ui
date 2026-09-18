@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>UninstallOptions</class>
+ <widget class="QWidget" name="UninstallOptions">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="documentsLabel"><property name="text"><string>Projects, exported images, and other user documents will be preserved.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+   <item><widget class="QCheckBox" name="removeSettingsCheck"><property name="text"><string>Remove settings of the current user</string></property><property name="checked"><bool>false</bool></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

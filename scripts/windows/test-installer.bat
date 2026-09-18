@@ -1,6 +1,6 @@
 @echo off
 rem Purpose: build and verify one installer architecture in an isolated directory.
-rem Requirements: the environment accepted by build-installer.bat and PowerShell 5.
+rem Requirements: the environment accepted by build-installer.bat, PowerShell 5 and QtIFW 4.11+.
 rem Parameter 1: x64 (default) or x86. Result: lifecycle checks with no shell registrations.
 rem Exit codes: 0 when packaging, install, repair and uninstall checks pass; 1 otherwise.
 setlocal

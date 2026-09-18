@@ -5,6 +5,8 @@ Verifies that every Windows executable in a portable package has the expected ar
 Portable directory produced by build-release.bat.
 .PARAMETER Architecture
 Expected PE architecture: x64 or x86.
+.PARAMETER ExcludeFileName
+Optional executable names supplied by infrastructure rather than by the portable application.
 .OUTPUTS
 One summary line on success; throws with the offending file on mismatch or invalid input.
 .NOTES
@@ -12,7 +14,8 @@ The check reads the PE COFF machine field directly and therefore needs no Visual
 #>
 param(
     [Parameter(Mandatory = $true)][string]$PackageDirectory,
-    [Parameter(Mandatory = $true)][ValidateSet('x64', 'x86')][string]$Architecture
+    [Parameter(Mandatory = $true)][ValidateSet('x64', 'x86')][string]$Architecture,
+    [string[]]$ExcludeFileName = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +46,7 @@ if (-not (Test-Path -LiteralPath $packagePath -PathType Container)) {
 
 $expectedMachine = if ($Architecture -eq 'x64') { 0x8664 } else { 0x014C }
 $binaries = @(Get-ChildItem -LiteralPath $packagePath -Recurse -File | Where-Object {
-    $_.Extension -in @('.exe', '.dll')
+    $_.Extension -in @('.exe', '.dll') -and $_.Name -notin $ExcludeFileName
 })
 if ($binaries.Count -eq 0) { throw "Portable package contains no EXE or DLL files: $packagePath" }
 

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>@PRODUCT_NAME@</Name>
+    <Version>@PRODUCT_VERSION@</Version>
+    <Title>@PRODUCT_DISPLAY_NAME@</Title>
+    <Publisher>@PRODUCT_PUBLISHER@</Publisher>
+    <InstallerApplicationIcon>techdraw</InstallerApplicationIcon>
+    <InstallerWindowIcon>techdraw.ico</InstallerWindowIcon>
+    <Logo>techdraw.png</Logo>
+    <StartMenuDir>Technical Drawing</StartMenuDir>
+    <TargetDir>@HomeDir@/AppData/Local/Programs/Technical Drawing</TargetDir>
+    <MaintenanceToolName>@MAINTENANCE_TOOL@</MaintenanceToolName>
+    <MaintenanceToolIniFile>@MAINTENANCE_TOOL@.ini</MaintenanceToolIniFile>
+    <RemoveTargetDir>false</RemoveTargetDir>
+    <AllowNonAsciiCharacters>true</AllowNonAsciiCharacters>
+    <AllowSpaceInPath>true</AllowSpaceInPath>
+    <DisableCommandLineInterface>false</DisableCommandLineInterface>
+    <AllowRepositoriesForOfflineInstaller>false</AllowRepositoriesForOfflineInstaller>
+    <SupportsModify>false</SupportsModify>
+    <ControlScript>controller.qs</ControlScript>
+</Installer>

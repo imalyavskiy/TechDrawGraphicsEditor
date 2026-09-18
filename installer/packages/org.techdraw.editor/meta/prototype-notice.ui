@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PrototypeNoticePage</class>
+ <widget class="QWidget" name="PrototypeNoticePage">
+  <property name="minimumSize"><size><width>560</width><height>300</height></size></property>
+  <property name="windowTitle"><string>Prototype notice</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="titleLabel"><property name="text"><string>Prototype notice</string></property></widget></item>
+   <item><widget class="QPlainTextEdit" name="noticeText"><property name="readOnly"><bool>true</bool></property><property name="plainText"><string/></property></widget></item>
+   <item><widget class="QLabel" name="informationLabel"><property name="text"><string>This information does not require acceptance.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,5 @@
+PROTOTYPE NOTICE
+
+This build is not even an Alpha version. The real software license has not been selected yet.
+
+This placeholder is not legal terms and grants no rights to use, modify, or distribute the program. It does not replace a LICENSE file.

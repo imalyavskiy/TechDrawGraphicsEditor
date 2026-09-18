@@ -1,0 +1,10 @@
+{
+  "productId": "TechnicalDrawing",
+  "componentId": "org.techdraw.editor",
+  "name": "Technical Drawing",
+  "displayName": "Технический рисунок / Technical Drawing",
+  "publisher": "Technical Drawing",
+  "executable": "TechDraw.exe",
+  "maintenanceTool": "TechDrawMaintenance",
+  "minimumIfwVersion": "4.11.0"
+}
