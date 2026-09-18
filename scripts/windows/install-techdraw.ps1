@@ -258,7 +258,7 @@ function Show-InstallWizard {
     $readyLabel=New-Object Windows.Forms.Label;$readyLabel.SetBounds(0,115,540,50);$finalPanel.Controls.AddRange(@($finalTitle,$launchCheck,$readyLabel))
 
     $clean=($null -eq $CurrentInstall -and $null -eq $AllInstall);$pages=if($clean){@($languagePanel,$licensePanel,$scopePanel,$optionsPanel,$finalPanel)}else{@($languagePanel,$scopePanel,$optionsPanel,$finalPanel)}
-    $script:WizardPage=0;$script:WizardResult=$null
+    $script:WizardPage=0;$script:WizardResult=$null;$script:WizardPreflight=$null
     # Rewrites every custom caption after a language change.
     $localize={
         $form.Text=Get-Text Title;$back.Text=Get-Text Back;$cancel.Text=Get-Text Cancel;$languageTitle.Text=Get-Text LanguageTitle;$languagePrompt.Text=Get-Text LanguagePrompt
@@ -275,9 +275,14 @@ function Show-InstallWizard {
     $back.Add_Click({if($script:WizardPage -gt 0){$script:WizardPage--;&$showPage}})
     $cancel.Add_Click({$form.DialogResult='Cancel';$form.Close()})
     $next.Add_Click({
+        if($pages[$script:WizardPage] -eq $optionsPanel){
+            try{$chosenDirectory=[IO.Path]::GetFullPath($folderBox.Text);if(-not[IO.Path]::IsPathRooted($folderBox.Text) -or $chosenDirectory.TrimEnd('\') -eq [IO.Path]::GetPathRoot($chosenDirectory).TrimEnd('\')){throw 'invalid'}}catch{[Windows.Forms.MessageBox]::Show((Get-Text InvalidPath),(Get-Text Error),'OK','Error')|Out-Null;return}
+            $script:WizardPreflight=[pscustomobject]@{Scope=if($allRadio.Checked){'AllUsers'}else{'CurrentUser'};InstallDirectory=$chosenDirectory;Language=$script:SelectedLanguage;DesktopShortcut=$desktopCheck.Checked;TaskbarIntent=$taskbarCheck.Checked;AssociateDrw=$associationCheck.Checked;Launch=$launchCheck.Checked;AllowDowngrade=$false;Repair=$false;KeepOtherScope=$false;MigrateOtherScope=$false;SkipShellIntegration=$false}
+            if(-not(Confirm-InstallMode $script:WizardPreflight $Metadata $CurrentInstall $AllInstall)){return}
+        }
         if($script:WizardPage -lt $pages.Count-1){$script:WizardPage++;&$showPage;return}
         try{$chosenDirectory=[IO.Path]::GetFullPath($folderBox.Text)}catch{[Windows.Forms.MessageBox]::Show((Get-Text InvalidPath),(Get-Text Error),'OK','Error')|Out-Null;return}
-        $script:WizardResult=[pscustomobject]@{Scope=if($allRadio.Checked){'AllUsers'}else{'CurrentUser'};InstallDirectory=$chosenDirectory;Language=$script:SelectedLanguage;DesktopShortcut=$desktopCheck.Checked;TaskbarIntent=$taskbarCheck.Checked;AssociateDrw=$associationCheck.Checked;Launch=$launchCheck.Checked;AllowDowngrade=$false;Repair=$false;KeepOtherScope=$false;MigrateOtherScope=$false;SkipShellIntegration=$false}
+        $script:WizardResult=$script:WizardPreflight;$script:WizardResult.InstallDirectory=$chosenDirectory;$script:WizardResult.Launch=$launchCheck.Checked
         $form.DialogResult='OK';$form.Close()
     })
     &$showPage;if($form.ShowDialog() -ne 'OK'){return $null};return $script:WizardResult
@@ -328,7 +333,7 @@ if($StateFile){$state=Get-Content -LiteralPath $StateFile -Raw|ConvertFrom-Json;
 elseif($Quiet){$state=[pscustomobject]@{Scope=$Scope;InstallDirectory=if($InstallDirectory){$InstallDirectory}else{Get-DefaultInstallDirectory $Scope};Language=$script:SelectedLanguage;DesktopShortcut=[bool]$DesktopShortcut;TaskbarIntent=[bool]$TaskbarIntent;AssociateDrw=[bool]$AssociateDrw;Launch=$false;AllowDowngrade=[bool]$AllowDowngrade;Repair=[bool]$Repair;KeepOtherScope=[bool]$KeepOtherScope;MigrateOtherScope=[bool]$MigrateOtherScope;SkipShellIntegration=[bool]$SkipShellIntegration}}
 else{$state=Show-InstallWizard $metadata $currentInstall $allInstall;if($null -eq $state){exit 0}}
 
-if(-not(Confirm-InstallMode $state $metadata $currentInstall $allInstall)){exit 0}
+if(($Quiet -or $StateFile) -and -not(Confirm-InstallMode $state $metadata $currentInstall $allInstall)){exit 0}
 $otherInstall=if($state.Scope -eq 'AllUsers'){$currentInstall}else{$allInstall};$needsElevation=$state.Scope -eq 'AllUsers' -or ($state.MigrateOtherScope -and $otherInstall -and $otherInstall.Scope -eq 'AllUsers')
 if($needsElevation -and -not(Test-IsAdministrator)){Invoke-ElevatedInstallation $state;exit 0}
 Install-Payload $state $metadata $payloadArchive
