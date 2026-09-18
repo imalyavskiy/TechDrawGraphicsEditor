@@ -9,11 +9,14 @@ Prints result.txt and writes the complete test artifacts under build\<platform>-
 Returns nonzero on a missing package, timeout, application failure or stale report.
 #>
 param([ValidateSet('windows','offscreen')][string]$Platform='windows')
+$Architecture = if ($env:TECHDRAW_TEST_ARCHITECTURE) { $env:TECHDRAW_TEST_ARCHITECTURE } else { 'x64' }
+if ($Architecture -notin @('x64', 'x86')) { throw "Unsupported test architecture: $Architecture" }
 $ErrorActionPreference='Stop'
 # Resolve every project path from this script so tests do not depend on the caller's working directory.
 $projectRoot=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$exe=Join-Path $projectRoot 'dist\TechDraw\TechDraw.exe'
-$outputPath=Join-Path $projectRoot "build\$Platform-results"
+$packageSuffix = if ($Architecture -eq 'x86') { '-x86' } else { '' }
+$exe=Join-Path $projectRoot "dist\TechDraw$packageSuffix\TechDraw.exe"
+$outputPath=Join-Path $projectRoot "build\$Platform-results$packageSuffix"
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Release package was not found. Run build-release.bat first.' }
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 # Capture the start instant so an old success report cannot mask a failed launch.
