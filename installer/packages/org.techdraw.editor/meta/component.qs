@@ -1,6 +1,7 @@
 /*
  * Implements the Technical Drawing installation policy on top of Qt Installer
- * Framework. All state is stored under stable TechDraw* installer values so the
+ * Framework. Project-owned detection state is kept outside Windows' Uninstall
+ * section; QtIFW alone owns the user-visible Apps & features registration. The
  * same package can be driven by the GUI or by reproducible command-line tests.
  */
 
@@ -64,6 +65,8 @@ function registryValueAt(scope, base, name)
 
 function registryValue(scope, name)
 {
+    // A previous IExpress installation has no private state key, so read its
+    // uninstall record only as a compatibility fallback during migration.
     var value = registryValueAt(scope, stateRegistryBase, name);
     return value === "" ? registryValueAt(scope, legacyRegistryBase, name) : value;
 }
@@ -612,6 +615,8 @@ Component.prototype.createOperations = function()
         addRegistryValue(false, settingsKey, "pendingTaskbarPin", "true", false);
     }
 
+    // QtIFW writes and removes the visible Windows uninstall entry. This stable,
+    // non-ARP key contains only the extra fields needed by the next setup run.
     var stateKey = (allUsers ? "HKLM\\" : "HKCU\\") + stateRegistryBase;
     addRegistryValue(allUsers, stateKey, "InstallLocation", "@TargetDir@", true);
     addRegistryValue(allUsers, stateKey, "DisplayVersion", productVersion, false);

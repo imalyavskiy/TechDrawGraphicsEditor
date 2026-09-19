@@ -4,7 +4,8 @@ Verifies the Qt Installer Framework lifecycle in an isolated project directory.
 .DESCRIPTION
 Build output is installed headlessly with shell integration disabled, checked,
 damaged and repaired by the setup EXE, then uninstalled while a foreign file is
-kept. The script never writes Start menu entries, associations or uninstall keys.
+kept. Start menu entries and associations are not created. QtIFW's automatic
+test-only uninstall registration is removed using two exact path checks.
 #>
 param(
     [Parameter(Mandatory = $true)][string]$ProjectRoot,
@@ -53,6 +54,9 @@ function Invoke-InstallerCommand {
     if ($LASTEXITCODE -ne 0) { throw "$Description failed with exit code $LASTEXITCODE." }
 }
 
+# QtIFW registers even a headless installation in Apps & features. Limit cleanup
+# to records whose install directory and maintenance executable both identify
+# this repository's isolated lifecycle directory; display names are insufficient.
 function Remove-TestUninstallEntries {
     param([string]$ExpectedInstallDirectory)
 
