@@ -9,7 +9,8 @@ var productArchitecture = "@PRODUCT_ARCHITECTURE@";
 var productDisplayName = "@PRODUCT_DISPLAY_NAME@";
 var maintenanceToolName = "@MAINTENANCE_TOOL@";
 var productRegistryId = "@PRODUCT_ID@";
-var registryBase = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + productRegistryId;
+var legacyRegistryBase = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + productRegistryId;
+var stateRegistryBase = "Software\\TechDraw\\Installer";
 var existingInstallations = {};
 var optionsWidget = null;
 var languageWidget = null;
@@ -56,9 +57,15 @@ function registryRoot(scope)
     return scope === "AllUsers" ? "HKEY_LOCAL_MACHINE\\" : "HKEY_CURRENT_USER\\";
 }
 
+function registryValueAt(scope, base, name)
+{
+    return installer.value(registryRoot(scope) + base + "\\" + name, "");
+}
+
 function registryValue(scope, name)
 {
-    return installer.value(registryRoot(scope) + registryBase + "\\" + name, "");
+    var value = registryValueAt(scope, stateRegistryBase, name);
+    return value === "" ? registryValueAt(scope, legacyRegistryBase, name) : value;
 }
 
 function readInstallation(scope)
@@ -605,17 +612,12 @@ Component.prototype.createOperations = function()
         addRegistryValue(false, settingsKey, "pendingTaskbarPin", "true", false);
     }
 
-    var uninstallKey = (allUsers ? "HKLM\\" : "HKCU\\") + registryBase;
-    var uninstallCommand = "\"@TargetDir@/" + maintenanceToolName + ".exe\" --start-uninstaller";
-    addRegistryValue(allUsers, uninstallKey, "DisplayName", productDisplayName, true);
-    addRegistryValue(allUsers, uninstallKey, "DisplayVersion", productVersion, false);
-    addRegistryValue(allUsers, uninstallKey, "Publisher", "Technical Drawing", false);
-    addRegistryValue(allUsers, uninstallKey, "DisplayIcon", executable + ",0", false);
-    addRegistryValue(allUsers, uninstallKey, "InstallLocation", "@TargetDir@", false);
-    addRegistryValue(allUsers, uninstallKey, "UninstallString", uninstallCommand, false);
-    addRegistryValue(allUsers, uninstallKey, "InstallerLanguage", installer.value("TechDrawLanguage"), false);
-    addRegistryValue(allUsers, uninstallKey, "InstallArchitecture", productArchitecture, false);
-    addRegistryValue(allUsers, uninstallKey, "InstallerTechnology", "QtIFW", false);
+    var stateKey = (allUsers ? "HKLM\\" : "HKCU\\") + stateRegistryBase;
+    addRegistryValue(allUsers, stateKey, "InstallLocation", "@TargetDir@", true);
+    addRegistryValue(allUsers, stateKey, "DisplayVersion", productVersion, false);
+    addRegistryValue(allUsers, stateKey, "InstallerLanguage", installer.value("TechDrawLanguage"), false);
+    addRegistryValue(allUsers, stateKey, "InstallArchitecture", productArchitecture, false);
+    addRegistryValue(allUsers, stateKey, "InstallerTechnology", "QtIFW", false);
 };
 
 Component.prototype.installationFinished = function()

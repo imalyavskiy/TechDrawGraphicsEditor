@@ -53,6 +53,35 @@ function Invoke-InstallerCommand {
     if ($LASTEXITCODE -ne 0) { throw "$Description failed with exit code $LASTEXITCODE." }
 }
 
+function Remove-TestUninstallEntries {
+    param([string]$ExpectedInstallDirectory)
+
+    $expectedDirectory = [IO.Path]::GetFullPath($ExpectedInstallDirectory).TrimEnd('\')
+    $expectedMaintenance = [IO.Path]::GetFullPath((Join-Path $expectedDirectory 'TechDrawMaintenance.exe'))
+    $uninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+    if (-not (Test-Path -LiteralPath $uninstallRoot)) { return }
+
+    foreach ($key in Get-ChildItem -LiteralPath $uninstallRoot) {
+        $record = Get-ItemProperty -LiteralPath $key.PSPath
+        if ([string]::IsNullOrWhiteSpace([string]$record.InstallLocation) -or
+                [string]::IsNullOrWhiteSpace([string]$record.UninstallString)) {
+            continue
+        }
+
+        try {
+            $recordDirectory = [IO.Path]::GetFullPath([string]$record.InstallLocation).TrimEnd('\')
+            $recordMaintenance = [IO.Path]::GetFullPath(([string]$record.UninstallString).Trim().Trim('"'))
+        } catch {
+            continue
+        }
+
+        if ($recordDirectory.Equals($expectedDirectory, [StringComparison]::OrdinalIgnoreCase) -and
+                $recordMaintenance.Equals($expectedMaintenance, [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $key.PSPath -Recurse -Force
+        }
+    }
+}
+
 # Moves only QtIFW bookkeeping away so setup can exercise repair into the same directory.
 function Move-QtIfwMetadata {
     New-Item -ItemType Directory -Force -Path $metadataBackup | Out-Null
@@ -69,6 +98,7 @@ function Move-QtIfwMetadata {
 try {
     # QtIFW is statically linked and must not scan the application's Qt 5 plugin tree.
     $env:QT_PLUGIN_PATH = ''
+    Remove-TestUninstallEntries $testRoot
     $installArguments = @(
         '--cache-path', $cacheRoot,
         '--script', $controllerPath,
@@ -106,6 +136,7 @@ try {
     Write-Output "Qt Installer Framework lifecycle verified for $Architecture."
 } finally {
     $env:QT_PLUGIN_PATH = $savedQtPluginPath
+    Remove-TestUninstallEntries $testRoot
     Remove-Item -LiteralPath $testRoot, $cacheRoot, $metadataBackup -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $controllerPath -Force -ErrorAction SilentlyContinue
 }
