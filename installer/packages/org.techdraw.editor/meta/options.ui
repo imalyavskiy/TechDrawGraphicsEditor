@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OptionsPage</class>
+ <widget class="QWidget" name="OptionsPage">
+  <property name="minimumSize"><size><width>610</width><height>430</height></size></property>
+  <property name="windowTitle"><string>Installation settings</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="titleLabel"><property name="text"><string>Installation settings</string></property></widget></item>
+   <item><widget class="QGroupBox" name="scopeGroup"><property name="title"><string>Installation scope</string></property><layout class="QVBoxLayout" name="scopeLayout"><item><widget class="QRadioButton" name="currentUserRadio"><property name="text"><string>Only for me</string></property><property name="checked"><bool>true</bool></property></widget></item><item><widget class="QRadioButton" name="allUsersRadio"><property name="text"><string>For all users (administrator rights required)</string></property></widget></item></layout></widget></item>
+   <item><layout class="QHBoxLayout" name="targetLayout"><item><widget class="QLabel" name="targetLabel"><property name="text"><string>Installation folder:</string></property></widget></item><item><widget class="QLineEdit" name="targetEdit"/></item><item><widget class="QPushButton" name="browseButton"><property name="text"><string>Browse...</string></property></widget></item></layout></item>
+   <item><widget class="QGroupBox" name="shortcutsGroup"><property name="title"><string>Shortcuts and file association</string></property><layout class="QVBoxLayout" name="shortcutsLayout"><item><widget class="QCheckBox" name="startMenuCheck"><property name="text"><string>Start menu (required)</string></property><property name="checked"><bool>true</bool></property><property name="enabled"><bool>false</bool></property></widget></item><item><widget class="QCheckBox" name="desktopCheck"><property name="text"><string>Desktop</string></property></widget></item><item><widget class="QCheckBox" name="taskbarCheck"><property name="text"><string>Ask Windows to pin to taskbar on first launch</string></property></widget></item><item><widget class="QCheckBox" name="associateCheck"><property name="text"><string>Associate .drw files with Technical Drawing</string></property><property name="checked"><bool>true</bool></property></widget></item></layout></widget></item>
+   <item><widget class="QGroupBox" name="migrationGroup"><property name="title"><string>Existing installation</string></property><property name="visible"><bool>false</bool></property><layout class="QVBoxLayout" name="migrationLayout"><item><widget class="QLabel" name="migrationLabel"><property name="text"><string>An installation exists in the other scope.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item><item><widget class="QRadioButton" name="migrateRadio"><property name="text"><string>Move it to the selected scope</string></property><property name="checked"><bool>true</bool></property></widget></item><item><widget class="QRadioButton" name="keepBothRadio"><property name="text"><string>Keep both installations</string></property></widget></item><item><widget class="QRadioButton" name="cancelMigrationRadio"><property name="text"><string>Cancel installation</string></property></widget></item></layout></widget></item>
+   <item><widget class="QCheckBox" name="launchCheck"><property name="text"><string>Launch Technical Drawing after installation</string></property><property name="checked"><bool>true</bool></property></widget></item>
+   <item><widget class="QLabel" name="readyLabel"><property name="text"><string>After this page, only confirmation and installation remain.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

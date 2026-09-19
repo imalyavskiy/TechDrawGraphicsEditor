@@ -11,13 +11,13 @@
 - Ninja 1.12 или совместимая версия; проверялась версия 1.12.0;
 - Qt 5.15.2 MinGW 64-bit с модулями Core, Gui, Widgets, LinguistTools и закрытыми заголовками Gui; для дополнительной x86-сборки нужен соответствующий 32-битный комплект;
 - MinGW 8.1.0 той же разрядности и из того же комплекта Qt;
-- Windows PowerShell 5.1 и штатный IExpress для автоматических проверок и сборки EXE-инсталлятора. Отдельный `windeployqt` не требуется: проверенный набор библиотек разворачивает `build-release.bat`.
+- Windows PowerShell 5.1 и Qt Installer Framework 4.11 или новее для генерации и автоматических проверок EXE-инсталлятора. Отдельный `windeployqt` не требуется: проверенный набор библиотек разворачивает `build-release.bat`.
 
 Python 3 нужен для автоматического аудита локализуемых строк, который запускает `test.bat`. Pillow требуется только для повторной генерации PNG/ICO из `resources/techdraw.svg`.
 
 Доступность основных инструментов проверяется командами `git --version`, `cmake --version`, `ninja --version` и `powershell.exe -NoProfile -Command "$PSVersionTable.PSVersion"`. Подробная проверка путей Qt/MinGW выполняется общим сценарием при каждом запуске сборочного батника.
 
-Скопируйте `scripts\windows\environment.example.bat` в неотслеживаемый файл `scripts\windows\environment.bat` и укажите локальные `QT_ROOT_X64`, `MINGW_ROOT_X64`, а при необходимости x86 — также `QT_ROOT_X86`, `MINGW_ROOT_X86`. Старые `QT_ROOT` и `MINGW_ROOT` по-прежнему принимаются как x64. CMake и Ninja должны находиться в `PATH`.
+Скопируйте `scripts\windows\environment.example.bat` в неотслеживаемый файл `scripts\windows\environment.bat` и укажите локальные `QT_ROOT_X64`, `MINGW_ROOT_X64`, `QT_IFW_ROOT`, а при необходимости x86 — также `QT_ROOT_X86`, `MINGW_ROOT_X86`. Старые `QT_ROOT` и `MINGW_ROOT` по-прежнему принимаются как x64. Если `QT_IFW_ROOT` не задан, сценарий ищет версию 4.11 в стандартном каталоге `Tools` той же установки Qt. CMake и Ninja должны находиться в `PATH`.
 
 ## Сборка, проверка и запуск
 
@@ -42,7 +42,7 @@ scripts\windows\test-installer.bat
 - `dist\TechDraw-x86\` — отдельный переносимый x86-комплект;
 - `dist\installer\TechnicalDrawing-Setup-x64.exe` и `TechnicalDrawing-Setup-x86.exe` — раздельные EXE-инсталляторы.
 
-Инсталлятор предлагает русский или английский язык, установку для текущего либо всех пользователей, каталог, ярлыки и ассоциацию `.drw`; поддерживает восстановление, обновление, подтверждённый downgrade и безопасное удаление. Подробный порядок работы описан в [`docs/howto.md`](docs/howto.md), архитектура — в [`docs/architecture.md`](docs/architecture.md), план — в [`docs/PLAN.md`](docs/PLAN.md), правила Git Flow — в [`AGENTS.md`](AGENTS.md).
+Автономный однопакетный инсталлятор создаётся Qt Installer Framework. Он предлагает русский или английский язык, установку для текущего либо всех пользователей, каталог, ярлыки и ассоциацию `.drw`; поддерживает восстановление, обновление, подтверждённый downgrade, перенос прежней IExpress-установки и безопасное удаление. Подробный порядок работы описан в [`docs/howto.md`](docs/howto.md), архитектура — в [`docs/architecture.md`](docs/architecture.md), план — в [`docs/PLAN.md`](docs/PLAN.md), правила Git Flow — в [`AGENTS.md`](AGENTS.md).
 
 Исходник значка хранится в `resources/techdraw.svg`. Команда `py tools/generate_icon.py --qt-root <Qt> --compiler-root <MinGW>` создаёт из него растровый ресурс Qt и многоразмерный значок Windows через временный CMake-проект. Во всём видимом интерфейсе используется полное название «Технический рисунок / Technical Draw». Имя `TechDraw` сохраняется только для исполняемого файла и внутренних технических идентификаторов.
 

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>@PRODUCT_DISPLAY_NAME@</DisplayName>
+    <Description>Technical Drawing editor and its required runtime files.</Description>
+    <Version>@PRODUCT_VERSION@</Version>
+    <ReleaseDate>@RELEASE_DATE@</ReleaseDate>
+    <Default>true</Default>
+    <ForcedInstallation>true</ForcedInstallation>
+    <Essential>true</Essential>
+    <Script>component.qs</Script>
+    <UserInterfaces>
+        <UserInterface>language.ui</UserInterface>
+        <UserInterface>prototype-notice.ui</UserInterface>
+        <UserInterface>options.ui</UserInterface>
+        <UserInterface>summary.ui</UserInterface>
+        <UserInterface>uninstall-options.ui</UserInterface>
+    </UserInterfaces>
+</Package>
